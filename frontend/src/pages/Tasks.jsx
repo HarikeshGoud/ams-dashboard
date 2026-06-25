@@ -50,11 +50,12 @@ export default function Tasks() {
   }
 
   const priorityPill = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
-  const statusPill = { pending: 'pill-yellow', in_progress: 'pill-orange', completed: 'pill-green', cancelled: 'pill-gray' }
+  const statusPill = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
 
   const grouped = {
     pending: tasks.filter(t => t.status === 'pending'),
     in_progress: tasks.filter(t => t.status === 'in_progress'),
+    submitted: tasks.filter(t => t.status === 'submitted'),
     completed: tasks.filter(t => t.status === 'completed'),
   }
 
@@ -90,6 +91,7 @@ export default function Tasks() {
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     {status === 'pending'     && <button className="btn btn-outline btn-sm" onClick={() => updateStatus(t.id, 'in_progress')}>Start</button>}
                     {status === 'in_progress' && <button className="btn btn-green btn-sm"   onClick={() => updateStatus(t.id, 'completed')}>Done</button>}
+                    {status === 'submitted'   && <><button className="btn btn-green btn-sm" onClick={() => updateStatus(t.id, 'completed')} style={{ marginRight: 4 }}>✅ Verify</button><button className="btn btn-danger btn-sm" onClick={() => updateStatus(t.id, 'pending')}>✕ Reject</button></>}
                     <button className="btn btn-danger btn-sm" onClick={() => del(t.id)}>×</button>
                   </div>
                 </div>

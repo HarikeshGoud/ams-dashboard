@@ -38,21 +38,24 @@ export default function MyTasks() {
       .filter(Boolean)
   )
 
-  const todayTasks = tasks.filter(t => t.due_date === todayIso)
-  const active     = tasks.filter(t => t.status !== 'completed' && t.due_date !== todayIso)
-  const completed  = tasks.filter(t => t.status === 'completed')
-  const rejected   = tasks.filter(t => rejectedTaskIds.has(t.id))
+  const todayTasks  = tasks.filter(t => t.due_date === todayIso)
+  const active      = tasks.filter(t => !['completed','submitted'].includes(t.status) && t.due_date !== todayIso)
+  const completed   = tasks.filter(t => t.status === 'completed')
+  const underReview = tasks.filter(t => t.status === 'submitted')
+  const rejected    = tasks.filter(t => rejectedTaskIds.has(t.id))
 
   const TABS = [
-    { key: 'today',     label: "📅 Today's Visits", count: todayTasks.length },
-    { key: 'active',    label: '⏳ Other Active',   count: active.length },
-    { key: 'rejected',  label: '❌ Rejected',        count: rejected.length },
-    { key: 'completed', label: '✅ Completed',       count: completed.length },
+    { key: 'today',     label: "📅 Today's Visits",  count: todayTasks.length },
+    { key: 'review',    label: '🔍 Under Review',     count: underReview.length },
+    { key: 'active',    label: '⏳ Other Active',     count: active.length },
+    { key: 'rejected',  label: '❌ Rejected',          count: rejected.length },
+    { key: 'completed', label: '✅ Verified',          count: completed.length },
   ]
 
-  const displayed = tab === 'today' ? todayTasks : tab === 'active' ? active : tab === 'rejected' ? rejected : completed
+  const displayed = tab === 'today' ? todayTasks : tab === 'review' ? underReview : tab === 'active' ? active : tab === 'rejected' ? rejected : completed
 
-  const todayDone  = todayTasks.filter(t => t.status === 'completed').length
+  // Today: submitted + completed both count as "done" for progress dots
+  const todayDone  = todayTasks.filter(t => ['completed','submitted'].includes(t.status)).length
   const rotPct     = rotation?.total_schools > 0 ? Math.round((rotation.visited_count / rotation.total_schools) * 100) : 0
 
   return (
@@ -74,17 +77,18 @@ export default function MyTasks() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           {Array.from({ length: 5 }, (_, i) => {
             const t = todayTasks[i]
-            const done = t?.status === 'completed'
+            const verified  = t?.status === 'completed'
+            const submitted = t?.status === 'submitted'
             const rej = t && rejectedTaskIds.has(t.id)
             return (
               <div key={i} style={{
                 flex: 1, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 700,
-                background: !t ? 'var(--surface2)' : rej ? 'rgba(248,113,113,.15)' : done ? 'rgba(52,211,153,.15)' : 'rgba(251,191,36,.15)',
-                border: `1px solid ${!t ? 'var(--border)' : rej ? 'var(--red)' : done ? 'var(--green)' : 'var(--yellow)'}`,
-                color: !t ? 'var(--muted)' : rej ? 'var(--red)' : done ? 'var(--green)' : 'var(--yellow)'
+                background: !t ? 'var(--surface2)' : rej ? 'rgba(248,113,113,.15)' : verified ? 'rgba(52,211,153,.15)' : submitted ? 'rgba(251,191,36,.15)' : 'rgba(56,189,248,.1)',
+                border: `1px solid ${!t ? 'var(--border)' : rej ? 'var(--red)' : verified ? 'var(--green)' : submitted ? 'var(--yellow)' : 'var(--accent)'}`,
+                color: !t ? 'var(--muted)' : rej ? 'var(--red)' : verified ? 'var(--green)' : submitted ? 'var(--yellow)' : 'var(--accent)'
               }}>
-                {!t ? `${i+1}` : rej ? '❌' : done ? '✅' : `${i+1}`}
+                {!t ? `${i+1}` : rej ? '❌' : verified ? '✅' : submitted ? '🔍' : `${i+1}`}
               </div>
             )
           })}
@@ -154,9 +158,12 @@ export default function MyTasks() {
             .filter(r => r.task_id === task.id)
             .sort((a, b) => (b.submitted_at || '').localeCompare(a.submitted_at || ''))[0]
 
+          const isSubmitted = task.status === 'submitted'
+
           let borderColor = 'var(--border)'
           if (isRejected) borderColor = 'var(--red)'
           else if (task.status === 'completed') borderColor = 'var(--green)'
+          else if (isSubmitted) borderColor = 'var(--yellow)'
           else if (overdue) borderColor = 'rgba(248,113,113,.5)'
           else if (isToday) borderColor = 'var(--accent)'
 
@@ -194,9 +201,13 @@ export default function MyTasks() {
                 </div>
 
                 <div style={{ flexShrink: 0 }}>
-                  {task.status === 'completed' && !isRejected ? (
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: 'rgba(52,211,153,.15)', color: 'var(--green)' }}>
-                      ✅ Done
+                  {task.status === 'completed' ? (
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: 'rgba(52,211,153,.15)', color: 'var(--green)', border: '1px solid var(--green)' }}>
+                      ✅ Verified
+                    </span>
+                  ) : isSubmitted ? (
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, background: 'rgba(251,191,36,.15)', color: 'var(--yellow)', border: '1px solid var(--yellow)' }}>
+                      🔍 Under Review
                     </span>
                   ) : (
                     <button className="btn btn-primary" style={{

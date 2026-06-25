@@ -163,9 +163,9 @@ async def submit_field_report(
         await save_photo(ap, f"after_{idx}",  latitude, longitude)
         await save_photo(ip, f"item_{idx}",   latitude, longitude)
 
-    # Mark task as completed
-    task.status = "completed"
-    task.completed_at = datetime.utcnow()
+    # Mark task as submitted (under review) — NOT completed yet
+    # It becomes "completed" only after admin/deskwork verifies the proof
+    task.status = "submitted"
 
     # Auto-mark attendance as Present for today
     existing_att = db.query(Attendance).filter(
@@ -205,7 +205,26 @@ def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_
     r.verification_note = req.note
     r.verified_at = datetime.utcnow() if req.status in ("verified", "rejected") else None
 
-    # Sync attendance: rejected proof → mark absent; verified proof → ensure present
+    # Sync task status and attendance based on verification result
+    if r.task_id:
+        from ..models.task import Task
+        task = db.query(Task).filter(Task.id == r.task_id).first()
+        if task:
+            if req.status == "verified":
+                task.status = "completed"
+                task.completed_at = datetime.utcnow()
+                # Stamp school.last_visit_date on verification
+                if task.school_id:
+                    from ..models.school import School
+                    school = db.query(School).filter(School.id == task.school_id).first()
+                    if school:
+                        visit_date = task.due_date if task.due_date else datetime.utcnow().date()
+                        if not school.last_visit_date or visit_date >= school.last_visit_date:
+                            school.last_visit_date = visit_date
+            elif req.status == "rejected":
+                task.status = "pending"
+                task.completed_at = None
+
     if r.report_date and r.employee_id:
         att = db.query(Attendance).filter(
             Attendance.employee_id == r.employee_id,
@@ -223,16 +242,17 @@ def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_
                     status="absent",
                     notes=note_text
                 ))
-            # Reopen the linked task so employee can resubmit
-            if r.task_id:
-                from ..models.task import Task
-                task = db.query(Task).filter(Task.id == r.task_id).first()
-                if task:
-                    task.status = "pending"
-                    task.completed_at = None
-        elif req.status == "verified" and att and att.status == "absent":
-            att.status = "present"
-            att.notes = "Auto: proof verified by admin"
+        elif req.status == "verified":
+            if att:
+                att.status = "present"
+                att.notes = "Auto: proof verified by admin"
+            else:
+                db.add(Attendance(
+                    employee_id=r.employee_id,
+                    date=r.report_date,
+                    status="present",
+                    notes="Auto: proof verified by admin"
+                ))
 
     db.commit()
     db.refresh(r)
