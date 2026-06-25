@@ -113,6 +113,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [step, setStep] = useState(1)
   const [selectedItems, setSelectedItems] = useState([])
   const [stockItems, setStockItems] = useState([])
+  const [activeCat, setActiveCat] = useState(null) // null = not chosen yet
   const [gps, setGps] = useState(null)
   const [gpsError, setGpsError] = useState('')
   const [gpsLoading, setGpsLoading] = useState(true)
@@ -125,21 +126,16 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  const CAT_A = '50/100 LPH RO Units'
+  const CAT_B = '1000/1500/2000 LPH RO Units'
+
   useEffect(() => {
     captureGPS()
     api.get('/api/stock/').then(r => {
-      // Extract item names from stock, sorted alphabetically
-      const names = (r.data || []).map(i => i.name).filter(Boolean).sort()
-      setStockItems(names)
+      // Store full objects so we can filter by category
+      setStockItems(r.data || [])
     }).catch(() => {
-      // Fallback list if stock API fails
-      setStockItems([
-        'MCF Filter', 'Antiscalant', 'UF Membrane', 'RO Membrane',
-        'Sediment Filter', 'Carbon Filter', 'UV Lamp', 'Pump',
-        'Solenoid Valve', 'Float Valve', 'TDS Controller', 'Pressure Gauge',
-        'Dosing Pump', 'Flow Restrictor', 'Check Valve', 'Tap / Faucet',
-        'Power Supply', 'Control Panel', 'Cleaning / Servicing', 'Other',
-      ])
+      setStockItems([])
     })
   }, [])
 
@@ -258,27 +254,56 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           {/* ── STEP 1: Select items ── */}
           {step === 1 && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>
                 What did you install / replace / service?
               </div>
 
-              {stockItems.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)', fontSize: 12 }}>⏳ Loading items…</div>
+              {/* Category picker */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                {[CAT_A, CAT_B].map(cat => {
+                  const shortLabel = cat === CAT_A ? '🔵 50 / 100 LPH RO' : '🟢 1000 – 2000 LPH RO'
+                  const active = activeCat === cat
+                  return (
+                    <button key={cat} onClick={() => setActiveCat(cat)} style={{
+                      flex: 1, padding: '10px 8px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: `2px solid ${active ? (cat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--border)'}`,
+                      background: active ? (cat === CAT_A ? 'rgba(56,189,248,.15)' : 'rgba(52,211,153,.15)') : 'var(--surface2)',
+                      color: active ? (cat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--muted)',
+                      textAlign: 'center', lineHeight: 1.4
+                    }}>
+                      {shortLabel}
+                      <div style={{ fontSize: 10, fontWeight: 500, marginTop: 2, color: 'inherit', opacity: 0.8 }}>
+                        {stockItems.filter(s => s.category === cat).length} items
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Items for selected category */}
+              {!activeCat ? (
+                <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--muted)', fontSize: 12 }}>
+                  ☝️ Select your RO unit type above to see the parts list
+                </div>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14, maxHeight: 260, overflowY: 'auto', padding: '2px 0' }}>
-                  {stockItems.map(item => {
-                    const sel = selectedItems.includes(item)
-                    return (
-                      <button key={item} onClick={() => toggleItem(item)} style={{
-                        padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                        border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                        background: sel ? 'rgba(56,189,248,.15)' : 'var(--surface2)',
-                        color: sel ? 'var(--accent)' : 'var(--text)',
-                      }}>
-                        {sel ? '✓ ' : ''}{item}
-                      </button>
-                    )
-                  })}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14, maxHeight: 220, overflowY: 'auto', padding: '2px 0' }}>
+                  {stockItems
+                    .filter(s => s.category === activeCat)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(item => {
+                      const sel = selectedItems.includes(item.name)
+                      return (
+                        <button key={item.id} onClick={() => toggleItem(item.name)} style={{
+                          padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                          border: `1.5px solid ${sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--border)'}`,
+                          background: sel ? (activeCat === CAT_A ? 'rgba(56,189,248,.15)' : 'rgba(52,211,153,.15)') : 'var(--surface2)',
+                          color: sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--text)',
+                        }}>
+                          {sel ? '✓ ' : ''}{item.name}
+                        </button>
+                      )
+                    })
+                  }
                 </div>
               )}
 
