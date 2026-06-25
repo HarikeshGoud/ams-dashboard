@@ -142,6 +142,34 @@ export default function Salary() {
 
           {loading && <p>Loading...</p>}
 
+          {data && data.technicians.length > 0 && (() => {
+            const totalCalc  = data.technicians.reduce((s, t) => s + t.calculated_salary, 0)
+            const totalFinal = data.technicians.reduce((s, t) => {
+              const ovr = overrides[t.employee_id]
+              return s + (ovr ? ovr.final_amount : t.calculated_salary)
+            }, 0)
+            const hasOverrides = data.technicians.some(t => overrides[t.employee_id])
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                <TotalCard label="Total Employees" value={data.technicians.length} sub="technicians this month" color="#475569" bg="#f8fafc" />
+                <TotalCard label="Total Calc Salary" value={`₹${Number(totalCalc).toLocaleString('en-IN')}`} sub="based on attendance" color="#2563eb" bg="#eff6ff" />
+                {hasOverrides
+                  ? <TotalCard label="Total Final Payout" value={`₹${Number(totalFinal).toLocaleString('en-IN')}`} sub="after overrides applied" color="#7c3aed" bg="#f5f3ff" big />
+                  : <TotalCard label="Total Final Payout" value={`₹${Number(totalFinal).toLocaleString('en-IN')}`} sub="no overrides this month" color="#16a34a" bg="#dcfce7" big />
+                }
+                {hasOverrides && (
+                  <TotalCard
+                    label="Override Difference"
+                    value={`${totalFinal >= totalCalc ? '+' : ''}₹${Number(totalFinal - totalCalc).toLocaleString('en-IN')}`}
+                    sub={totalFinal >= totalCalc ? 'extra paid vs calculated' : 'saved vs calculated'}
+                    color={totalFinal >= totalCalc ? '#b91c1c' : '#16a34a'}
+                    bg={totalFinal >= totalCalc ? '#fee2e2' : '#dcfce7'}
+                  />
+                )}
+              </div>
+            )
+          })()}
+
           {data && data.technicians.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -260,6 +288,16 @@ export default function Salary() {
       {tab === 'allowances' && (
         <AllowancePanel allowances={allowances} onReview={reviewAllowance} />
       )}
+    </div>
+  )
+}
+
+function TotalCard({ label, value, sub, color, bg, big }) {
+  return (
+    <div style={{ background: bg, border: `1px solid ${color}33`, borderRadius: 12, padding: '1rem 1.25rem' }}>
+      <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: big ? 22 : 18, fontWeight: 800, color }}>{value}</div>
+      <div style={{ fontSize: 11, color: '#aaa', marginTop: 3 }}>{sub}</div>
     </div>
   )
 }
