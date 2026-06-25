@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Date, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Date, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from ..database import Base
 from .employee_mandal import employee_mandals
@@ -16,6 +16,7 @@ class Employee(Base):
     joining_date   = Column(Date, nullable=True)
     is_active      = Column(Boolean, default=True)
     password_hash  = Column(String(255), nullable=True)
+    base_salary    = Column(Float, default=10000.0, nullable=True)
 
     mandal         = relationship("Mandal", back_populates="employees")
     mandals        = relationship("Mandal", secondary="employee_mandals", backref="technicians")
