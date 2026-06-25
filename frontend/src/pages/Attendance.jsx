@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import api from '../api/axios'
+import { exportAttendanceExcel, exportAttendancePDF } from '../utils/exportReports'
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
@@ -140,6 +141,18 @@ export default function Attendance() {
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         {summary && <span style={{ fontSize: 13, color: '#888' }}>Working days: <b>{summary.working_days}</b></span>}
+        {summary && summary.technicians.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+            <button onClick={() => exportAttendanceExcel(summary.technicians, month, year, summary.working_days)}
+              style={{ padding: '0.4rem 0.9rem', borderRadius: 7, background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              ⬇ Excel
+            </button>
+            <button onClick={() => exportAttendancePDF(summary.technicians, month, year, summary.working_days)}
+              style={{ padding: '0.4rem 0.9rem', borderRadius: 7, background: '#dc2626', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              ⬇ PDF
+            </button>
+          </div>
+        )}
       </div>
 
       {loadingMain && <p style={{ color: '#888' }}>Loading...</p>}

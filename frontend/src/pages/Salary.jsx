@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '../api/axios'
+import { exportSalaryExcel, exportSalaryPDF } from '../utils/exportReports'
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
@@ -125,6 +126,18 @@ export default function Salary() {
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             {data && <span style={{ color: '#666', fontSize: 13 }}>Working days: <b>{data.working_days}</b></span>}
+            {data && data.technicians.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+                <button onClick={() => exportSalaryExcel(data.technicians, overrides, month, year, data.working_days)}
+                  style={{ padding: '0.4rem 0.9rem', borderRadius: 7, background: '#16a34a', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                  ⬇ Excel
+                </button>
+                <button onClick={() => exportSalaryPDF(data.technicians, overrides, month, year, data.working_days)}
+                  style={{ padding: '0.4rem 0.9rem', borderRadius: 7, background: '#dc2626', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                  ⬇ PDF
+                </button>
+              </div>
+            )}
           </div>
 
           {loading && <p>Loading...</p>}
