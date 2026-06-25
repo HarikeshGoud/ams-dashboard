@@ -38,6 +38,14 @@ export function exportPDF(title, subtitle, headers, rows, filename) {
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [245, 247, 255] },
     margin: { left: 14, right: 14 },
+    didParseCell: (data) => {
+      // Bold + light purple bg for the last row (totals summary)
+      if (data.section === 'body' && data.row.index === rows.length - 1) {
+        data.cell.styles.fontStyle = 'bold'
+        data.cell.styles.fillColor = [237, 233, 254]
+        data.cell.styles.textColor = [109, 40, 217]
+      }
+    }
   })
 
   const pageCount = doc.internal.getNumberOfPages()
@@ -99,6 +107,21 @@ export function exportSalaryExcel(technicians, overrides, month, year, workingDa
       ovr?.note || ''
     ]
   })
+
+  const totalCalc  = technicians.reduce((s, t) => s + t.calculated_salary, 0)
+  const totalFinal = technicians.reduce((s, t) => s + (overrides[t.employee_id]?.final_amount ?? t.calculated_salary), 0)
+  const diff = totalFinal - totalCalc
+
+  // Blank row then summary rows at bottom
+  rows.push(
+    [],
+    ['SUMMARY', '', '', '', '', '', '', ''],
+    ['Total Employees', technicians.length, '', '', '', '', '', ''],
+    ['Total Calc Salary', '', '', '', '', totalCalc, '', ''],
+    ['Total Final Payout', '', '', '', '', '', totalFinal, ''],
+    ['Difference (Override)', '', '', '', '', '', diff, diff >= 0 ? 'Extra paid' : 'Saved'],
+  )
+
   exportExcel(
     [{ name: `Salary ${MONTHS[month]} ${year}`, headers, rows }],
     `Salary_${MONTHS[month]}_${year}.xlsx`
@@ -120,6 +143,21 @@ export function exportSalaryPDF(technicians, overrides, month, year, workingDays
       ovr?.note || '—'
     ]
   })
+
+  const totalCalc  = technicians.reduce((s, t) => s + t.calculated_salary, 0)
+  const totalFinal = technicians.reduce((s, t) => s + (overrides[t.employee_id]?.final_amount ?? t.calculated_salary), 0)
+  const diff = totalFinal - totalCalc
+
+  // Summary rows at bottom (bold style via empty cells trick — handled in autoTable foot)
+  rows.push(
+    ['', '', '', '', '', '', ''],
+    ['TOTAL (' + technicians.length + ' employees)', '', '', '',
+      `₹${Number(totalCalc).toLocaleString()}`,
+      `₹${Number(totalFinal).toLocaleString()}`,
+      diff !== 0 ? `${diff >= 0 ? '+' : ''}₹${Number(diff).toLocaleString()}` : '—'
+    ]
+  )
+
   exportPDF(
     `Salary Report — ${MONTHS[month]} ${year}`,
     `Working days: ${workingDays}  |  Generated: ${new Date().toLocaleDateString('en-IN')}`,
