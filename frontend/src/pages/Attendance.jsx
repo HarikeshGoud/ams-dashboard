@@ -1,98 +1,114 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import api from '../api/axios'
 
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
 export default function Attendance() {
-  const [records, setRecords] = useState([])
-  const [employees, setEmployees] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ employee_id: '', date: new Date().toISOString().slice(0,10), status: 'present', check_in: '', check_out: '', notes: '' })
-  const [toast, setToast] = useState('')
+  const now = new Date()
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year, setYear]   = useState(now.getFullYear())
+  const [data, setData]   = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [overrides, setOverrides] = useState({})
+  const [saving, setSaving] = useState({})
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
-  function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
-
-  function load() {
-    Promise.all([api.get('/api/attendance/'), api.get('/api/employees/')]).then(([a, e]) => {
-      setRecords(a.data); setEmployees(e.data); setLoading(false)
-    })
-  }
-  useEffect(() => { load() }, [])
-
-  async function save(ev) {
-    ev.preventDefault()
-    await api.post('/api/attendance/mark', { ...form, employee_id: parseInt(form.employee_id) })
-    load(); setModal(false); showToast('Attendance marked!')
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await api.get(`/api/attendance/monthly-summary?month=${month}&year=${year}`)
+      setData(r.data)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const statusPill = { present: 'pill-green', absent: 'pill-red', half_day: 'pill-yellow', leave: 'pill-orange' }
+  useEffect(() => { load() }, [month, year])
 
-  if (loading) return <div className="spinner" />
+  const saveSalary = async (empId, val) => {
+    setSaving(s => ({ ...s, [empId]: true }))
+    await api.patch(`/api/attendance/base-salary/${empId}?salary=${val}`)
+    setSaving(s => ({ ...s, [empId]: false }))
+    setOverrides(o => { const n = { ...o }; delete n[empId]; return n })
+    load()
+  }
+
+  const years = []
+  for (let y = now.getFullYear(); y >= now.getFullYear() - 2; y--) years.push(y)
 
   return (
-    <div>
-      <div className="section-header">
-        <h3>🗓️ Attendance</h3>
-        <button className="btn btn-primary" onClick={() => setModal(true)}>+ Mark Attendance</button>
+    <div style={{ padding: '1rem' }}>
+      <h2 style={{ marginBottom: '1rem' }}>Attendance — Monthly Overview</h2>
+
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select value={month} onChange={e => setMonth(+e.target.value)}
+          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+          {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <select value={year} onChange={e => setYear(+e.target.value)}
+          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        {data && <span style={{ color: '#666', fontSize: 13 }}>Working days this month: <b>{data.working_days}</b></span>}
       </div>
-      <div className="card">
-        <div className="table-wrap scroll-table">
-          <table>
+
+      {loading && <p>Loading...</p>}
+
+      {data && data.technicians.length === 0 && !loading && (
+        <p style={{ color: '#888' }}>No technicians found.</p>
+      )}
+
+      {data && data.technicians.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr><th>Date</th><th>Employee</th><th>Status</th><th>Check In</th><th>Check Out</th><th>Notes</th></tr>
+              <tr style={{ background: '#f0f4ff', textAlign: 'left' }}>
+                {['Employee','Code','Base Salary','Total Days','Present','Half Day','Absent','Att %','Calc Salary','Set Base Salary'].map(h => (
+                  <th key={h} style={{ padding: '0.6rem 0.8rem', borderBottom: '2px solid #ddd', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
             </thead>
             <tbody>
-              {records.map(r => (
-                <tr key={r.id}>
-                  <td>{r.date}</td>
-                  <td>{r.employee_name}</td>
-                  <td><span className={`pill ${statusPill[r.status] || 'pill-gray'}`}>{r.status}</span></td>
-                  <td>{r.check_in || '—'}</td>
-                  <td>{r.check_out || '—'}</td>
-                  <td>{r.notes || '—'}</td>
-                </tr>
-              ))}
-              {records.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)' }}>No records</td></tr>}
+              {data.technicians.map(emp => {
+                const pct = emp.attendance_pct
+                const pctColor = pct >= 80 ? '#16a34a' : pct >= 60 ? '#ca8a04' : '#dc2626'
+                const ovr = overrides[emp.employee_id]
+                const curVal = ovr !== undefined ? ovr : emp.base_salary
+                return (
+                  <tr key={emp.employee_id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '0.6rem 0.8rem', fontWeight: 600 }}>{emp.employee_name}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#666' }}>{emp.employee_code || '—'}</td>
+                    <td style={{ padding: '0.6rem 0.8rem' }}>₹{Number(emp.base_salary).toLocaleString()}</td>
+                    <td style={{ padding: '0.6rem 0.8rem' }}>{emp.working_days}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#16a34a', fontWeight: 600 }}>{emp.present}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#ca8a04' }}>{emp.half_day}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#dc2626' }}>{emp.absent}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: pctColor, fontWeight: 600 }}>{pct}%</td>
+                    <td style={{ padding: '0.6rem 0.8rem', fontWeight: 700, color: '#2563eb' }}>
+                      ₹{Number(emp.calculated_salary).toLocaleString()}
+                    </td>
+                    <td style={{ padding: '0.6rem 0.8rem' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <input
+                          type="number"
+                          value={curVal}
+                          onChange={e => setOverrides(o => ({ ...o, [emp.employee_id]: e.target.value }))}
+                          style={{ width: 90, padding: '0.25rem 0.4rem', borderRadius: 6, border: '1px solid #ccc', fontSize: 13 }}
+                        />
+                        <button
+                          onClick={() => saveSalary(emp.employee_id, curVal)}
+                          disabled={saving[emp.employee_id]}
+                          style={{ padding: '0.25rem 0.7rem', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12 }}>
+                          {saving[emp.employee_id] ? '…' : 'Save'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
-      </div>
-
-      {modal && (
-        <div className="modal-backdrop">
-          <div className="modal-box">
-            <button className="modal-close" onClick={() => setModal(false)}>✕</button>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>+ Mark Attendance</h3>
-            <form onSubmit={save}>
-              <div className="form-grid">
-                <div className="form-group form-full"><label>Employee *</label>
-                  <select required value={form.employee_id} onChange={f('employee_id')}>
-                    <option value="">Select...</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                  </select>
-                </div>
-                <div className="form-group"><label>Date</label><input type="date" value={form.date} onChange={f('date')} /></div>
-                <div className="form-group"><label>Status</label>
-                  <select value={form.status} onChange={f('status')}>
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
-                    <option value="half_day">Half Day</option>
-                    <option value="leave">Leave</option>
-                  </select>
-                </div>
-                <div className="form-group"><label>Check In</label><input type="time" value={form.check_in} onChange={f('check_in')} /></div>
-                <div className="form-group"><label>Check Out</label><input type="time" value={form.check_out} onChange={f('check_out')} /></div>
-                <div className="form-group form-full"><label>Notes</label><input value={form.notes} onChange={f('notes')} /></div>
-              </div>
-              <div className="mt-16 flex gap-8">
-                <button type="submit" className="btn btn-primary">Save</button>
-                <button type="button" className="btn btn-outline" onClick={() => setModal(false)}>Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
-      {toast && <div className="toast">{toast}</div>}
     </div>
   )
 }

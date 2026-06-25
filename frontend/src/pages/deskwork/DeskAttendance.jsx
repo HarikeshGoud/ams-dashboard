@@ -1,116 +1,89 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import api from '../../api/axios'
 
-const STATUS_COLOR = { present: 'var(--green)', absent: 'var(--red)', half_day: 'var(--yellow)', leave: '#f97316' }
-
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
 export default function DeskAttendance() {
-  const [records, setRecords] = useState([])
-  const [employees, setEmployees] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [filterEmp, setFilterEmp] = useState('')
-  const [toast, setToast] = useState('')
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
+  const [year, setYear]   = useState(now.getFullYear())
+  const [data, setData]   = useState(null)
+  const [loading, setLoading] = useState(false)
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
-  function load() {
+  const load = async () => {
     setLoading(true)
-    Promise.all([
-      api.get('/api/attendance/', { params: { month, year, ...(filterEmp ? { employee_id: filterEmp } : {}) } }),
-      api.get('/api/employees/')
-    ]).then(([a, e]) => {
-      setRecords(a.data)
-      setEmployees(e.data.filter(emp => emp.role === 'technician'))
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  }
-
-  useEffect(() => { load() }, [month, year, filterEmp])
-
-  async function autoCalc() {
-    const dateStr = `${year}-${String(month).padStart(2,'0')}-01`
-    // calculate for each day of the month up to today
-    const today = new Date().toISOString().slice(0, 10)
     try {
-      const r = await api.post('/api/tasks/auto-attendance', null, { params: { task_date: today } })
-      showToast(`✅ Auto-calculated for ${r.data.processed} employees`)
-      load()
-    } catch { showToast('Failed to auto-calculate') }
+      const r = await api.get(`/api/attendance/monthly-summary?month=${month}&year=${year}`)
+      setData(r.data)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // group records by employee
-  const grouped = {}
-  records.forEach(r => {
-    if (!grouped[r.employee_id]) grouped[r.employee_id] = { name: r.employee_name, records: [] }
-    grouped[r.employee_id].records.push(r)
-  })
+  useEffect(() => { load() }, [month, year])
 
-  const summary = Object.entries(grouped).map(([id, g]) => ({
-    id, name: g.name,
-    present: g.records.filter(r => r.status === 'present').length,
-    absent: g.records.filter(r => r.status === 'absent').length,
-    half: g.records.filter(r => r.status === 'half_day').length,
-    leave: g.records.filter(r => r.status === 'leave').length,
-    records: g.records
-  }))
+  const years = []
+  for (let y = now.getFullYear(); y >= now.getFullYear() - 2; y--) years.push(y)
 
   return (
-    <div>
-      <div className="section-header" style={{ marginBottom: 12 }}>
-        <h3>📅 Attendance Management</h3>
-        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={autoCalc}>⚡ Auto-Calculate Today</button>
+    <div style={{ padding: '1rem' }}>
+      <h2 style={{ marginBottom: '1rem' }}>Attendance — Monthly Overview</h2>
+
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select value={month} onChange={e => setMonth(+e.target.value)}
+          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+          {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+        <select value={year} onChange={e => setYear(+e.target.value)}
+          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+          {years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        {data && <span style={{ color: '#666', fontSize: 13 }}>Working days this month: <b>{data.working_days}</b></span>}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <select value={month} onChange={e => setMonth(+e.target.value)}>
-          {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-        </select>
-        <select value={year} onChange={e => setYear(+e.target.value)}>
-          {[2025, 2026, 2027].map(y => <option key={y}>{y}</option>)}
-        </select>
-        <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}>
-          <option value="">All Employees</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
-        </select>
-      </div>
+      {loading && <p>Loading...</p>}
 
-      {loading ? <div className="spinner" /> : summary.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>No attendance records found.</div>
-      ) : (
-        summary.map(s => (
-          <div key={s.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ fontWeight: 700 }}>{s.name}</div>
-              <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
-                <span style={{ color: 'var(--green)' }}>✅ {s.present}P</span>
-                <span style={{ color: 'var(--red)' }}>❌ {s.absent}A</span>
-                <span style={{ color: 'var(--yellow)' }}>½ {s.half}H</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {s.records.sort((a, b) => a.date.localeCompare(b.date)).map(r => (
-                <div key={r.id} title={`${r.date} — ${r.status}${r.notes ? ' | ' + r.notes : ''}`}
-                  style={{
-                    width: 32, height: 32, borderRadius: 6, display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700,
-                    background: `${STATUS_COLOR[r.status] || 'var(--muted)'}22`,
-                    border: `1px solid ${STATUS_COLOR[r.status] || 'var(--border)'}`,
-                    color: STATUS_COLOR[r.status] || 'var(--muted)', cursor: 'default'
-                  }}>
-                  <span>{r.date.slice(8)}</span>
-                  {r.attendance_label && <span style={{ fontSize: 8 }}>{r.attendance_label.slice(0, 3)}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))
+      {data && data.technicians.length === 0 && !loading && (
+        <p style={{ color: '#888' }}>No technicians found.</p>
       )}
 
-      {toast && <div className="toast">{toast}</div>}
+      {data && data.technicians.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#f0f4ff', textAlign: 'left' }}>
+                {['Employee','Code','Base Salary','Total Days','Present','Half Day','Absent','Att %','Calc Salary'].map(h => (
+                  <th key={h} style={{ padding: '0.6rem 0.8rem', borderBottom: '2px solid #ddd', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.technicians.map(emp => {
+                const pct = emp.attendance_pct
+                const pctColor = pct >= 80 ? '#16a34a' : pct >= 60 ? '#ca8a04' : '#dc2626'
+                return (
+                  <tr key={emp.employee_id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '0.6rem 0.8rem', fontWeight: 600 }}>{emp.employee_name}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#666' }}>{emp.employee_code || '—'}</td>
+                    <td style={{ padding: '0.6rem 0.8rem' }}>₹{Number(emp.base_salary).toLocaleString()}</td>
+                    <td style={{ padding: '0.6rem 0.8rem' }}>{emp.working_days}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#16a34a', fontWeight: 600 }}>{emp.present}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#ca8a04' }}>{emp.half_day}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: '#dc2626' }}>{emp.absent}</td>
+                    <td style={{ padding: '0.6rem 0.8rem', color: pctColor, fontWeight: 600 }}>{pct}%</td>
+                    <td style={{ padding: '0.6rem 0.8rem', fontWeight: 700, color: '#2563eb' }}>
+                      ₹{Number(emp.calculated_salary).toLocaleString()}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p style={{ marginTop: '0.75rem', color: '#888', fontSize: 12 }}>
+            Read-only view. Contact admin to update salaries or base rates.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
