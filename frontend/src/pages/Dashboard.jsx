@@ -5,11 +5,13 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [visits, setVisits] = useState([])
   const [alerts, setAlerts] = useState([])
+  const [coverage, setCoverage] = useState([])
 
   useEffect(() => {
     api.get('/api/dashboard/stats').then(r => setStats(r.data)).catch(() => {})
     api.get('/api/dashboard/recent-visits').then(r => setVisits(r.data)).catch(() => {})
     api.get('/api/dashboard/alerts').then(r => setAlerts(r.data)).catch(() => {})
+    api.get('/api/dashboard/technician-coverage').then(r => setCoverage(r.data)).catch(() => {})
   }, [])
 
   if (!stats) return <div className="spinner" />
@@ -74,6 +76,54 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {coverage.length > 0 && (
+        <div className="card" style={{ marginTop: 24 }}>
+          <div className="card-title">👷 Technician Coverage</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginTop: 12 }}>
+            {coverage.map(tech => (
+              <div key={tech.id} style={{
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '14px 16px',
+                background: 'var(--surface)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{tech.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{tech.employee_code}</div>
+                  </div>
+                  <div style={{
+                    background: 'var(--primary)',
+                    color: '#fff',
+                    borderRadius: 20,
+                    padding: '2px 10px',
+                    fontSize: 12,
+                    fontWeight: 600
+                  }}>
+                    {tech.school_count} schools
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {tech.mandals.length === 0
+                    ? <span style={{ fontSize: 12, color: 'var(--muted)' }}>No mandals assigned</span>
+                    : tech.mandals.map(m => (
+                      <span key={m} style={{
+                        background: 'var(--bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 12,
+                        padding: '2px 8px',
+                        fontSize: 11,
+                        color: 'var(--text)'
+                      }}>{m}</span>
+                    ))
+                  }
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

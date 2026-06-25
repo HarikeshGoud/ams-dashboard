@@ -1,3 +1,4 @@
+from .employee_mandal import employee_mandals
 from .employee import Employee
 from .mandal import Mandal
 from .client import Client

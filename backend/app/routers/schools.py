@@ -5,6 +5,7 @@ from typing import Optional
 from ..database import get_db
 from ..models.school import School
 from ..models.mandal import Mandal
+from ..models.employee import Employee
 from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/api/schools", tags=["schools"])
@@ -38,6 +39,7 @@ def list_schools(
     search: Optional[str] = None,
     mandal_id: Optional[int] = None,
     client_id: Optional[int] = None,
+    technician_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
@@ -48,6 +50,14 @@ def list_schools(
         q = q.filter(School.mandal_id == mandal_id)
     if client_id:
         q = q.filter(School.client_id == client_id)
+    if technician_id:
+        tech = db.query(Employee).filter(Employee.id == technician_id).first()
+        if tech:
+            tech_mandal_ids = [m.id for m in tech.mandals]
+            if tech_mandal_ids:
+                q = q.filter(School.mandal_id.in_(tech_mandal_ids))
+            else:
+                q = q.filter(False)
     total = q.count()
     schools = q.offset((page - 1) * limit).limit(limit).all()
     return {"total": total, "page": page, "limit": limit, "items": [_fmt(s) for s in schools]}

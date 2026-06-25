@@ -5,9 +5,11 @@ export default function Schools() {
   const [data, setData] = useState({ items: [], total: 0 })
   const [mandals, setMandals] = useState([])
   const [clients, setClients] = useState([])
+  const [technicians, setTechnicians] = useState([])
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [mandalFilter, setMandalFilter] = useState('')
+  const [techFilter, setTechFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState(null)
@@ -22,15 +24,29 @@ export default function Schools() {
     const params = new URLSearchParams({ page, limit: 50 })
     if (search) params.append('search', search)
     if (mandalFilter) params.append('mandal_id', mandalFilter)
+    if (techFilter) params.append('technician_id', techFilter)
     api.get(`/api/schools/?${params}`).then(r => { setData(r.data); setLoading(false) })
   }
 
   useEffect(() => {
     api.get('/api/mandals/').then(r => setMandals(r.data))
     api.get('/api/clients/').then(r => setClients(r.data))
+    api.get('/api/employees/').then(r => {
+      setTechnicians(r.data.filter(e => e.role === 'technician'))
+    })
   }, [])
 
-  useEffect(() => { load() }, [page, search, mandalFilter])
+  useEffect(() => { load() }, [page, search, mandalFilter, techFilter])
+
+  // Build a lookup: mandal_id -> technician name
+  const mandalToTech = {}
+  technicians.forEach(tech => {
+    if (tech.mandals) {
+      tech.mandals.forEach(m => {
+        if (!mandalToTech[m.id]) mandalToTech[m.id] = tech.name
+      })
+    }
+  })
 
   function openAdd() { setForm({ name: '', client_id: '', model: 'normal', mandal: '', capacity: '', plant_model: '' }); setEditId(null); setModal(true) }
   function openEdit(s) { setForm({ name: s.name, client_id: s.client_id || '', model: s.model, mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '' }); setEditId(s.id); setModal(true) }
@@ -59,9 +75,13 @@ export default function Schools() {
       </div>
       <div className="filter-bar">
         <input placeholder="Search school..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ minWidth: 180 }} />
-        <select value={mandalFilter} onChange={e => { setMandalFilter(e.target.value); setPage(1) }}>
+        <select value={mandalFilter} onChange={e => { setMandalFilter(e.target.value); setTechFilter(''); setPage(1) }}>
           <option value="">All Mandals</option>
           {mandals.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <select value={techFilter} onChange={e => { setTechFilter(e.target.value); setMandalFilter(''); setPage(1) }}>
+          <option value="">All Technicians</option>
+          {technicians.map(t => <option key={t.id} value={t.id}>{t.name} ({t.employee_code})</option>)}
         </select>
       </div>
       <div className="card">
@@ -69,7 +89,7 @@ export default function Schools() {
           <div className="table-wrap scroll-table">
             <table>
               <thead>
-                <tr><th>#</th><th>School Name</th><th>Client</th><th>Model</th><th>Mandal</th><th>Last Visit</th><th>AMC</th><th>Action</th></tr>
+                <tr><th>#</th><th>School Name</th><th>Client</th><th>Model</th><th>Mandal</th><th>Technician</th><th>Last Visit</th><th>AMC</th><th>Action</th></tr>
               </thead>
               <tbody>
                 {data.items.map((s, i) => (
@@ -79,6 +99,7 @@ export default function Schools() {
                     <td>{s.client_name || '—'}</td>
                     <td><span className={`pill ${s.model === 'temple' ? 'pill-orange' : 'pill-blue'}`}>{s.model}</span></td>
                     <td>{s.mandal_name || '—'}</td>
+                    <td>{s.mandal_id ? (mandalToTech[s.mandal_id] || '—') : '—'}</td>
                     <td>{s.last_visit_date || '—'}</td>
                     <td><span className={`pill ${s.amc_status === 'active' ? 'pill-green' : 'pill-red'}`}>{s.amc_status}</span></td>
                     <td>
