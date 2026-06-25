@@ -8,7 +8,7 @@ from ..database import get_db
 from ..models.field_report import FieldReport, WorkProof
 from ..models.attendance import Attendance
 from ..models.task import Task
-from ..dependencies import get_current_user, require_admin
+from ..dependencies import get_current_user, require_admin, require_admin_or_deskwork
 
 router = APIRouter(prefix="/api/field-reports", tags=["field-reports"])
 
@@ -66,6 +66,63 @@ def reports_by_employee(emp_id: int, db: Session = Depends(get_db), user=Depends
         raise HTTPException(403, "Access denied")
     reports = db.query(FieldReport).filter(FieldReport.employee_id == emp_id).order_by(FieldReport.created_at.desc()).all()
     return [_fmt_report(r) for r in reports]
+
+
+def _auto_mark_attendance(employee_id: int, today: date, db: Session):
+    """Recalculate and upsert attendance based on today's task completion ratio.
+    Only runs if no manual override exists (notes != 'manual').
+    """
+    # Count total tasks assigned to this employee due today
+    total_tasks = db.query(Task).filter(
+        Task.assigned_to_id == employee_id,
+        Task.due_date == today,
+    ).count()
+
+    # Count distinct tasks submitted today via field reports
+    from sqlalchemy import func
+    submitted_tasks = db.query(func.count(FieldReport.id)).filter(
+        FieldReport.employee_id == employee_id,
+        FieldReport.report_date == today,
+    ).scalar() or 0
+
+    if total_tasks == 0:
+        return  # No tasks assigned today — don't touch attendance
+
+    # Determine status based on ratio
+    if submitted_tasks >= total_tasks:
+        status = "present"
+        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Full day)"
+    elif submitted_tasks >= total_tasks / 2:
+        status = "half_day"
+        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Half day)"
+    elif submitted_tasks > 0:
+        status = "absent"
+        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Partial — less than half)"
+    else:
+        status = "absent"
+        note = f"Auto: 0/{total_tasks} tasks submitted"
+
+    existing = db.query(Attendance).filter(
+        Attendance.employee_id == employee_id,
+        Attendance.date == today,
+    ).first()
+
+    # Don't override manually set attendance (check notes prefix)
+    if existing and existing.notes and not existing.notes.startswith("Auto:"):
+        return  # Manual record — leave it alone
+
+    if existing:
+        existing.status = status
+        existing.notes = note
+    else:
+        db.add(Attendance(
+            employee_id=employee_id,
+            date=today,
+            status=status,
+            check_in=datetime.utcnow().strftime("%H:%M"),
+            notes=note,
+        ))
+    db.commit()
 
 @router.post("/submit")
 async def submit_field_report(
@@ -168,6 +225,10 @@ async def submit_field_report(
     task.status = "submitted"
 
     db.commit()
+
+    # Auto-mark attendance based on task completion ratio for today
+    _auto_mark_attendance(user.id, today, db)
+
     db.refresh(report)
     return _fmt_report(report)
 
@@ -181,7 +242,7 @@ def get_report(report_id: int, db: Session = Depends(get_db), user=Depends(get_c
     return _fmt_report(r)
 
 @router.patch("/{report_id}/verify")
-def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin)):
+def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
     r = db.query(FieldReport).filter(FieldReport.id == report_id).first()
     if not r:
         raise HTTPException(404, "Not found")
@@ -245,7 +306,7 @@ def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_
     return _fmt_report(r)
 
 @router.patch("/{report_id}/whatsapp-sent")
-def mark_whatsapp_sent(report_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+def mark_whatsapp_sent(report_id: int, db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
     r = db.query(FieldReport).filter(FieldReport.id == report_id).first()
     if not r:
         raise HTTPException(404, "Not found")
