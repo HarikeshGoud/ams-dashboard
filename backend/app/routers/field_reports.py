@@ -167,20 +167,6 @@ async def submit_field_report(
     # It becomes "completed" only after admin/deskwork verifies the proof
     task.status = "submitted"
 
-    # Auto-mark attendance as Present for today
-    existing_att = db.query(Attendance).filter(
-        Attendance.employee_id == user.id,
-        Attendance.date == today
-    ).first()
-    if not existing_att:
-        db.add(Attendance(
-            employee_id=user.id,
-            date=today,
-            status="present",
-            check_in=datetime.utcnow().strftime("%H:%M"),
-            notes="Auto-marked via field report submission"
-        ))
-
     db.commit()
     db.refresh(report)
     return _fmt_report(report)

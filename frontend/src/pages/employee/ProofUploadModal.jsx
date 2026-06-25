@@ -407,7 +407,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 </div>
               )}
               <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
-                Submitting will mark your attendance as Present today.
+                Proof will be sent for admin review. Attendance is marked separately by admin.
               </div>
             </>
           )}
