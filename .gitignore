@@ -6,3 +6,12 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Database (tracked intentionally — remove this line to stop tracking)
+# ams.db
