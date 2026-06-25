@@ -22,12 +22,22 @@ export default function Header() {
   const [unread, setUnread] = useState(0)
   const [showNotifs, setShowNotifs] = useState(false)
   const [notifs, setNotifs] = useState([])
+  const [pulse, setPulse] = useState(false)
   const panelRef = useRef(null)
+  const prevUnread = useRef(0)
 
   function handleLogout() { logout(); navigate('/login') }
 
   function loadUnread() {
-    api.get('/api/notifications/unread-count').then(r => setUnread(r.data.count || 0)).catch(() => {})
+    api.get('/api/notifications/unread-count').then(r => {
+      const count = r.data.count || 0
+      if (count > prevUnread.current) {
+        setPulse(true)
+        setTimeout(() => setPulse(false), 1500)
+      }
+      prevUnread.current = count
+      setUnread(count)
+    }).catch(() => {})
   }
 
   function loadNotifs() {
@@ -36,8 +46,12 @@ export default function Header() {
 
   useEffect(() => {
     loadUnread()
-    const id = setInterval(loadUnread, 30000)
-    return () => clearInterval(id)
+    const id = setInterval(() => {
+      if (!document.hidden) loadUnread()
+    }, 10000)
+    const onVisible = () => { if (!document.hidden) loadUnread() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
   }, [])
 
   useEffect(() => {
@@ -84,13 +98,23 @@ export default function Header() {
           )}
 
           {/* Notification Bell */}
+          <style>{`
+            @keyframes bell-pulse {
+              0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }
+              50%  { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+              100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+            }
+          `}</style>
           <div style={{ position: 'relative' }} ref={panelRef}>
-            <button onClick={() => setShowNotifs(v => !v)} style={{
-              background: showNotifs ? 'rgba(56,189,248,.15)' : 'var(--surface2)',
-              border: `1px solid ${showNotifs ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 16,
-              position: 'relative', lineHeight: 1
-            }}>
+            <button
+              onClick={() => { setShowNotifs(v => !v); if (showNotifs) loadUnread() }}
+              style={{
+                background: showNotifs ? 'rgba(56,189,248,.15)' : 'var(--surface2)',
+                border: `1px solid ${showNotifs ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 16,
+                position: 'relative', lineHeight: 1,
+                animation: pulse ? 'bell-pulse 0.5s ease 3' : 'none',
+              }}>
               🔔
               {unread > 0 && (
                 <span style={{
