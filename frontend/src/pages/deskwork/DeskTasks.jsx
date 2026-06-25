@@ -7,30 +7,53 @@ const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(
 export default function DeskTasks() {
   const { user } = useAuthStore()
   const [employees, setEmployees] = useState([])
-  const [mandals, setMandals] = useState([])
-  const [schools, setSchools] = useState([])
   const [tasks, setTasks] = useState([])
+  const [rotationMap, setRotationMap] = useState({})
   const [showForm, setShowForm] = useState(false)
   const [filterEmp, setFilterEmp] = useState('')
+  const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState('')
   const today = new Date().toISOString().slice(0, 10)
   const [taskDate, setTaskDate] = useState(today)
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
 
   function load() {
     Promise.all([
       api.get('/api/employees/'),
-      api.get('/api/mandals/'),
       api.get('/api/tasks/', { params: { task_date: taskDate, ...(filterEmp ? { employee_id: filterEmp } : {}) } })
-    ]).then(([e, m, t]) => {
-      setEmployees(e.data.filter(emp => emp.role === 'technician'))
-      setMandals(m.data || [])
+    ]).then(([e, t]) => {
+      const techs = e.data.filter(emp => emp.role === 'technician')
+      setEmployees(techs)
       setTasks(t.data)
+      // Load rotation info for each technician
+      Promise.all(techs.map(emp =>
+        api.get('/api/tasks/suggested-schools', { params: { employee_id: emp.id, task_date: taskDate } })
+          .then(r => ({ id: emp.id, data: r.data }))
+          .catch(() => ({ id: emp.id, data: null }))
+      )).then(results => {
+        const map = {}
+        results.forEach(r => { map[r.id] = r.data })
+        setRotationMap(map)
+      })
     })
   }
 
   useEffect(() => { load() }, [taskDate, filterEmp])
+
+  async function generateDaily() {
+    setGenerating(true)
+    try {
+      const r = await api.post('/api/tasks/generate-daily', null, { params: { task_date: taskDate } })
+      const generated = r.data.results.reduce((s, x) => s + (x.generated || 0), 0)
+      const skipped = r.data.results.filter(x => x.skipped).length
+      showToast(`✅ Generated ${generated} tasks for ${r.data.processed} technicians (${skipped} already had tasks)`)
+      load()
+    } catch (e) {
+      showToast('❌ Failed to generate tasks')
+    }
+    setGenerating(false)
+  }
 
   async function deleteTask(id, title, assigneeName) {
     if (!confirm(`Delete task "${title}" assigned to ${assigneeName}?`)) return
@@ -49,7 +72,13 @@ export default function DeskTasks() {
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
         <h3>📋 Task Assignment</h3>
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Assign Task</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
+            onClick={generateDaily} disabled={generating}>
+            {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks (5 each)'}
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Assign Task</button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -63,7 +92,7 @@ export default function DeskTasks() {
         <button className="btn btn-outline" style={{ fontSize: 12 }} onClick={() => {
           api.post('/api/tasks/auto-attendance', null, { params: { task_date: taskDate } })
             .then(r => showToast(`✅ Attendance calculated for ${r.data.processed} employees`))
-        }}>⚡ Auto Attendance</button>
+        }}>📅 Auto Attendance</button>
       </div>
 
       {/* Employee task boards */}
@@ -73,22 +102,43 @@ export default function DeskTasks() {
           const done = empTasks.filter(t => t.status === 'completed').length
           const over5 = empTasks.length > 5
           const over7 = empTasks.length >= 7
+          const rot = rotationMap[emp.id]
+          const rotPct = rot?.total_schools > 0 ? Math.round((rot.visited_count / rot.total_schools) * 100) : 0
           return (
             <div key={emp.id} style={{
               background: 'var(--surface)', border: `1px solid ${over7 ? 'var(--red)' : over5 ? 'var(--yellow)' : 'var(--border)'}`,
               borderRadius: 12, padding: 16, marginBottom: 14
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <div>
                   <span style={{ fontWeight: 700 }}>{emp.name}</span>
-                  <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>[{emp.employee_code}] · {emp.mandal_name || 'No mandal'}</span>
-                  {over7 && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--red)', fontWeight: 700 }}>🚫 DAILY MAX REACHED</span>}
-                  {over5 && !over7 && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--yellow)', fontWeight: 700 }}>⚠️ Over default limit</span>}
+                  <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>[{emp.employee_code}]</span>
+                  {over7 && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--red)', fontWeight: 700 }}>🚫 MAX REACHED</span>}
+                  {over5 && !over7 && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--yellow)', fontWeight: 700 }}>⚠️ Over 5</span>}
                 </div>
                 <div style={{ fontSize: 12, color: done === empTasks.length && empTasks.length > 0 ? 'var(--green)' : 'var(--muted)' }}>
-                  {done}/{empTasks.length} done · {empTasks.length}/7 slots
+                  {done}/{empTasks.length} done today
                 </div>
               </div>
+
+              {/* Rotation progress */}
+              {rot && (
+                <div style={{ marginBottom: 10, padding: '8px 10px', background: 'var(--surface2)', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
+                    <span style={{ color: 'var(--muted)', fontWeight: 600 }}>
+                      🔄 Round progress — {rot.visited_count}/{rot.total_schools} schools visited
+                    </span>
+                    <span style={{
+                      fontWeight: 700, fontSize: 10, padding: '1px 7px', borderRadius: 5,
+                      background: rot.new_round ? 'rgba(52,211,153,.15)' : 'rgba(251,191,36,.15)',
+                      color: rot.new_round ? 'var(--green)' : 'var(--yellow)'
+                    }}>{rot.new_round ? '🔁 New round' : `${rot.unvisited_count} remaining`}</span>
+                  </div>
+                  <div style={{ height: 5, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${rotPct}%`, background: rot.new_round ? 'var(--green)' : 'var(--accent)', borderRadius: 3, transition: 'width .4s' }} />
+                  </div>
+                </div>
+              )}
 
               {empTasks.length === 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>No tasks assigned for this date.</div>
