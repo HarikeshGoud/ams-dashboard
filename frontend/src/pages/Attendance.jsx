@@ -22,11 +22,11 @@ export default function Attendance() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [baseSalaryEdit, setBaseSalaryEdit] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
 
-  const load = async () => {
+  const load = async (keepSelected = false) => {
     setLoadingMain(true)
-    setSelected(null)
-    setDailyCache({})
+    if (!keepSelected) { setSelected(null); setDailyCache({}) }
     try {
       const r = await api.get(`/api/attendance/monthly-summary?month=${month}&year=${year}`)
       setSummary(r.data)
@@ -40,6 +40,8 @@ export default function Attendance() {
   const selectTech = async (empId) => {
     if (selected === empId) { setSelected(null); return }
     setSelected(empId)
+    setSaveMsg('')
+    setBaseSalaryEdit('')
     if (dailyCache[empId]) return
     setLoadingDetail(true)
     try {
@@ -51,12 +53,21 @@ export default function Attendance() {
   }
 
   const saveBaseSalary = async (empId) => {
-    if (!baseSalaryEdit) return
+    const val = baseSalaryEdit.trim()
+    if (!val || isNaN(val)) return
     setSaving(true)
-    await api.patch(`/api/attendance/base-salary/${empId}?salary=${baseSalaryEdit}`)
-    setSaving(false)
-    setBaseSalaryEdit('')
-    load()
+    setSaveMsg('')
+    try {
+      await api.patch(`/api/attendance/base-salary/${empId}?salary=${val}`)
+      setSaveMsg('✅ Saved')
+      setBaseSalaryEdit('')
+      // Refresh summary but keep panel open
+      load(true)
+    } catch {
+      setSaveMsg('❌ Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const years = []
@@ -169,20 +180,21 @@ export default function Attendance() {
               </div>
 
               {/* Base salary edit */}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: '1.25rem', padding: '0.75rem', background: '#f8fafc', borderRadius: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: '1.25rem', padding: '0.75rem', background: '#f8fafc', borderRadius: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, color: '#555' }}>Base Salary:</span>
                 <b style={{ fontSize: 14 }}>₹{Number(selectedEmp.base_salary).toLocaleString()}</b>
                 <input
                   type="number"
-                  placeholder="Override..."
+                  placeholder="New amount..."
                   value={baseSalaryEdit}
-                  onChange={e => setBaseSalaryEdit(e.target.value)}
-                  style={{ width: 100, padding: '0.3rem 0.5rem', borderRadius: 6, border: '1px solid #ccc', fontSize: 13 }}
+                  onChange={e => { setBaseSalaryEdit(e.target.value); setSaveMsg('') }}
+                  style={{ width: 110, padding: '0.3rem 0.5rem', borderRadius: 6, border: '1px solid #ccc', fontSize: 13 }}
                 />
                 <button onClick={() => saveBaseSalary(selected)} disabled={saving || !baseSalaryEdit}
-                  style={{ padding: '0.3rem 0.8rem', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13 }}>
-                  {saving ? '…' : 'Save'}
+                  style={{ padding: '0.3rem 0.8rem', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, opacity: (!baseSalaryEdit || saving) ? 0.6 : 1 }}>
+                  {saving ? 'Saving…' : 'Save'}
                 </button>
+                {saveMsg && <span style={{ fontSize: 13, color: saveMsg.startsWith('✅') ? '#15803d' : '#b91c1c' }}>{saveMsg}</span>}
               </div>
 
               {/* Calendar */}
