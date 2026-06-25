@@ -77,6 +77,11 @@ async def submit_field_report(
     before_photo: Optional[UploadFile] = File(None),
     after_photo: Optional[UploadFile] = File(None),
     item_photo: Optional[UploadFile] = File(None),
+    item_photo_1: Optional[UploadFile] = File(None),
+    item_photo_2: Optional[UploadFile] = File(None),
+    item_photo_3: Optional[UploadFile] = File(None),
+    item_photo_4: Optional[UploadFile] = File(None),
+    item_photo_5: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -126,7 +131,10 @@ async def submit_field_report(
 
     await save_photo(before_photo, "before", latitude, longitude)
     await save_photo(after_photo,  "after",  latitude, longitude)
-    await save_photo(item_photo,   "item",   latitude, longitude)
+    # item photos: item, item_1 … item_5 (one per selected item)
+    for idx, photo in enumerate([item_photo, item_photo_1, item_photo_2, item_photo_3, item_photo_4, item_photo_5]):
+        if photo:
+            await save_photo(photo, "item" if idx == 0 else f"item_{idx}", latitude, longitude)
 
     # Mark task as completed
     task.status = "completed"
