@@ -142,11 +142,29 @@ def mark_attendance(data: AttendanceMark, db: Session = Depends(get_db), user=De
         existing.status = data.status; existing.check_in = data.check_in
         existing.check_out = data.check_out; existing.notes = data.notes
         db.commit()
-        return {"id": existing.id, "updated": True}
-    a = Attendance(employee_id=data.employee_id, date=d, status=data.status,
-                   check_in=data.check_in, check_out=data.check_out, notes=data.notes)
-    db.add(a); db.commit(); db.refresh(a)
-    return {"id": a.id, "updated": False}
+        record_id = existing.id
+    else:
+        a = Attendance(employee_id=data.employee_id, date=d, status=data.status,
+                       check_in=data.check_in, check_out=data.check_out, notes=data.notes)
+        db.add(a); db.commit(); db.refresh(a)
+        record_id = a.id
+
+    # Notify admins when deskwork edits attendance
+    if user.role == "deskwork":
+        from ..models.notification import Notification
+        emp = db.query(Employee).filter(Employee.id == data.employee_id).first()
+        emp_name = emp.name if emp else f"Employee #{data.employee_id}"
+        admins = db.query(Employee).filter(Employee.role == "admin", Employee.is_active == True).all()
+        for admin in admins:
+            db.add(Notification(
+                recipient_id=admin.id,
+                sender_id=user.id,
+                type="ATTENDANCE_EDITED",
+                message=f"{user.name} marked {emp_name} as '{data.status}' on {data.date}"
+            ))
+        db.commit()
+
+    return {"id": record_id, "updated": bool(existing)}
 
 @router.patch("/base-salary/{emp_id}")
 def update_base_salary(emp_id: int, salary: float, db: Session = Depends(get_db), user=Depends(get_current_user)):
