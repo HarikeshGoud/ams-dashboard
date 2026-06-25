@@ -6,9 +6,11 @@ const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(
 
 export default function DeskTasks() {
   const { user } = useAuthStore()
+  const [mainTab, setMainTab] = useState('tasks') // 'tasks' | 'review'
   const [employees, setEmployees] = useState([])
   const [tasks, setTasks] = useState([])
   const [rotationMap, setRotationMap] = useState({})
+  const [pendingReports, setPendingReports] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [filterEmp, setFilterEmp] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -21,11 +23,14 @@ export default function DeskTasks() {
   function load() {
     Promise.all([
       api.get('/api/employees/'),
-      api.get('/api/tasks/', { params: { task_date: taskDate, ...(filterEmp ? { employee_id: filterEmp } : {}) } })
-    ]).then(([e, t]) => {
+      api.get('/api/tasks/', { params: { task_date: taskDate, ...(filterEmp ? { employee_id: filterEmp } : {}) } }),
+      api.get('/api/field-reports/')
+    ]).then(([e, t, r]) => {
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(techs)
       setTasks(t.data)
+      // Only reports awaiting review
+      setPendingReports(r.data.filter(rp => rp.verification_status === 'pending'))
       // Load rotation info for each technician
       Promise.all(techs.map(emp =>
         api.get('/api/tasks/suggested-schools', { params: { employee_id: emp.id, task_date: taskDate } })
@@ -55,6 +60,14 @@ export default function DeskTasks() {
     setGenerating(false)
   }
 
+  async function verifyReport(id, status, note = '') {
+    try {
+      await api.patch(`/api/field-reports/${id}/verify`, { status, note })
+      load()
+      showToast(status === 'verified' ? '✅ Proof verified!' : '❌ Proof rejected')
+    } catch { showToast('Action failed') }
+  }
+
   async function deleteTask(id, title, assigneeName) {
     if (!confirm(`Delete task "${title}" assigned to ${assigneeName}?`)) return
     await api.delete(`/api/tasks/${id}`)
@@ -71,15 +84,50 @@ export default function DeskTasks() {
   return (
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
-        <h3>📋 Task Assignment</h3>
+        <h3>📋 Tasks</h3>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
-            onClick={generateDaily} disabled={generating}>
-            {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks (5 each)'}
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Assign Task</button>
+          {mainTab === 'tasks' && <>
+            <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
+              onClick={generateDaily} disabled={generating}>
+              {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks (5 each)'}
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Assign Task</button>
+          </>}
         </div>
       </div>
+
+      {/* Main tab switcher */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {[
+          { key: 'tasks',  label: '📋 Task Assignment' },
+          { key: 'review', label: `🔍 Proof Review${pendingReports.length > 0 ? ` (${pendingReports.length})` : ''}` },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setMainTab(tab.key)} style={{
+            padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            border: `1.5px solid ${mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--border)'}`,
+            background: mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'rgba(251,191,36,.15)' : 'rgba(56,189,248,.15)') : 'var(--surface2)',
+            color: mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--muted)',
+          }}>{tab.label}</button>
+        ))}
+      </div>
+
+      {/* ── PROOF REVIEW TAB ── */}
+      {mainTab === 'review' && (
+        <div>
+          {pendingReports.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+              ✅ No proofs awaiting review. All caught up!
+            </div>
+          ) : (
+            pendingReports.map(report => (
+              <ProofReviewCard key={report.id} report={report} onVerify={verifyReport} />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── TASK ASSIGNMENT TAB ── */}
+      {mainTab === 'tasks' && <>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -177,8 +225,118 @@ export default function DeskTasks() {
           defaultDate={taskDate}
         />
       )}
+      </>}
 
       {toast && <div className="toast">{toast}</div>}
+    </div>
+  )
+}
+
+// ── Proof Review Card ─────────────────────────────────────────────────────────
+function ProofReviewCard({ report, onVerify }) {
+  const [rejectNote, setRejectNote] = useState('')
+  const [showReject, setShowReject] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div style={{
+      background: 'var(--surface)', border: '1px solid var(--yellow)',
+      borderRadius: 12, padding: 16, marginBottom: 14,
+      borderLeft: '4px solid var(--yellow)'
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+            🏫 {report.school_name || 'Unknown School'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 2 }}>
+            👤 Employee #{report.employee_id} · 📅 {report.report_date}
+          </div>
+          {report.item_installed && (
+            <div style={{ fontSize: 12, color: 'var(--accent2)', marginBottom: 2 }}>
+              🔧 Items: <b>{report.item_installed}</b>
+            </div>
+          )}
+          {report.latitude && (
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+              📍 GPS: {report.latitude.toFixed(5)}, {report.longitude.toFixed(5)}
+            </div>
+          )}
+        </div>
+        <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 6, fontWeight: 700, background: 'rgba(251,191,36,.15)', color: 'var(--yellow)', border: '1px solid var(--yellow)', flexShrink: 0 }}>
+          🔍 Pending Review
+        </span>
+      </div>
+
+      {/* Photos */}
+      {report.photos?.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase' }}>
+            Photos ({report.photos.length})
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {(expanded ? report.photos : report.photos.slice(0, 4)).map(p => (
+              <div key={p.id} style={{ position: 'relative' }}>
+                <img src={p.url} alt={p.photo_type}
+                  style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }}
+                  onClick={() => window.open(p.url, '_blank')}
+                  onError={e => { e.target.style.display = 'none' }}
+                />
+                <div style={{ position: 'absolute', bottom: 2, left: 0, right: 0, textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,.6)', borderRadius: '0 0 8px 8px', padding: '2px 0' }}>
+                  {p.photo_type.toUpperCase()}
+                </div>
+              </div>
+            ))}
+            {!expanded && report.photos.length > 4 && (
+              <button onClick={() => setExpanded(true)} style={{
+                width: 90, height: 90, borderRadius: 8, border: '1px solid var(--border)',
+                background: 'var(--surface2)', color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer'
+              }}>+{report.photos.length - 4} more</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {report.remarks && (
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>💬 {report.remarks}</div>
+      )}
+
+      {/* Reject note input */}
+      {showReject && (
+        <div style={{ marginBottom: 10 }}>
+          <input value={rejectNote} onChange={e => setRejectNote(e.target.value)}
+            placeholder="Reason for rejection (shown to technician)…"
+            style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--red)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 12 }}
+          />
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => onVerify(report.id, 'verified')} style={{
+          flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: 'rgba(52,211,153,.2)', color: 'var(--green)', fontWeight: 700, fontSize: 13
+        }}>✅ Verify & Approve</button>
+
+        {!showReject ? (
+          <button onClick={() => setShowReject(true)} style={{
+            flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: 'rgba(248,113,113,.15)', color: 'var(--red)', fontWeight: 700, fontSize: 13
+          }}>❌ Reject</button>
+        ) : (
+          <>
+            <button onClick={() => onVerify(report.id, 'rejected', rejectNote)} style={{
+              flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: 'var(--red)', color: '#fff', fontWeight: 700, fontSize: 13
+            }}>❌ Confirm Reject</button>
+            <button onClick={() => setShowReject(false)} style={{
+              padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)',
+              background: 'var(--surface2)', color: 'var(--muted)', cursor: 'pointer', fontSize: 12
+            }}>Cancel</button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
