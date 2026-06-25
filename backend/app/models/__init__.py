@@ -14,3 +14,4 @@ from .travel import TravelTrip
 from .field_report import FieldReport, WorkProof
 from .notification import Notification
 from .allowance import AllowanceRequest
+from .salary_override import SalaryOverride
