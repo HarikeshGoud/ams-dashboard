@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 
+const CAT_A = '50/100 LPH RO Units'
+const CAT_B = '1000/1500/2000 LPH RO Units'
+
 export default function Billing() {
   const [invoices, setInvoices] = useState([])
   const [clients, setClients] = useState([])
+  const [stockItems, setStockItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState({ client_id: '', invoice_date: new Date().toISOString().slice(0,10), due_date: '', invoice_type: 'amc', gst_percent: 18, notes: '' })
@@ -14,11 +18,20 @@ export default function Billing() {
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
 
   function load() {
-    Promise.all([api.get('/api/billing/'), api.get('/api/clients/')]).then(([b, c]) => {
-      setInvoices(b.data); setClients(c.data); setLoading(false)
+    Promise.all([api.get('/api/billing/'), api.get('/api/clients/'), api.get('/api/stock/')]).then(([b, c, s]) => {
+      setInvoices(b.data); setClients(c.data); setStockItems(s.data || []); setLoading(false)
     })
   }
   useEffect(() => { load() }, [])
+
+  function pickStockItem(idx, itemId) {
+    if (!itemId) return
+    const item = stockItems.find(s => String(s.id) === String(itemId))
+    if (!item) return
+    const n = [...lines]
+    n[idx] = { ...n[idx], description: item.name, unit_price: item.unit_price ?? item.unit_cost ?? '' }
+    setLines(n)
+  }
 
   const subtotal = lines.reduce((a, l) => a + (parseFloat(l.unit_price) || 0) * (parseInt(l.quantity) || 0), 0)
   const gstAmt = subtotal * (parseFloat(form.gst_percent) || 18) / 100
@@ -104,11 +117,55 @@ export default function Billing() {
               <div style={{ marginTop: 12 }}>
                 <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>LINE ITEMS</div>
                 {lines.map((l, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px 30px', gap: 6, marginBottom: 6 }}>
-                    <input placeholder="Description" value={l.description} onChange={e => { const n=[...lines]; n[i].description=e.target.value; setLines(n) }} style={{ background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',color:'var(--text)',fontSize:12 }} />
-                    <input type="number" placeholder="Qty" value={l.quantity} onChange={e => { const n=[...lines]; n[i].quantity=e.target.value; setLines(n) }} style={{ background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',color:'var(--text)',fontSize:12 }} />
-                    <input type="number" placeholder="Unit Price" value={l.unit_price} onChange={e => { const n=[...lines]; n[i].unit_price=e.target.value; setLines(n) }} style={{ background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',color:'var(--text)',fontSize:12 }} />
-                    <button type="button" onClick={() => setLines(lines.filter((_,j)=>j!==i))} style={{ background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:16 }}>×</button>
+                  <div key={i} style={{ marginBottom: 10, padding: '10px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    {/* Grouped stock picker */}
+                    <div style={{ marginBottom: 6 }}>
+                      <select onChange={e => pickStockItem(i, e.target.value)} defaultValue=""
+                        style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 6, padding: '6px 8px', color: 'var(--text)', fontSize: 12 }}>
+                        <option value="">📋 Pick from approved price list (auto-fills price)…</option>
+                        <optgroup label={`── ${CAT_A} ──`}>
+                          {stockItems.filter(s => s.category === CAT_A).map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} — ₹{(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/{s.unit}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label={`── ${CAT_B} ──`}>
+                          {stockItems.filter(s => s.category === CAT_B).map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} — ₹{(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/{s.unit}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {stockItems.filter(s => s.category !== CAT_A && s.category !== CAT_B).length > 0 && (
+                          <optgroup label="── Other ──">
+                            {stockItems.filter(s => s.category !== CAT_A && s.category !== CAT_B).map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} — ₹{(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/{s.unit}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 100px 30px', gap: 6 }}>
+                      <input placeholder="Description (or type custom)" value={l.description}
+                        onChange={e => { const n=[...lines]; n[i].description=e.target.value; setLines(n) }}
+                        style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',color:'var(--text)',fontSize:12 }} />
+                      <input type="number" placeholder="Qty" value={l.quantity}
+                        onChange={e => { const n=[...lines]; n[i].quantity=e.target.value; setLines(n) }}
+                        style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',color:'var(--text)',fontSize:12 }} />
+                      <input type="number" placeholder="Unit Price ₹" value={l.unit_price}
+                        onChange={e => { const n=[...lines]; n[i].unit_price=e.target.value; setLines(n) }}
+                        style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',color:'var(--text)',fontSize:12 }} />
+                      <button type="button" onClick={() => setLines(lines.filter((_,j)=>j!==i))}
+                        style={{ background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:16 }}>×</button>
+                    </div>
+                    {l.description && l.unit_price && (
+                      <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)', textAlign: 'right' }}>
+                        Line total: ₹{((parseFloat(l.unit_price)||0) * (parseInt(l.quantity)||0)).toLocaleString('en-IN')}
+                      </div>
+                    )}
                   </div>
                 ))}
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => setLines([...lines, { description:'',quantity:1,unit_price:'' }])}>+ Add Line</button>
