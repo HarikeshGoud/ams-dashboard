@@ -55,7 +55,7 @@ def _fmt_photo(p: WorkProof, base_url: str = "http://localhost:8000"):
 @router.get("/")
 def list_reports(db: Session = Depends(get_db), user=Depends(get_current_user)):
     q = db.query(FieldReport)
-    if user.role != "admin":
+    if user.role not in ("admin", "deskwork"):
         q = q.filter(FieldReport.employee_id == user.id)
     reports = q.order_by(FieldReport.created_at.desc()).limit(100).all()
     return [_fmt_report(r) for r in reports]
