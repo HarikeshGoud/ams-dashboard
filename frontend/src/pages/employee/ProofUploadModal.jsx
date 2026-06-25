@@ -1,14 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import api from '../../api/axios'
 
-const ITEM_LIST = [
-  'MCF Filter', 'Antiscalant', 'UF Membrane', 'RO Membrane',
-  'Sediment Filter', 'Carbon Filter', 'UV Lamp', 'Pump',
-  'Solenoid Valve', 'Float Valve', 'TDS Controller', 'Pressure Gauge',
-  'Dosing Pump', 'Flow Restrictor', 'Check Valve', 'Tap / Faucet',
-  'Power Supply', 'Control Panel', 'Cleaning / Servicing', 'Other',
-]
-
 // ── Camera capture ────────────────────────────────────────────────────────────
 function CameraCapture({ onCapture, onClose, gps }) {
   const videoRef = useRef(null)
@@ -34,8 +26,7 @@ function CameraCapture({ onCapture, onClose, gps }) {
     const ctx = canvas.getContext('2d')
     ctx.drawImage(video, 0, 0)
 
-    const now = new Date()
-    const W = canvas.width, H = canvas.height
+    const now = new Date(), W = canvas.width, H = canvas.height
     const lines = [
       now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + '  ' +
       now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
@@ -91,22 +82,22 @@ function PhotoSlot({ label, desc, icon, preview, onOpen }) {
   return (
     <div style={{
       border: `2px dashed ${preview ? 'var(--green)' : 'var(--border)'}`,
-      borderRadius: 10, padding: 12, marginBottom: 10,
+      borderRadius: 10, padding: 10, marginBottom: 8,
       background: preview ? 'rgba(52,211,153,.05)' : 'var(--surface2)',
-      display: 'flex', alignItems: 'center', gap: 12
+      display: 'flex', alignItems: 'center', gap: 10
     }}>
       {preview ? (
-        <img src={preview} alt={label} style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
+        <img src={preview} alt={label} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
       ) : (
-        <div style={{ width: 70, height: 70, background: 'var(--surface)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>
+        <div style={{ width: 60, height: 60, background: 'var(--surface)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
           {icon}
         </div>
       )}
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 600, fontSize: 13 }}>{label}</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>{desc}</div>
+        <div style={{ fontWeight: 600, fontSize: 12 }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5 }}>{desc}</div>
         <button onClick={onOpen} style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 6,
+          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6,
           fontSize: 11, fontWeight: 600, background: preview ? 'var(--green)' : 'var(--accent)',
           color: '#fff', border: 'none', cursor: 'pointer'
         }}>
@@ -119,21 +110,38 @@ function PhotoSlot({ label, desc, icon, preview, onOpen }) {
 
 // ── Main modal ────────────────────────────────────────────────────────────────
 export default function ProofUploadModal({ task, onClose, onSubmitted }) {
-  const [step, setStep] = useState(1) // 1 = select items, 2 = take photos
+  const [step, setStep] = useState(1)
   const [selectedItems, setSelectedItems] = useState([])
+  const [stockItems, setStockItems] = useState([])
   const [gps, setGps] = useState(null)
   const [gpsError, setGpsError] = useState('')
   const [gpsLoading, setGpsLoading] = useState(true)
 
-  // photos: { before, after, item_0, item_1, ... }
+  // photos keyed as: before_0, after_0, photo_0, before_1, after_1, photo_1, ...
   const [photos, setPhotos] = useState({})
   const [previews, setPreviews] = useState({})
-  const [activeCamera, setActiveCamera] = useState(null) // slot key string
+  const [activeCamera, setActiveCamera] = useState(null)
   const [remarks, setRemarks] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => { captureGPS() }, [])
+  useEffect(() => {
+    captureGPS()
+    api.get('/api/stock/').then(r => {
+      // Extract item names from stock, sorted alphabetically
+      const names = (r.data || []).map(i => i.name).filter(Boolean).sort()
+      setStockItems(names)
+    }).catch(() => {
+      // Fallback list if stock API fails
+      setStockItems([
+        'MCF Filter', 'Antiscalant', 'UF Membrane', 'RO Membrane',
+        'Sediment Filter', 'Carbon Filter', 'UV Lamp', 'Pump',
+        'Solenoid Valve', 'Float Valve', 'TDS Controller', 'Pressure Gauge',
+        'Dosing Pump', 'Flow Restrictor', 'Check Valve', 'Tap / Faucet',
+        'Power Supply', 'Control Panel', 'Cleaning / Servicing', 'Other',
+      ])
+    })
+  }, [])
 
   function captureGPS() {
     setGpsLoading(true); setGpsError('')
@@ -160,12 +168,17 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     setError(''); setStep(2)
   }
 
+  // For each item i, we need: before_i, after_i, photo_i
+  const allPhotosDone = selectedItems.length > 0 && selectedItems.every((_, i) =>
+    photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
+  )
+  const totalPhotos = selectedItems.length * 3
+
   async function handleSubmit() {
-    // Require before + after + all item photos
-    const missingItem = selectedItems.findIndex((_, i) => !photos[`item_${i}`])
-    if (!photos.before) { setError('Before photo is required.'); return }
-    if (!photos.after)  { setError('After photo is required.'); return }
-    if (missingItem !== -1) { setError(`Please take photo for: ${selectedItems[missingItem]}`); return }
+    const missing = selectedItems.find((item, i) =>
+      !photos[`before_${i}`] || !photos[`after_${i}`] || !photos[`photo_${i}`]
+    )
+    if (missing) { setError(`Complete all 3 photos for: ${missing}`); return }
 
     setSubmitting(true); setError('')
     try {
@@ -174,14 +187,14 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       fd.append('item_installed', selectedItems.join(', '))
       fd.append('remarks', remarks)
       if (gps) { fd.append('latitude', gps.lat); fd.append('longitude', gps.lng) }
-      fd.append('before_photo', photos.before)
-      fd.append('after_photo', photos.after)
-      // Send item photos: item_photo for first, item_photo_1, item_photo_2… for rest
+
+      // Send as before_0/after_0/item_0 … before_N/after_N/item_N
       selectedItems.forEach((_, i) => {
-        if (photos[`item_${i}`]) {
-          fd.append(i === 0 ? 'item_photo' : `item_photo_${i}`, photos[`item_${i}`])
-        }
+        if (photos[`before_${i}`]) fd.append(`before_photo_${i}`, photos[`before_${i}`])
+        if (photos[`after_${i}`])  fd.append(`after_photo_${i}`,  photos[`after_${i}`])
+        if (photos[`photo_${i}`])  fd.append(`item_photo_${i}`,   photos[`photo_${i}`])
       })
+
       await api.post('/api/field-reports/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       onSubmitted()
     } catch (e) {
@@ -190,8 +203,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     setSubmitting(false)
   }
 
-  const allItemPhotosDone = selectedItems.length > 0 && selectedItems.every((_, i) => !!photos[`item_${i}`])
-  const readyToSubmit = photos.before && photos.after && allItemPhotosDone
+  const doneCount = selectedItems.reduce((acc, _, i) =>
+    acc + (photos[`before_${i}`] ? 1 : 0) + (photos[`after_${i}`] ? 1 : 0) + (photos[`photo_${i}`] ? 1 : 0), 0
+  )
 
   return (
     <>
@@ -207,11 +221,11 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         <div className="modal-box" style={{ maxWidth: 500 }}>
           <button className="modal-close" onClick={onClose}>✕</button>
           <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>📸 Submit Work Proof</h3>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>{task.title}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>{task.title}</div>
 
           {/* Step indicator */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            {['Select Items', 'Take Photos'].map((label, i) => {
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            {['1. Select Items', '2. Take Photos'].map((label, i) => {
               const active = step === i + 1, done = step > i + 1
               return (
                 <div key={i} style={{
@@ -220,7 +234,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   color: active ? 'var(--accent)' : done ? 'var(--green)' : 'var(--muted)',
                   border: `1.5px solid ${active ? 'var(--accent)' : done ? 'var(--green)' : 'var(--border)'}`
                 }}>
-                  {done ? '✅ ' : `${i + 1}. `}{label}
+                  {done ? '✅ ' : ''}{label}
                 </div>
               )
             })}
@@ -228,7 +242,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
           {/* GPS bar */}
           <div style={{
-            padding: '8px 12px', borderRadius: 8, marginBottom: 14, fontSize: 11,
+            padding: '7px 12px', borderRadius: 8, marginBottom: 12, fontSize: 11,
             background: gps ? 'rgba(52,211,153,.1)' : gpsError ? 'rgba(248,113,113,.1)' : 'rgba(251,191,36,.1)',
             border: `1px solid ${gps ? 'var(--green)' : gpsError ? 'var(--red)' : 'var(--yellow)'}`
           }}>
@@ -244,116 +258,130 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           {/* ── STEP 1: Select items ── */}
           {step === 1 && (
             <>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
                 What did you install / replace / service?
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                {ITEM_LIST.map(item => {
-                  const sel = selectedItems.includes(item)
-                  return (
-                    <button key={item} onClick={() => toggleItem(item)} style={{
-                      padding: '7px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
-                      background: sel ? 'rgba(56,189,248,.15)' : 'var(--surface2)',
-                      color: sel ? 'var(--accent)' : 'var(--text)',
-                    }}>
-                      {sel ? '✓ ' : ''}{item}
-                    </button>
-                  )
-                })}
-              </div>
+
+              {stockItems.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)', fontSize: 12 }}>⏳ Loading items…</div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14, maxHeight: 260, overflowY: 'auto', padding: '2px 0' }}>
+                  {stockItems.map(item => {
+                    const sel = selectedItems.includes(item)
+                    return (
+                      <button key={item} onClick={() => toggleItem(item)} style={{
+                        padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                        border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--border)'}`,
+                        background: sel ? 'rgba(56,189,248,.15)' : 'var(--surface2)',
+                        color: sel ? 'var(--accent)' : 'var(--text)',
+                      }}>
+                        {sel ? '✓ ' : ''}{item}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               {selectedItems.length > 0 && (
-                <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(56,189,248,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 14 }}>
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(56,189,248,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 12 }}>
                   <b style={{ color: 'var(--accent)' }}>Selected ({selectedItems.length}):</b>{' '}
                   {selectedItems.join(' · ')}
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                    You will take: 1 Before + 1 After + {selectedItems.length} item photo{selectedItems.length > 1 ? 's' : ''} = {2 + selectedItems.length} photos total
+                    📷 Each item needs: Before + After + Item photo → <b>{totalPhotos} photos total</b>
                   </div>
                 </div>
               )}
 
-              {error && <div className="alert alert-red" style={{ marginBottom: 12 }}><span>⚠️</span><div>{error}</div></div>}
+              {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
 
-              <button className="btn btn-primary" style={{ width: '100%', padding: 12, fontSize: 14 }} onClick={proceedToPhotos}>
-                Next — Take Photos ({selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''} selected) →
+              <button className="btn btn-primary" style={{ width: '100%', padding: 12, fontSize: 13 }} onClick={proceedToPhotos}>
+                Next — Take Photos ({selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''} → {totalPhotos} photos) →
               </button>
             </>
           )}
 
-          {/* ── STEP 2: Take photos ── */}
+          {/* ── STEP 2: Take photos per item ── */}
           {step === 2 && (
             <>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>
-                Photos — Camera Only
-              </div>
-
-              <PhotoSlot
-                label="Before Photo"
-                desc="Take photo BEFORE starting work"
-                icon="📷"
-                preview={previews.before}
-                onOpen={() => setActiveCamera('before')}
-              />
-              <PhotoSlot
-                label="After Photo"
-                desc="Take photo AFTER completing work"
-                icon="✅"
-                preview={previews.after}
-                onOpen={() => setActiveCamera('after')}
-              />
-
-              {selectedItems.map((item, i) => (
-                <PhotoSlot
-                  key={i}
-                  label={`${item} — Photo`}
-                  desc={`Show the installed/replaced ${item}`}
-                  icon="📦"
-                  preview={previews[`item_${i}`]}
-                  onOpen={() => setActiveCamera(`item_${i}`)}
-                />
-              ))}
-
-              {/* Progress summary */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14, marginTop: 4 }}>
-                {[
-                  { key: 'before', label: 'Before' },
-                  { key: 'after', label: 'After' },
-                  ...selectedItems.map((item, i) => ({ key: `item_${i}`, label: item }))
-                ].map(slot => (
-                  <span key={slot.key} style={{
-                    fontSize: 10, padding: '3px 8px', borderRadius: 12, fontWeight: 700,
-                    background: photos[slot.key] ? 'rgba(52,211,153,.15)' : 'rgba(248,113,113,.1)',
-                    color: photos[slot.key] ? 'var(--green)' : 'var(--red)',
-                    border: `1px solid ${photos[slot.key] ? 'var(--green)' : 'var(--red)'}`,
-                  }}>
-                    {photos[slot.key] ? '✓' : '○'} {slot.label}
+              {/* Overall progress bar */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+                  <span style={{ color: 'var(--muted)', fontWeight: 600 }}>PHOTO PROGRESS</span>
+                  <span style={{ color: doneCount === totalPhotos ? 'var(--green)' : 'var(--accent)', fontWeight: 700 }}>
+                    {doneCount} / {totalPhotos} done
                   </span>
-                ))}
+                </div>
+                <div style={{ height: 5, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${totalPhotos ? (doneCount / totalPhotos) * 100 : 0}%`, background: doneCount === totalPhotos ? 'var(--green)' : 'var(--accent)', borderRadius: 3, transition: 'width .3s' }} />
+                </div>
               </div>
+
+              {/* Per-item photo groups */}
+              {selectedItems.map((item, i) => {
+                const itemDone = photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
+                return (
+                  <div key={i} style={{
+                    border: `1.5px solid ${itemDone ? 'var(--green)' : 'var(--border)'}`,
+                    borderRadius: 12, padding: 12, marginBottom: 12,
+                    background: itemDone ? 'rgba(52,211,153,.04)' : 'var(--surface)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 10,
+                        background: itemDone ? 'rgba(52,211,153,.2)' : 'rgba(56,189,248,.15)',
+                        color: itemDone ? 'var(--green)' : 'var(--accent)',
+                        border: `1px solid ${itemDone ? 'var(--green)' : 'var(--accent)'}`
+                      }}>
+                        {itemDone ? '✅' : `#${i + 1}`}
+                      </span>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>{item}</span>
+                    </div>
+
+                    <PhotoSlot
+                      label="Before"
+                      desc={`Before installing/replacing ${item}`}
+                      icon="📷"
+                      preview={previews[`before_${i}`]}
+                      onOpen={() => setActiveCamera(`before_${i}`)}
+                    />
+                    <PhotoSlot
+                      label="After"
+                      desc={`After installing/replacing ${item}`}
+                      icon="✅"
+                      preview={previews[`after_${i}`]}
+                      onOpen={() => setActiveCamera(`after_${i}`)}
+                    />
+                    <PhotoSlot
+                      label={`${item} — Close-up`}
+                      desc={`Show the ${item} installed`}
+                      icon="📦"
+                      preview={previews[`photo_${i}`]}
+                      onOpen={() => setActiveCamera(`photo_${i}`)}
+                    />
+                  </div>
+                )
+              })}
 
               <div className="form-group" style={{ marginBottom: 14 }}>
                 <label>Remarks (optional)</label>
                 <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={2} placeholder="Any notes…" />
               </div>
 
-              {error && <div className="alert alert-red" style={{ marginBottom: 12 }}><span>⚠️</span><div>{error}</div></div>}
+              {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-outline" onClick={() => { setStep(1); setError('') }} disabled={submitting}>← Back</button>
-                <button className="btn btn-primary" style={{
-                  flex: 1, padding: 12, fontSize: 14,
-                  opacity: readyToSubmit ? 1 : 0.6
-                }} onClick={handleSubmit} disabled={submitting}>
-                  {submitting ? '⏳ Submitting…' : `✅ Submit Proof & Mark Done`}
+                <button className="btn btn-primary" style={{ flex: 1, padding: 12, fontSize: 13, opacity: allPhotosDone ? 1 : 0.6 }}
+                  onClick={handleSubmit} disabled={submitting}>
+                  {submitting ? '⏳ Submitting…' : '✅ Submit Proof & Mark Done'}
                 </button>
               </div>
-              {!readyToSubmit && (
-                <div style={{ marginTop: 8, fontSize: 11, color: 'var(--yellow)', textAlign: 'center' }}>
-                  ⚠️ All {2 + selectedItems.length} photos required before submitting
+              {!allPhotosDone && (
+                <div style={{ marginTop: 7, fontSize: 11, color: 'var(--yellow)', textAlign: 'center' }}>
+                  ⚠️ All {totalPhotos} photos required before submitting
                 </div>
               )}
-              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+              <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
                 Submitting will mark your attendance as Present today.
               </div>
             </>

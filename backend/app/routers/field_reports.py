@@ -74,14 +74,29 @@ async def submit_field_report(
     remarks: str = Form(""),
     latitude: Optional[float] = Form(None),
     longitude: Optional[float] = Form(None),
+    # Legacy single-pair fields
     before_photo: Optional[UploadFile] = File(None),
     after_photo: Optional[UploadFile] = File(None),
     item_photo: Optional[UploadFile] = File(None),
-    item_photo_1: Optional[UploadFile] = File(None),
-    item_photo_2: Optional[UploadFile] = File(None),
-    item_photo_3: Optional[UploadFile] = File(None),
-    item_photo_4: Optional[UploadFile] = File(None),
-    item_photo_5: Optional[UploadFile] = File(None),
+    # Per-item sets: before_photo_0/after_photo_0/item_photo_0 ... _5
+    before_photo_0: Optional[UploadFile] = File(None),
+    after_photo_0:  Optional[UploadFile] = File(None),
+    item_photo_0:   Optional[UploadFile] = File(None),
+    before_photo_1: Optional[UploadFile] = File(None),
+    after_photo_1:  Optional[UploadFile] = File(None),
+    item_photo_1:   Optional[UploadFile] = File(None),
+    before_photo_2: Optional[UploadFile] = File(None),
+    after_photo_2:  Optional[UploadFile] = File(None),
+    item_photo_2:   Optional[UploadFile] = File(None),
+    before_photo_3: Optional[UploadFile] = File(None),
+    after_photo_3:  Optional[UploadFile] = File(None),
+    item_photo_3:   Optional[UploadFile] = File(None),
+    before_photo_4: Optional[UploadFile] = File(None),
+    after_photo_4:  Optional[UploadFile] = File(None),
+    item_photo_4:   Optional[UploadFile] = File(None),
+    before_photo_5: Optional[UploadFile] = File(None),
+    after_photo_5:  Optional[UploadFile] = File(None),
+    item_photo_5:   Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -129,12 +144,24 @@ async def submit_field_report(
             longitude=lng
         ))
 
+    # Legacy single-pair (backward compat)
     await save_photo(before_photo, "before", latitude, longitude)
     await save_photo(after_photo,  "after",  latitude, longitude)
-    # item photos: item, item_1 … item_5 (one per selected item)
-    for idx, photo in enumerate([item_photo, item_photo_1, item_photo_2, item_photo_3, item_photo_4, item_photo_5]):
-        if photo:
-            await save_photo(photo, "item" if idx == 0 else f"item_{idx}", latitude, longitude)
+    await save_photo(item_photo,   "item",   latitude, longitude)
+
+    # Per-item sets: before_photo_0/after_photo_0/item_photo_0 … _5
+    per_item_sets = [
+        (before_photo_0, after_photo_0, item_photo_0),
+        (before_photo_1, after_photo_1, item_photo_1),
+        (before_photo_2, after_photo_2, item_photo_2),
+        (before_photo_3, after_photo_3, item_photo_3),
+        (before_photo_4, after_photo_4, item_photo_4),
+        (before_photo_5, after_photo_5, item_photo_5),
+    ]
+    for idx, (bp, ap, ip) in enumerate(per_item_sets):
+        await save_photo(bp, f"before_{idx}", latitude, longitude)
+        await save_photo(ap, f"after_{idx}",  latitude, longitude)
+        await save_photo(ip, f"item_{idx}",   latitude, longitude)
 
     # Mark task as completed
     task.status = "completed"
