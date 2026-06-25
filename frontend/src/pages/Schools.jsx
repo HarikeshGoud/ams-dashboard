@@ -38,15 +38,6 @@ export default function Schools() {
 
   useEffect(() => { load() }, [page, search, mandalFilter, techFilter])
 
-  // Build a lookup: mandal_id -> technician name
-  const mandalToTech = {}
-  technicians.forEach(tech => {
-    if (tech.mandals) {
-      tech.mandals.forEach(m => {
-        if (!mandalToTech[m.id]) mandalToTech[m.id] = tech.name
-      })
-    }
-  })
 
   function openAdd() { setForm({ name: '', client_id: '', model: 'normal', mandal: '', capacity: '', plant_model: '' }); setEditId(null); setModal(true) }
   function openEdit(s) { setForm({ name: s.name, client_id: s.client_id || '', model: s.model, mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '' }); setEditId(s.id); setModal(true) }
@@ -99,7 +90,7 @@ export default function Schools() {
                     <td>{s.client_name || '—'}</td>
                     <td><span className={`pill ${s.model === 'temple' ? 'pill-orange' : 'pill-blue'}`}>{s.model}</span></td>
                     <td>{s.mandal_name || '—'}</td>
-                    <td>{s.mandal_id ? (mandalToTech[s.mandal_id] || '—') : '—'}</td>
+                    <td>{s.technician_name || '—'}</td>
                     <td>{s.last_visit_date || '—'}</td>
                     <td><span className={`pill ${s.amc_status === 'active' ? 'pill-green' : 'pill-red'}`}>{s.amc_status}</span></td>
                     <td>

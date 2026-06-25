@@ -66,14 +66,11 @@ def technician_coverage(db: Session = Depends(get_db), _=Depends(get_current_use
 
     result = []
     for tech in technicians:
-        mandal_ids = [m.id for m in tech.mandals]
-        mandal_names = [m.name for m in tech.mandals]
-        school_count = 0
-        if mandal_ids:
-            school_count = db.query(School).filter(
-                School.is_active == True,
-                School.mandal_id.in_(mandal_ids)
-            ).count()
+        mandal_names = sorted([m.name for m in tech.mandals])
+        school_count = db.query(School).filter(
+            School.is_active == True,
+            School.technician_id == tech.id
+        ).count()
         result.append({
             "id": tech.id,
             "name": tech.name,
