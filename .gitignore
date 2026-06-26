@@ -15,3 +15,4 @@ __pycache__/
 
 # Database (tracked intentionally — remove this line to stop tracking)
 # ams.db
+__pycache__/
