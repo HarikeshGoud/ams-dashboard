@@ -7,11 +7,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'pdf-vendor': ['jspdf', 'jspdf-autotable'],
-          'excel-vendor': ['xlsx'],
-          'map-vendor': ['leaflet'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) return 'react-vendor'
+            if (id.includes('jspdf')) return 'pdf-vendor'
+            if (id.includes('xlsx')) return 'excel-vendor'
+            if (id.includes('leaflet')) return 'map-vendor'
+          }
         }
       }
     },
