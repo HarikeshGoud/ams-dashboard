@@ -5,6 +5,7 @@ from typing import Optional
 from ..database import get_db
 from ..models.school import School
 from ..models.mandal import Mandal
+from ..models.employee import Employee
 from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/api/schools", tags=["schools"])
@@ -19,11 +20,18 @@ class SchoolCreate(BaseModel):
     unit_number: Optional[str] = None
 
 def _fmt(s: School):
+    tech = s.technician if hasattr(s, 'technician') and s.technician_id else None
+    try:
+        tech_obj = s.technician
+    except Exception:
+        tech_obj = None
     return {
         "id": s.id, "name": s.name, "mandal_id": s.mandal_id,
         "mandal_name": s.mandal.name if s.mandal else None,
         "client_id": s.client_id,
         "client_name": s.client.name if s.client else None,
+        "technician_id": s.technician_id,
+        "technician_name": tech_obj.name if tech_obj else None,
         "model": s.model, "capacity": s.capacity, "plant_model": s.plant_model,
         "unit_number": s.unit_number,
         "plant_condition": s.plant_condition,
@@ -38,6 +46,7 @@ def list_schools(
     search: Optional[str] = None,
     mandal_id: Optional[int] = None,
     client_id: Optional[int] = None,
+    technician_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
@@ -48,6 +57,8 @@ def list_schools(
         q = q.filter(School.mandal_id == mandal_id)
     if client_id:
         q = q.filter(School.client_id == client_id)
+    if technician_id:
+        q = q.filter(School.technician_id == technician_id)
     total = q.count()
     schools = q.offset((page - 1) * limit).limit(limit).all()
     return {"total": total, "page": page, "limit": limit, "items": [_fmt(s) for s in schools]}

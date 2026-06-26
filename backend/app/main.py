@@ -8,7 +8,7 @@ from . import models  # ensure all models are registered
 
 from .routers import auth, employees, clients, schools, visits, complaints
 from .routers import stock, billing, salary, attendance, tasks, travel, dashboard, mandals, field_reports
-from .routers import notifications
+from .routers import notifications, allowances, salary_overrides
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -17,7 +17,7 @@ app = FastAPI(title="AMS — Water Purifier Management", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,6 +45,8 @@ app.include_router(dashboard.router)
 app.include_router(mandals.router)
 app.include_router(field_reports.router)
 app.include_router(notifications.router)
+app.include_router(allowances.router)
+app.include_router(salary_overrides.router)
 
 @app.get("/")
 def root():

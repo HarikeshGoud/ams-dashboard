@@ -8,7 +8,7 @@ from ..database import get_db
 from ..models.field_report import FieldReport, WorkProof
 from ..models.attendance import Attendance
 from ..models.task import Task
-from ..dependencies import get_current_user, require_admin
+from ..dependencies import get_current_user, require_admin, require_admin_or_deskwork
 
 router = APIRouter(prefix="/api/field-reports", tags=["field-reports"])
 
@@ -55,7 +55,7 @@ def _fmt_photo(p: WorkProof, base_url: str = "http://localhost:8000"):
 @router.get("/")
 def list_reports(db: Session = Depends(get_db), user=Depends(get_current_user)):
     q = db.query(FieldReport)
-    if user.role != "admin":
+    if user.role not in ("admin", "deskwork"):
         q = q.filter(FieldReport.employee_id == user.id)
     reports = q.order_by(FieldReport.created_at.desc()).limit(100).all()
     return [_fmt_report(r) for r in reports]
@@ -67,6 +67,63 @@ def reports_by_employee(emp_id: int, db: Session = Depends(get_db), user=Depends
     reports = db.query(FieldReport).filter(FieldReport.employee_id == emp_id).order_by(FieldReport.created_at.desc()).all()
     return [_fmt_report(r) for r in reports]
 
+
+def _auto_mark_attendance(employee_id: int, today: date, db: Session):
+    """Recalculate and upsert attendance based on today's task completion ratio.
+    Only runs if no manual override exists (notes != 'manual').
+    """
+    # Count total tasks assigned to this employee due today
+    total_tasks = db.query(Task).filter(
+        Task.assigned_to_id == employee_id,
+        Task.due_date == today,
+    ).count()
+
+    # Count distinct tasks submitted today via field reports
+    from sqlalchemy import func
+    submitted_tasks = db.query(func.count(FieldReport.id)).filter(
+        FieldReport.employee_id == employee_id,
+        FieldReport.report_date == today,
+    ).scalar() or 0
+
+    if total_tasks == 0:
+        return  # No tasks assigned today — don't touch attendance
+
+    # Determine status based on ratio
+    if submitted_tasks >= total_tasks:
+        status = "present"
+        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Full day)"
+    elif submitted_tasks >= total_tasks / 2:
+        status = "half_day"
+        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Half day)"
+    elif submitted_tasks > 0:
+        status = "absent"
+        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Partial — less than half)"
+    else:
+        status = "absent"
+        note = f"Auto: 0/{total_tasks} tasks submitted"
+
+    existing = db.query(Attendance).filter(
+        Attendance.employee_id == employee_id,
+        Attendance.date == today,
+    ).first()
+
+    # Don't override manually set attendance (check notes prefix)
+    if existing and existing.notes and not existing.notes.startswith("Auto:"):
+        return  # Manual record — leave it alone
+
+    if existing:
+        existing.status = status
+        existing.notes = note
+    else:
+        db.add(Attendance(
+            employee_id=employee_id,
+            date=today,
+            status=status,
+            check_in=datetime.utcnow().strftime("%H:%M"),
+            notes=note,
+        ))
+    db.commit()
+
 @router.post("/submit")
 async def submit_field_report(
     task_id: int = Form(...),
@@ -74,9 +131,29 @@ async def submit_field_report(
     remarks: str = Form(""),
     latitude: Optional[float] = Form(None),
     longitude: Optional[float] = Form(None),
+    # Legacy single-pair fields
     before_photo: Optional[UploadFile] = File(None),
     after_photo: Optional[UploadFile] = File(None),
     item_photo: Optional[UploadFile] = File(None),
+    # Per-item sets: before_photo_0/after_photo_0/item_photo_0 ... _5
+    before_photo_0: Optional[UploadFile] = File(None),
+    after_photo_0:  Optional[UploadFile] = File(None),
+    item_photo_0:   Optional[UploadFile] = File(None),
+    before_photo_1: Optional[UploadFile] = File(None),
+    after_photo_1:  Optional[UploadFile] = File(None),
+    item_photo_1:   Optional[UploadFile] = File(None),
+    before_photo_2: Optional[UploadFile] = File(None),
+    after_photo_2:  Optional[UploadFile] = File(None),
+    item_photo_2:   Optional[UploadFile] = File(None),
+    before_photo_3: Optional[UploadFile] = File(None),
+    after_photo_3:  Optional[UploadFile] = File(None),
+    item_photo_3:   Optional[UploadFile] = File(None),
+    before_photo_4: Optional[UploadFile] = File(None),
+    after_photo_4:  Optional[UploadFile] = File(None),
+    item_photo_4:   Optional[UploadFile] = File(None),
+    before_photo_5: Optional[UploadFile] = File(None),
+    after_photo_5:  Optional[UploadFile] = File(None),
+    item_photo_5:   Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -124,29 +201,34 @@ async def submit_field_report(
             longitude=lng
         ))
 
+    # Legacy single-pair (backward compat)
     await save_photo(before_photo, "before", latitude, longitude)
     await save_photo(after_photo,  "after",  latitude, longitude)
     await save_photo(item_photo,   "item",   latitude, longitude)
 
-    # Mark task as completed
-    task.status = "completed"
-    task.completed_at = datetime.utcnow()
+    # Per-item sets: before_photo_0/after_photo_0/item_photo_0 … _5
+    per_item_sets = [
+        (before_photo_0, after_photo_0, item_photo_0),
+        (before_photo_1, after_photo_1, item_photo_1),
+        (before_photo_2, after_photo_2, item_photo_2),
+        (before_photo_3, after_photo_3, item_photo_3),
+        (before_photo_4, after_photo_4, item_photo_4),
+        (before_photo_5, after_photo_5, item_photo_5),
+    ]
+    for idx, (bp, ap, ip) in enumerate(per_item_sets):
+        await save_photo(bp, f"before_{idx}", latitude, longitude)
+        await save_photo(ap, f"after_{idx}",  latitude, longitude)
+        await save_photo(ip, f"item_{idx}",   latitude, longitude)
 
-    # Auto-mark attendance as Present for today
-    existing_att = db.query(Attendance).filter(
-        Attendance.employee_id == user.id,
-        Attendance.date == today
-    ).first()
-    if not existing_att:
-        db.add(Attendance(
-            employee_id=user.id,
-            date=today,
-            status="present",
-            check_in=datetime.utcnow().strftime("%H:%M"),
-            notes="Auto-marked via field report submission"
-        ))
+    # Mark task as submitted (under review) — NOT completed yet
+    # It becomes "completed" only after admin/deskwork verifies the proof
+    task.status = "submitted"
 
     db.commit()
+
+    # Auto-mark attendance based on task completion ratio for today
+    _auto_mark_attendance(user.id, today, db)
+
     db.refresh(report)
     return _fmt_report(report)
 
@@ -160,7 +242,7 @@ def get_report(report_id: int, db: Session = Depends(get_db), user=Depends(get_c
     return _fmt_report(r)
 
 @router.patch("/{report_id}/verify")
-def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin)):
+def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
     r = db.query(FieldReport).filter(FieldReport.id == report_id).first()
     if not r:
         raise HTTPException(404, "Not found")
@@ -170,7 +252,26 @@ def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_
     r.verification_note = req.note
     r.verified_at = datetime.utcnow() if req.status in ("verified", "rejected") else None
 
-    # Sync attendance: rejected proof → mark absent; verified proof → ensure present
+    # Sync task status and attendance based on verification result
+    if r.task_id:
+        from ..models.task import Task
+        task = db.query(Task).filter(Task.id == r.task_id).first()
+        if task:
+            if req.status == "verified":
+                task.status = "completed"
+                task.completed_at = datetime.utcnow()
+                # Stamp school.last_visit_date on verification
+                if task.school_id:
+                    from ..models.school import School
+                    school = db.query(School).filter(School.id == task.school_id).first()
+                    if school:
+                        visit_date = task.due_date if task.due_date else datetime.utcnow().date()
+                        if not school.last_visit_date or visit_date >= school.last_visit_date:
+                            school.last_visit_date = visit_date
+            elif req.status == "rejected":
+                task.status = "pending"
+                task.completed_at = None
+
     if r.report_date and r.employee_id:
         att = db.query(Attendance).filter(
             Attendance.employee_id == r.employee_id,
@@ -188,23 +289,24 @@ def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_
                     status="absent",
                     notes=note_text
                 ))
-            # Reopen the linked task so employee can resubmit
-            if r.task_id:
-                from ..models.task import Task
-                task = db.query(Task).filter(Task.id == r.task_id).first()
-                if task:
-                    task.status = "pending"
-                    task.completed_at = None
-        elif req.status == "verified" and att and att.status == "absent":
-            att.status = "present"
-            att.notes = "Auto: proof verified by admin"
+        elif req.status == "verified":
+            if att:
+                att.status = "present"
+                att.notes = "Auto: proof verified by admin"
+            else:
+                db.add(Attendance(
+                    employee_id=r.employee_id,
+                    date=r.report_date,
+                    status="present",
+                    notes="Auto: proof verified by admin"
+                ))
 
     db.commit()
     db.refresh(r)
     return _fmt_report(r)
 
 @router.patch("/{report_id}/whatsapp-sent")
-def mark_whatsapp_sent(report_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+def mark_whatsapp_sent(report_id: int, db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
     r = db.query(FieldReport).filter(FieldReport.id == report_id).first()
     if not r:
         raise HTTPException(404, "Not found")

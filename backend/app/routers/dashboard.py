@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from datetime import date, timedelta
 from ..database import get_db
 from ..models.school import School
@@ -56,3 +56,26 @@ def get_alerts(db: Session = Depends(get_db), _=Depends(get_current_user)):
     for c in open_comp:
         alerts.append({"type": "error", "message": f"High priority complaint: {c.school.name if c.school else 'Unknown'}"})
     return alerts
+
+@router.get("/technician-coverage")
+def technician_coverage(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    technicians = db.query(Employee).filter(
+        Employee.is_active == True,
+        Employee.role == "technician"
+    ).order_by(Employee.employee_code).all()
+
+    result = []
+    for tech in technicians:
+        mandal_names = sorted([m.name for m in tech.mandals])
+        school_count = db.query(School).filter(
+            School.is_active == True,
+            School.technician_id == tech.id
+        ).count()
+        result.append({
+            "id": tech.id,
+            "name": tech.name,
+            "employee_code": tech.employee_code,
+            "mandals": mandal_names,
+            "school_count": school_count,
+        })
+    return result

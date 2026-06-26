@@ -25,7 +25,8 @@ def list_employees(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return [{"id": e.id, "employee_code": e.employee_code, "name": e.name,
              "phone": e.phone, "role": e.role,
              "designation": e.designation, "mandal_id": e.mandal_id,
-             "mandal_name": e.mandal.name if e.mandal else None} for e in emps]
+             "mandal_name": e.mandal.name if e.mandal else None,
+             "mandals": [{"id": m.id, "name": m.name} for m in e.mandals]} for e in emps]
 
 @router.post("/")
 def create_employee(data: EmployeeCreate, db: Session = Depends(get_db), _=Depends(require_admin)):

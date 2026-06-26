@@ -38,7 +38,7 @@ export default function EmployeeDashboard() {
   function handleProofSubmitted() {
     setSelectedTask(null)
     load()
-    showToast('✅ Proof submitted! Attendance marked present.')
+    showToast('✅ Proof submitted! Under review by admin.')
   }
 
   const todayIso = new Date().toISOString().slice(0, 10)
@@ -93,13 +93,13 @@ export default function EmployeeDashboard() {
         ) : (
           <div className="alert alert-green" style={{ marginBottom: 16 }}>
             <span>✅</span>
-            <div>Attendance marked <b>Present</b> today. {todayReports.length} proof{todayReports.length > 1 ? 's' : ''} submitted.</div>
+            <div>Attendance: <b>{todayAttendance.status === 'present' ? 'Present' : todayAttendance.status === 'half_day' ? 'Half Day' : todayAttendance.status}</b> — marked by admin. {todayReports.length > 0 && `${todayReports.length} proof${todayReports.length > 1 ? 's' : ''} submitted.`}</div>
           </div>
         )
       ) : todayReports.length > 0 ? (
-        <div className="alert alert-green" style={{ marginBottom: 16 }}>
-          <span>✅</span>
-          <div>Attendance marked <b>Present</b> today. {todayReports.length} proof{todayReports.length > 1 ? 's' : ''} submitted.</div>
+        <div style={{ background: 'rgba(251,191,36,.1)', border: '1px solid var(--yellow)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span>📋</span>
+          <div style={{ fontSize: 13 }}>{todayReports.length} proof{todayReports.length > 1 ? 's' : ''} submitted today and under review. <b>Attendance not yet marked</b> — admin will update it.</div>
         </div>
       ) : null}
 

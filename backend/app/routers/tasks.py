@@ -65,17 +65,55 @@ def daily_task_count(employee_id: int, task_date: str = None, db: Session = Depe
     count = _count_today_tasks(db, employee_id, d)
     return {"count": count, "default_limit": DAILY_DEFAULT, "max_limit": DAILY_MAX, "can_add": count < DAILY_MAX}
 
-def _rotation_eligible_schools(db, mandal_id: int, exclude_school_ids: set = None):
+def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set = None):
     """
-    Rotation rule: a school that has been visited CANNOT be revisited until
-    every other school in the same mandal has been visited at least once.
+    Rotation across ALL schools directly assigned to a technician (technician_id).
+    Fallback: schools in their assigned mandals via employee_mandals junction table.
 
-    Returns (eligible_schools, all_mandal_schools, new_round).
-    - new_round=True means all schools have been visited; ordering is by
-      last_visit_date ASC (least-recently-visited first).
-    - new_round=False means some schools are still unvisited this round;
-      only those unvisited schools are eligible.
+    Rule: visited schools blocked until ALL assigned schools visited once (one full round).
+    Returns (eligible_schools, all_schools, new_round, visited_count).
     """
+    from ..models.school import School
+    # Primary: schools with technician_id pointing to this employee
+    all_schools = db.query(School).filter(
+        School.technician_id == employee_id,
+        School.is_active == True
+    ).all()
+
+    # Fallback: schools in the employee's assigned mandals
+    if not all_schools:
+        emp = db.query(Employee).filter(Employee.id == employee_id).first()
+        if emp and emp.mandals:
+            mandal_ids = [m.id for m in emp.mandals]
+            all_schools = db.query(School).filter(
+                School.mandal_id.in_(mandal_ids),
+                School.is_active == True
+            ).all()
+        elif emp and emp.mandal_id:
+            all_schools = db.query(School).filter(
+                School.mandal_id == emp.mandal_id,
+                School.is_active == True
+            ).all()
+
+    if not all_schools:
+        return [], [], True, 0
+
+    exclude_ids = exclude_school_ids or set()
+    unvisited = [s for s in all_schools if s.last_visit_date is None]
+    visited_count = len(all_schools) - len(unvisited)
+    new_round = len(unvisited) == 0
+
+    if new_round:
+        eligible = sorted(all_schools, key=lambda s: s.last_visit_date)
+    else:
+        eligible = sorted(unvisited, key=lambda s: s.name)
+
+    eligible = [s for s in eligible if s.id not in exclude_ids]
+    return eligible, all_schools, new_round, visited_count
+
+
+def _rotation_eligible_schools(db, mandal_id: int, exclude_school_ids: set = None):
+    """Legacy per-mandal rotation. Still used when no technician_id on school."""
     from ..models.school import School
     all_schools = db.query(School).filter(
         School.mandal_id == mandal_id,
@@ -86,13 +124,11 @@ def _rotation_eligible_schools(db, mandal_id: int, exclude_school_ids: set = Non
 
     exclude_ids = exclude_school_ids or set()
     unvisited = [s for s in all_schools if s.last_visit_date is None]
-    new_round = len(unvisited) == 0  # all schools have been visited at least once
+    new_round = len(unvisited) == 0
 
     if new_round:
-        # All visited — new round starts; order by last_visit_date ASC
         eligible = sorted(all_schools, key=lambda s: s.last_visit_date)
     else:
-        # Still unvisited schools remain — only they are eligible
         eligible = sorted(unvisited, key=lambda s: s.name)
 
     eligible = [s for s in eligible if s.id not in exclude_ids]
@@ -100,13 +136,10 @@ def _rotation_eligible_schools(db, mandal_id: int, exclude_school_ids: set = Non
 
 
 @router.get("/suggested-schools")
-def suggested_schools(employee_id: int, task_date: str = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    """Return next schools to visit for an employee based on mandal rotation."""
-    from ..models.school import School
-    emp = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not emp or not emp.mandal_id:
-        return []
+def suggested_schools(employee_id: int = None, task_date: str = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Return next schools to visit for a technician based on their personal rotation queue."""
     d = date.fromisoformat(task_date) if task_date else date.today()
+    employee_id = employee_id or user.id
 
     already_assigned_today = {
         t.school_id for t in db.query(Task).filter(
@@ -116,20 +149,91 @@ def suggested_schools(employee_id: int, task_date: str = None, db: Session = Dep
         ).all() if t.school_id
     }
 
-    eligible, all_schools, new_round = _rotation_eligible_schools(
-        db, emp.mandal_id, exclude_school_ids=already_assigned_today
+    eligible, all_schools, new_round, visited_count = _technician_rotation_schools(
+        db, employee_id, exclude_school_ids=already_assigned_today
     )
     remaining_slots = max(0, DAILY_MAX - _count_today_tasks(db, employee_id, d))
 
     return {
         "new_round": new_round,
-        "total_in_mandal": len(all_schools),
+        "total_schools": len(all_schools),
+        "visited_count": visited_count,
+        "unvisited_count": len(all_schools) - visited_count,
         "eligible_count": len(eligible),
         "schools": [{
             "id": s.id, "name": s.name,
+            "mandal_name": s.mandal.name if s.mandal else None,
             "last_visit_date": s.last_visit_date.isoformat() if s.last_visit_date else None,
         } for s in eligible[:remaining_slots]]
     }
+
+
+@router.post("/generate-daily")
+def generate_daily_tasks(task_date: str = None, employee_id: int = None,
+                         db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Auto-generate 5 daily visit tasks per technician from their rotation queue."""
+    if user.role not in ("admin", "deskwork"):
+        raise HTTPException(403, "Not authorized")
+
+    d = date.fromisoformat(task_date) if task_date else date.today()
+
+    if employee_id:
+        technicians = db.query(Employee).filter(
+            Employee.id == employee_id, Employee.is_active == True
+        ).all()
+    else:
+        technicians = db.query(Employee).filter(
+            Employee.role == "technician", Employee.is_active == True
+        ).all()
+
+    results = []
+    for emp in technicians:
+        existing_count = _count_today_tasks(db, emp.id, d)
+        if existing_count >= DAILY_DEFAULT:
+            results.append({
+                "employee": emp.name, "employee_id": emp.id,
+                "skipped": True, "reason": f"Already has {existing_count} tasks",
+                "generated": 0, "total_tasks": existing_count
+            })
+            continue
+
+        slots_needed = DAILY_DEFAULT - existing_count
+        already_today = {
+            t.school_id for t in db.query(Task).filter(
+                Task.assigned_to_id == emp.id,
+                Task.due_date == d,
+                Task.status != "cancelled"
+            ).all() if t.school_id
+        }
+
+        eligible, all_schools, new_round, visited_count = _technician_rotation_schools(
+            db, emp.id, exclude_school_ids=already_today
+        )
+
+        generated = 0
+        for school in eligible[:slots_needed]:
+            db.add(Task(
+                title=f"Visit {school.name}",
+                description=f"Daily scheduled visit",
+                assigned_to_id=emp.id,
+                assigned_by_id=user.id,
+                school_id=school.id,
+                priority="medium",
+                due_date=d
+            ))
+            generated += 1
+
+        db.commit()
+        results.append({
+            "employee": emp.name, "employee_id": emp.id,
+            "skipped": False, "generated": generated,
+            "total_tasks": existing_count + generated,
+            "new_round": new_round,
+            "total_schools": len(all_schools),
+            "visited_count": visited_count
+        })
+
+    return {"date": str(d), "processed": len(results), "results": results}
 
 @router.get("/")
 def list_tasks(employee_id: int = None, task_date: str = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -156,11 +260,10 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
     if current_count >= DAILY_DEFAULT:
         warning = f"Warning: task {current_count + 1}/{DAILY_MAX} — over the default limit of {DAILY_DEFAULT}."
 
-    # ── School rotation enforcement ────────────────────────────────────────────
+    # ── School rotation enforcement (per-technician) ──────────────────────────
     if data.school_id:
         school = db.query(School).filter(School.id == data.school_id).first()
-        if school and school.mandal_id:
-            # Schools already assigned today for this employee (exclude from eligibility check)
+        if school:
             already_today = {
                 t.school_id for t in db.query(Task).filter(
                     Task.assigned_to_id == data.assigned_to_id,
@@ -168,19 +271,17 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
                     Task.status != "cancelled"
                 ).all() if t.school_id
             }
-            eligible, all_schools, new_round = _rotation_eligible_schools(
-                db, school.mandal_id, exclude_school_ids=already_today
+            eligible, all_schools, new_round, _ = _technician_rotation_schools(
+                db, data.assigned_to_id, exclude_school_ids=already_today
             )
             eligible_ids = {s.id for s in eligible}
-            if data.school_id not in eligible_ids and len(all_schools) > 1:
-                # Count how many unvisited schools remain in the mandal
+            if data.school_id not in eligible_ids and len(all_schools) > 1 and not new_round:
                 unvisited = [s for s in all_schools if s.last_visit_date is None]
-                if not new_round:
-                    unvisited_names = ", ".join(s.name for s in unvisited[:5])
-                    raise HTTPException(400,
-                        f"Rotation blocked: '{school.name}' was already visited. "
-                        f"These {len(unvisited)} school(s) in the mandal must be visited first: "
-                        f"{unvisited_names}{'...' if len(unvisited) > 5 else ''}.")
+                unvisited_names = ", ".join(s.name for s in unvisited[:5])
+                raise HTTPException(400,
+                    f"Rotation blocked: '{school.name}' was already visited. "
+                    f"{len(unvisited)} school(s) must be visited first: "
+                    f"{unvisited_names}{'...' if len(unvisited) > 5 else ''}.")
 
     t = Task(title=data.title, description=data.description,
              assigned_to_id=data.assigned_to_id, assigned_by_id=user.id,

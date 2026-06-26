@@ -8,8 +8,10 @@ export default function Tasks() {
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', assigned_to_id: '', priority: 'medium', due_date: '' })
   const [toast, setToast] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const today = new Date().toISOString().slice(0, 10)
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
 
   function load() {
@@ -18,6 +20,17 @@ export default function Tasks() {
     })
   }
   useEffect(() => { load() }, [])
+
+  async function generateDaily() {
+    setGenerating(true)
+    try {
+      const r = await api.post('/api/tasks/generate-daily', null, { params: { task_date: today } })
+      const total = r.data.results.reduce((s, x) => s + (x.generated || 0), 0)
+      showToast(`✅ Generated ${total} tasks for ${r.data.processed} technicians`)
+      load()
+    } catch { showToast('❌ Failed to generate tasks') }
+    setGenerating(false)
+  }
 
   async function save(ev) {
     ev.preventDefault()
@@ -37,11 +50,12 @@ export default function Tasks() {
   }
 
   const priorityPill = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
-  const statusPill = { pending: 'pill-yellow', in_progress: 'pill-orange', completed: 'pill-green', cancelled: 'pill-gray' }
+  const statusPill = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
 
   const grouped = {
     pending: tasks.filter(t => t.status === 'pending'),
     in_progress: tasks.filter(t => t.status === 'in_progress'),
+    submitted: tasks.filter(t => t.status === 'submitted'),
     completed: tasks.filter(t => t.status === 'completed'),
   }
 
@@ -51,7 +65,13 @@ export default function Tasks() {
     <div>
       <div className="section-header">
         <h3>✅ Tasks</h3>
-        <button className="btn btn-primary" onClick={() => setModal(true)}>+ Create Task</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
+            onClick={generateDaily} disabled={generating}>
+            {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks'}
+          </button>
+          <button className="btn btn-primary" onClick={() => setModal(true)}>+ Create Task</button>
+        </div>
       </div>
 
       <div className="grid-3">
@@ -71,6 +91,7 @@ export default function Tasks() {
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     {status === 'pending'     && <button className="btn btn-outline btn-sm" onClick={() => updateStatus(t.id, 'in_progress')}>Start</button>}
                     {status === 'in_progress' && <button className="btn btn-green btn-sm"   onClick={() => updateStatus(t.id, 'completed')}>Done</button>}
+                    {status === 'submitted'   && <><button className="btn btn-green btn-sm" onClick={() => updateStatus(t.id, 'completed')} style={{ marginRight: 4 }}>✅ Verify</button><button className="btn btn-danger btn-sm" onClick={() => updateStatus(t.id, 'pending')}>✕ Reject</button></>}
                     <button className="btn btn-danger btn-sm" onClick={() => del(t.id)}>×</button>
                   </div>
                 </div>

@@ -15,7 +15,8 @@ class School(Base):
     longitude         = Column(Float, nullable=True)
     contact_person    = Column(String(100), nullable=True)
     phone             = Column(String(15), nullable=True)
-    unit_number       = Column(String(20), nullable=True)   # Unit-1, Unit-2, etc.
+    unit_number       = Column(String(20), nullable=True)
+    technician_id     = Column(Integer, ForeignKey("employees.id"), nullable=True)
     model             = Column(String(20), default="normal")  # normal / temple / village
     capacity          = Column(String(50), nullable=True)
     plant_model       = Column(String(100), nullable=True)
