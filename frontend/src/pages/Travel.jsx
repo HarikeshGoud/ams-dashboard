@@ -10,6 +10,8 @@ export default function Travel() {
   const [filterEmp, setFilterEmp] = useState('')
   const [fuelPrice, setFuelPrice] = useState(105)
   const [fuelInput, setFuelInput] = useState('')
+  const [ratePerKm, setRatePerKm] = useState(0)
+  const [rateInput, setRateInput] = useState('')
   const [fuelSaving, setFuelSaving] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [toast, setToast] = useState('')
@@ -26,18 +28,25 @@ export default function Travel() {
       setEmployees(e.data.filter(emp => emp.role === 'technician'))
       setFuelPrice(f.data.fuel_price)
       setFuelInput(String(f.data.fuel_price))
+      setRatePerKm(f.data.rate_per_km || 0)
+      setRateInput(String(f.data.rate_per_km || 0))
       setLoading(false)
     }).catch(() => setLoading(false))
   }
   useEffect(() => { load() }, [filterEmp])
 
-  async function saveFuelPrice() {
+  async function saveSettings() {
     if (!fuelInput || isNaN(fuelInput)) return
     setFuelSaving(true)
-    await api.post('/api/travel/fuel-settings', { fuel_price: Number(fuelInput) })
+    const rate = Number(rateInput) || 0
+    await api.post('/api/travel/fuel-settings', { fuel_price: Number(fuelInput), rate_per_km: rate })
     setFuelPrice(Number(fuelInput))
+    setRatePerKm(rate)
     setFuelSaving(false)
-    showToast(`✅ Fuel price updated to Rs.${fuelInput}/litre`)
+    if (rate > 0)
+      showToast(`✅ Rate set to Rs.${rate}/km — fuel formula disabled`)
+    else
+      showToast(`✅ Fuel price updated to Rs.${fuelInput}/litre`)
   }
 
   async function approve(id) {
@@ -69,26 +78,51 @@ export default function Travel() {
         <h3>🏍️ Travel Allowance</h3>
       </div>
 
-      {/* Fuel price settings */}
+      {/* Travel rate settings */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase' }}>
-          ⛽ Fuel Price Settings
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 12, textTransform: 'uppercase' }}>
+          💰 Travel Allowance Rate
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 13 }}>Current: <b style={{ color: 'var(--green)' }}>Rs.{fuelPrice}/litre</b></div>
-          <input
-            type="number" min="50" max="500" step="0.5" value={fuelInput}
-            onChange={e => setFuelInput(e.target.value)}
-            style={{ width: 100, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13 }}
-          />
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Rs/litre</span>
-          <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveFuelPrice} disabled={fuelSaving}>
-            {fuelSaving ? 'Saving…' : '💾 Update Price'}
-          </button>
-          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-            Formula: (distance ÷ mileage) × fuel price + Rs.50
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
+          {/* Option A: flat rate per km */}
+          <div style={{ padding: 12, borderRadius: 10, border: `2px solid ${ratePerKm > 0 ? 'var(--accent)' : 'var(--border)'}`, background: ratePerKm > 0 ? 'rgba(56,189,248,.06)' : 'var(--surface2)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+              📍 Flat Rate Per KM {ratePerKm > 0 && <span style={{ color: 'var(--accent)', fontSize: 10 }}>● ACTIVE</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="number" min="0" max="50" step="0.5" value={rateInput}
+                onChange={e => setRateInput(e.target.value)}
+                placeholder="e.g. 2.5"
+                style={{ width: 90, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>Rs/km</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 5 }}>
+              Amount = distance × rate<br/>Set to 0 to use fuel formula instead
+            </div>
+          </div>
+          {/* Option B: fuel formula */}
+          <div style={{ padding: 12, borderRadius: 10, border: `2px solid ${ratePerKm === 0 ? 'var(--green)' : 'var(--border)'}`, background: ratePerKm === 0 ? 'rgba(52,211,153,.06)' : 'var(--surface2)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+              ⛽ Fuel Formula {ratePerKm === 0 && <span style={{ color: 'var(--green)', fontSize: 10 }}>● ACTIVE</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="number" min="50" max="500" step="0.5" value={fuelInput}
+                onChange={e => setFuelInput(e.target.value)}
+                style={{ width: 90, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>Rs/litre</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 5 }}>
+              Amount = (km ÷ mileage) × fuel + Rs.50<br/>Used when rate/km is 0
+            </div>
           </div>
         </div>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveSettings} disabled={fuelSaving}>
+          {fuelSaving ? 'Saving…' : '💾 Save Settings'}
+        </button>
       </div>
 
       {/* Summary cards */}
@@ -157,7 +191,10 @@ export default function Travel() {
             <div style={{ display: 'flex', gap: 16, fontSize: 12, flexWrap: 'wrap', marginBottom: 8 }}>
               <span>🛣️ <b>{t.distance_km?.toFixed(1)} km</b></span>
               <span style={{ color: 'var(--green)', fontWeight: 700 }}>Rs.{Math.round(t.amount).toLocaleString('en-IN')}</span>
-              {t.mileage_used && <span style={{ color: 'var(--muted)' }}>{t.mileage_used} kmpl · Rs.{t.fuel_price_used}/L</span>}
+              {t.rate_per_km_used > 0
+                ? <span style={{ color: 'var(--muted)' }}>Rs.{t.rate_per_km_used}/km flat rate</span>
+                : t.mileage_used && <span style={{ color: 'var(--muted)' }}>{t.mileage_used} kmpl · Rs.{t.fuel_price_used}/L</span>
+              }
             </div>
 
             {/* Actions */}

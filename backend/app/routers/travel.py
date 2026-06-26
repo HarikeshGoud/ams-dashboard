@@ -40,6 +40,7 @@ def _fmt(t: TravelTrip):
         "start_lat": t.start_lat,
         "start_lng": t.start_lng,
         "trip_type": t.trip_type or "manual",
+        "rate_per_km_used": t.rate_per_km_used,
     }
 
 
@@ -83,8 +84,6 @@ class TripCreate(BaseModel):
     notes: Optional[str] = None
     legs: List[RouteLeg]        # ordered list of visit waypoints
 
-class FuelSettingsUpdate(BaseModel):
-    fuel_price: float
 
 class MileageUpdate(BaseModel):
     bike_mileage: float
@@ -99,8 +98,17 @@ class MileageUpdate(BaseModel):
 def get_fuel_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
     row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
     if not row:
-        return {"fuel_price": 105.0, "updated_at": None}
-    return {"fuel_price": row.fuel_price, "updated_at": row.updated_at.isoformat() if row.updated_at else None}
+        return {"fuel_price": 105.0, "rate_per_km": 0.0, "updated_at": None}
+    return {
+        "fuel_price": row.fuel_price,
+        "rate_per_km": row.rate_per_km or 0.0,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+class FuelSettingsUpdate(BaseModel):
+    fuel_price: float
+    rate_per_km: Optional[float] = 0.0
 
 
 @router.post("/fuel-settings")
@@ -108,12 +116,13 @@ def set_fuel_settings(data: FuelSettingsUpdate, db: Session = Depends(get_db), u
     row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
     if row:
         row.fuel_price = data.fuel_price
+        row.rate_per_km = data.rate_per_km or 0.0
         row.set_by = user.id
         row.updated_at = datetime.utcnow()
     else:
-        db.add(FuelSettings(fuel_price=data.fuel_price, set_by=user.id))
+        db.add(FuelSettings(fuel_price=data.fuel_price, rate_per_km=data.rate_per_km or 0.0, set_by=user.id))
     db.commit()
-    return {"ok": True, "fuel_price": data.fuel_price}
+    return {"ok": True, "fuel_price": data.fuel_price, "rate_per_km": data.rate_per_km or 0.0}
 
 
 # ── Mileage / home location ───────────────────────────────────────────────────
@@ -218,6 +227,7 @@ async def auto_trip_from_reports(
 
     fuel_row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
     fuel_price = fuel_row.fuel_price if fuel_row else 105.0
+    rate_per_km = (fuel_row.rate_per_km or 0.0) if fuel_row else 0.0
     mileage = emp.bike_mileage or 45.0
 
     # Build waypoints from school GPS only (in submission order) — no home leg
@@ -263,7 +273,11 @@ async def auto_trip_from_reports(
         total_km += dist
 
     total_km = round(total_km, 2)
-    calculated = round((total_km / mileage) * fuel_price + EXTRA_AMOUNT, 2) if mileage > 0 else EXTRA_AMOUNT
+    # Use flat rate if admin has set one, otherwise fuel formula
+    if rate_per_km and rate_per_km > 0:
+        calculated = round(total_km * rate_per_km, 2)
+    else:
+        calculated = round((total_km / mileage) * fuel_price + EXTRA_AMOUNT, 2) if mileage > 0 else EXTRA_AMOUNT
 
     from_loc = waypoints[0]["label"]
     to_summary = " → ".join(w["label"] for w in waypoints[1:]) if len(waypoints) > 1 else from_loc
@@ -284,6 +298,7 @@ async def auto_trip_from_reports(
             existing.route_legs = json.dumps(legs_result)
             existing.fuel_price_used = fuel_price
             existing.mileage_used = mileage
+            existing.rate_per_km_used = rate_per_km if rate_per_km and rate_per_km > 0 else None
             existing.from_location = from_loc
             existing.to_location = to_summary
             existing.start_lat = waypoints[0]["lat"]
@@ -304,6 +319,7 @@ async def auto_trip_from_reports(
             route_legs=json.dumps(legs_result),
             fuel_price_used=fuel_price,
             mileage_used=mileage,
+            rate_per_km_used=rate_per_km if rate_per_km and rate_per_km > 0 else None,
             calculated_amount=calculated,
             start_lat=waypoints[0]["lat"],
             start_lng=waypoints[0]["lng"],

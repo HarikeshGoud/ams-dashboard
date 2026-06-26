@@ -10,6 +10,8 @@ export default function DeskTravel() {
   const [filterEmp, setFilterEmp] = useState('')
   const [fuelPrice, setFuelPrice] = useState(105)
   const [fuelInput, setFuelInput] = useState('')
+  const [ratePerKm, setRatePerKm] = useState(0)
+  const [rateInput, setRateInput] = useState('')
   const [fuelSaving, setFuelSaving] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [toast, setToast] = useState('')
@@ -26,18 +28,22 @@ export default function DeskTravel() {
       setEmployees(e.data.filter(emp => emp.role === 'technician'))
       setFuelPrice(f.data.fuel_price)
       setFuelInput(String(f.data.fuel_price))
+      setRatePerKm(f.data.rate_per_km || 0)
+      setRateInput(String(f.data.rate_per_km || 0))
       setLoading(false)
     }).catch(() => setLoading(false))
   }
   useEffect(() => { load() }, [filterEmp])
 
-  async function saveFuelPrice() {
+  async function saveSettings() {
     if (!fuelInput || isNaN(fuelInput)) return
     setFuelSaving(true)
-    await api.post('/api/travel/fuel-settings', { fuel_price: Number(fuelInput) })
+    const rate = Number(rateInput) || 0
+    await api.post('/api/travel/fuel-settings', { fuel_price: Number(fuelInput), rate_per_km: rate })
     setFuelPrice(Number(fuelInput))
+    setRatePerKm(rate)
     setFuelSaving(false)
-    showToast(`✅ Fuel price updated to Rs.${fuelInput}/litre`)
+    showToast(rate > 0 ? `✅ Rate set to Rs.${rate}/km` : `✅ Fuel price updated to Rs.${fuelInput}/litre`)
   }
 
   async function approve(id) {
@@ -62,22 +68,32 @@ export default function DeskTravel() {
         <h3>🏍️ Travel Allowance</h3>
       </div>
 
-      {/* Fuel price settings */}
+      {/* Travel rate settings */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 10, textTransform: 'uppercase' }}>⛽ Fuel Price</div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 13 }}>Current: <b style={{ color: 'var(--green)' }}>Rs.{fuelPrice}/litre</b></div>
-          <input
-            type="number" min="50" max="500" step="0.5" value={fuelInput}
-            onChange={e => setFuelInput(e.target.value)}
-            style={{ width: 100, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 13 }}
-          />
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Rs/litre</span>
-          <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveFuelPrice} disabled={fuelSaving}>
-            {fuelSaving ? 'Saving…' : '💾 Update'}
-          </button>
-          <div style={{ fontSize: 11, color: 'var(--muted)' }}>Formula: (distance ÷ mileage) × fuel price + Rs.50</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 12, textTransform: 'uppercase' }}>💰 Travel Allowance Rate</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div style={{ padding: 10, borderRadius: 10, border: `2px solid ${ratePerKm > 0 ? 'var(--accent)' : 'var(--border)'}`, background: ratePerKm > 0 ? 'rgba(56,189,248,.06)' : 'var(--surface2)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>📍 Flat Rate Per KM {ratePerKm > 0 && <span style={{ color: 'var(--accent)', fontSize: 9 }}>● ACTIVE</span>}</div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="number" min="0" max="50" step="0.5" value={rateInput} onChange={e => setRateInput(e.target.value)} placeholder="e.g. 2.5"
+                style={{ width: 80, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }} />
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Rs/km</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>Amount = km × rate · Set 0 to use fuel formula</div>
+          </div>
+          <div style={{ padding: 10, borderRadius: 10, border: `2px solid ${ratePerKm === 0 ? 'var(--green)' : 'var(--border)'}`, background: ratePerKm === 0 ? 'rgba(52,211,153,.06)' : 'var(--surface2)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>⛽ Fuel Formula {ratePerKm === 0 && <span style={{ color: 'var(--green)', fontSize: 9 }}>● ACTIVE</span>}</div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="number" min="50" max="500" step="0.5" value={fuelInput} onChange={e => setFuelInput(e.target.value)}
+                style={{ width: 80, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }} />
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Rs/litre</span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>(km ÷ mileage) × fuel + Rs.50</div>
+          </div>
         </div>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveSettings} disabled={fuelSaving}>
+          {fuelSaving ? 'Saving…' : '💾 Save Settings'}
+        </button>
       </div>
 
       {/* Summary cards */}
