@@ -1,19 +1,83 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 import os
+from datetime import date
 
-from .database import engine, Base
+from .database import engine, Base, SessionLocal
 from . import models  # ensure all models are registered
 
 from .routers import auth, employees, clients, schools, visits, complaints
 from .routers import stock, billing, salary, attendance, tasks, travel, dashboard, mandals, field_reports
 from .routers import notifications, allowances, salary_overrides
 
-# Create all tables
-Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="AMS — Water Purifier Management", version="1.0.0")
+def _auto_generate_daily_tasks():
+    """On startup: generate 5 daily tasks for every active technician if not already done today."""
+    from .models.employee import Employee
+    from .models.task import Task
+    from .routers.tasks import _technician_rotation_schools, DAILY_DEFAULT
+
+    db = SessionLocal()
+    try:
+        today = date.today()
+        technicians = db.query(Employee).filter(
+            Employee.role == "technician", Employee.is_active == True
+        ).all()
+
+        for emp in technicians:
+            existing = db.query(Task).filter(
+                Task.assigned_to_id == emp.id,
+                Task.due_date == today,
+                Task.status != "cancelled"
+            ).count()
+
+            if existing >= DAILY_DEFAULT:
+                continue
+
+            slots_needed = DAILY_DEFAULT - existing
+            already_today = {
+                t.school_id for t in db.query(Task).filter(
+                    Task.assigned_to_id == emp.id,
+                    Task.due_date == today,
+                    Task.status != "cancelled"
+                ).all() if t.school_id
+            }
+
+            eligible, _, _, _ = _technician_rotation_schools(
+                db, emp.id, exclude_school_ids=already_today
+            )
+
+            for school in eligible[:slots_needed]:
+                db.add(Task(
+                    title=f"Visit {school.name}",
+                    description="Daily scheduled visit",
+                    assigned_to_id=emp.id,
+                    assigned_by_id=None,
+                    school_id=school.id,
+                    priority="medium",
+                    due_date=today
+                ))
+
+        db.commit()
+        print(f"[startup] Daily tasks auto-generated for {today}")
+    except Exception as e:
+        print(f"[startup] Daily task generation failed: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
+    _auto_generate_daily_tasks()
+    yield
+
+
+app = FastAPI(title="AMS — Water Purifier Management", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
