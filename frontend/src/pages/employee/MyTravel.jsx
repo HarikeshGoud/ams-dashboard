@@ -63,17 +63,24 @@ function LogTripModal({ onClose, onSaved }) {
         from_location: p.data.home_location || '',
         mileage: p.data.bike_mileage || 45,
       }))
-      // Pick tasks that have school with lat/lng
-      const schools = t.data
-        .filter(task => task.school_id && task.school_lat && task.school_lng)
-        .map(task => ({
+        // For schools without saved coordinates, geocode them on-the-fly
+      const tasks = t.data.filter(task => task.school_id)
+      const resolved = await Promise.all(tasks.map(async task => {
+        let lat = task.school_lat
+        let lng = task.school_lng
+        if (!lat || !lng) {
+          const coords = await geocode(task.school_name || task.title)
+          if (coords) { lat = coords.lat; lng = coords.lng }
+        }
+        return {
           label: task.school_name || task.title,
           school_id: task.school_id,
-          lat: task.school_lat,
-          lng: task.school_lng,
+          lat, lng,
+          hasCoords: !!(lat && lng),
           selected: false,
-        }))
-      setTodaySchools(schools)
+        }
+      }))
+      setTodaySchools(resolved)
     })
   }, [])
 
@@ -216,25 +223,33 @@ function LogTripModal({ onClose, onSaved }) {
               Select today's school visits (in order)
             </div>
             {todaySchools.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--red)', padding: '10px', background: 'rgba(248,113,113,.08)', borderRadius: 8, marginBottom: 12 }}>
-                ⚠️ No schools with GPS coordinates found in today's tasks. Contact admin.
+              <div style={{ fontSize: 12, color: 'var(--yellow)', padding: '10px', background: 'rgba(251,191,36,.08)', borderRadius: 8, marginBottom: 12 }}>
+                ⏳ Loading school locations… or no tasks assigned for today.
               </div>
             ) : (
               todaySchools.map((s, i) => (
-                <div key={i} onClick={() => toggleSchool(i)} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 12px', borderRadius: 8, marginBottom: 6, cursor: 'pointer',
-                  border: `1.5px solid ${s.selected ? 'var(--accent)' : 'var(--border)'}`,
-                  background: s.selected ? 'rgba(56,189,248,.1)' : 'var(--surface2)',
-                }}>
+                <div key={i}
+                  onClick={() => s.hasCoords && toggleSchool(i)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', borderRadius: 8, marginBottom: 6,
+                    cursor: s.hasCoords ? 'pointer' : 'not-allowed',
+                    opacity: s.hasCoords ? 1 : 0.5,
+                    border: `1.5px solid ${s.selected ? 'var(--accent)' : s.hasCoords ? 'var(--border)' : 'var(--red)'}`,
+                    background: s.selected ? 'rgba(56,189,248,.1)' : 'var(--surface2)',
+                  }}>
                   <div style={{
-                    width: 20, height: 20, borderRadius: 4, border: `2px solid ${s.selected ? 'var(--accent)' : 'var(--border)'}`,
+                    width: 20, height: 20, borderRadius: 4,
+                    border: `2px solid ${s.selected ? 'var(--accent)' : 'var(--border)'}`,
                     background: s.selected ? 'var(--accent)' : 'transparent',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0
                   }}>{s.selected ? '✓' : ''}</div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>🏫 {s.label}</div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>GPS: {s.lat.toFixed(4)}, {s.lng.toFixed(4)}</div>
+                    {s.hasCoords
+                      ? <div style={{ fontSize: 10, color: 'var(--muted)' }}>📍 {s.lat?.toFixed(4)}, {s.lng?.toFixed(4)}</div>
+                      : <div style={{ fontSize: 10, color: 'var(--red)' }}>⚠️ No coordinates — ask admin to run geocode script</div>
+                    }
                   </div>
                 </div>
               ))
