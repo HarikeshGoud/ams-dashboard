@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
+import MapPicker from '../../components/MapPicker'
 
 const STATUS_COLOR = { pending: 'var(--yellow)', approved: 'var(--green)', rejected: 'var(--red)' }
 
@@ -49,6 +50,7 @@ function LogTripModal({ onClose, onSaved }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [pinning, setPinning] = useState(null)   // index of school being GPS-pinned
+  const [showMapPicker, setShowMapPicker] = useState(false)
 
   useEffect(() => {
     // Load profile + fuel price + today's tasks
@@ -121,11 +123,13 @@ function LogTripModal({ onClose, onSaved }) {
   }
 
   async function geocodeStart() {
-    if (!form.from_location.trim()) { setError('Enter your start location'); return }
+    if (!form.from_location.trim()) { setError('Tap the location field to pick on map'); return }
+    // If already pinned via map picker, skip geocoding
+    if (startCoords && startCoords.lat) { setStep(2); setError(''); return }
     setGeocoding(true); setError('')
     const coords = await geocode(form.from_location)
     setGeocoding(false)
-    if (!coords) { setError('Location not found. Skip the house number — enter just area/landmark and city. Example: "Uppal Depot, Hyderabad"'); return }
+    if (!coords) { setError('Location not found. Tap the field to pick on map instead.'); return }
     setStartCoords(coords)
     setStep(2)
     setError('')
@@ -215,13 +219,19 @@ function LogTripModal({ onClose, onSaved }) {
             </div>
             <div className="form-group" style={{ marginBottom: 10 }}>
               <label>Start Location (your home address) *</label>
-              <input
-                value={form.from_location}
-                onChange={e => set('from_location', e.target.value)}
-                placeholder="e.g. Buddha Nagar Road No.7, Nalgonda"
-              />
+              <div
+                onClick={() => setShowMapPicker(true)}
+                style={{
+                  padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)',
+                  background: 'var(--surface2)', cursor: 'pointer', fontSize: 13,
+                  color: form.from_location ? 'var(--text)' : 'var(--muted)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                <span>{form.from_location || 'Tap to pick on map…'}</span>
+                <span style={{ fontSize: 18 }}>🗺️</span>
+              </div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-                Be specific — include landmark, area, city for accurate geocoding
+                Tap to open map — search, pin, or use GPS
               </div>
             </div>
             <div className="form-group" style={{ marginBottom: 10 }}>
@@ -361,6 +371,18 @@ function LogTripModal({ onClose, onSaved }) {
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         </div>
       </div>
+
+      {showMapPicker && (
+        <MapPicker
+          initialLabel={form.from_location}
+          onClose={() => setShowMapPicker(false)}
+          onConfirm={(picked) => {
+            set('from_location', picked.label)
+            setStartCoords({ lat: picked.lat, lng: picked.lng, label: picked.label })
+            setShowMapPicker(false)
+          }}
+        />
+      )}
     </div>
   )
 }
