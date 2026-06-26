@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000' })
+const BASE = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://ams-dashboard-twu7.onrender.com')
+const api = axios.create({ baseURL: BASE })
 
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('ams_token')
