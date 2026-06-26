@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const BASE = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://ams-dashboard-twu7.onrender.com')
+const BASE = window.location.hostname === 'localhost'
+  ? 'http://localhost:8000'
+  : 'https://ams-dashboard-twu7.onrender.com'
+
 const api = axios.create({ baseURL: BASE })
 
 api.interceptors.request.use(cfg => {
@@ -22,4 +25,3 @@ api.interceptors.response.use(
 )
 
 export default api
-# force rebuild Fri Jun 26 23:34:20 IST 2026
