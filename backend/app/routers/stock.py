@@ -60,6 +60,18 @@ def create_item(data: ItemCreate, db: Session = Depends(get_db), _=Depends(get_c
     db.add(item); db.commit(); db.refresh(item)
     return _item_fmt(item)
 
+@router.put("/items/{item_id}")
+def update_item(item_id: int, data: ItemCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    item = db.query(StockItem).filter(StockItem.id == item_id).first()
+    if not item: raise HTTPException(404, "Item not found")
+    item.name = data.name
+    item.category = data.category
+    item.unit = data.unit
+    item.min_qty = data.min_qty if data.min_qty is not None else (data.min_quantity if data.min_quantity is not None else item.min_qty)
+    item.unit_cost = data.unit_cost if data.unit_cost is not None else (data.unit_price if data.unit_price is not None else item.unit_cost)
+    db.commit(); db.refresh(item)
+    return _item_fmt(item)
+
 @router.post("/{item_id}/adjust")
 def adjust_stock(item_id: int, data: AdjustStock, db: Session = Depends(get_db), _=Depends(get_current_user)):
     item = db.query(StockItem).filter(StockItem.id == item_id).first()

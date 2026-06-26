@@ -5,7 +5,8 @@ export default function Stock() {
   const [items, setItems] = useState([])
   const [ledger, setLedger] = useState([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null) // 'add-item' | 'receive' | 'transfer' | 'issue'
+  const [modal, setModal] = useState(null) // 'add-item' | 'edit-item' | 'receive' | 'transfer' | 'issue'
+  const [editItem, setEditItem] = useState(null)
   const [itemForm, setItemForm] = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
   const [ledgerForm, setLedgerForm] = useState({ item_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', school_dest: '', note: '' })
   const [toast, setToast] = useState('')
@@ -22,8 +23,21 @@ export default function Stock() {
 
   async function saveItem(ev) {
     ev.preventDefault()
-    await api.post('/api/stock/items', { ...itemForm, min_qty: parseInt(itemForm.min_qty), unit_cost: parseFloat(itemForm.unit_cost) || 0 })
-    load(); setModal(null); showToast('Item added!')
+    const payload = { ...itemForm, min_qty: parseInt(itemForm.min_qty), unit_cost: parseFloat(itemForm.unit_cost) || 0 }
+    if (editItem) {
+      await api.put(`/api/stock/items/${editItem.id}`, payload)
+      showToast('Item updated!')
+    } else {
+      await api.post('/api/stock/items', payload)
+      showToast('Item added!')
+    }
+    load(); setModal(null); setEditItem(null)
+  }
+
+  function openEdit(item) {
+    setEditItem(item)
+    setItemForm({ name: item.name, category: item.category || '', unit: item.unit, min_qty: item.min_qty, unit_cost: item.unit_cost })
+    setModal('edit-item')
   }
 
   async function saveLedger(ev) {
@@ -70,7 +84,7 @@ export default function Stock() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th></tr>
+              <tr><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Edit</th></tr>
             </thead>
             <tbody>
               {items.map(i => (
@@ -81,6 +95,7 @@ export default function Stock() {
                   <td>{i.min_qty}</td>
                   <td>₹{i.unit_cost}</td>
                   <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? 'Low' : 'OK'}</span></td>
+                  <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️ Edit</button></td>
                 </tr>
               ))}
             </tbody>
@@ -113,11 +128,11 @@ export default function Stock() {
         </div>
       </div>
 
-      {modal === 'add-item' && (
+      {(modal === 'add-item' || modal === 'edit-item') && (
         <div className="modal-backdrop">
           <div className="modal-box">
-            <button className="modal-close" onClick={() => setModal(null)}>✕</button>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>+ New Stock Item</h3>
+            <button className="modal-close" onClick={() => { setModal(null); setEditItem(null) }}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>{editItem ? '✏️ Edit Stock Item' : '+ New Stock Item'}</h3>
             <form onSubmit={saveItem}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Name *</label><input required value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})} /></div>
@@ -127,8 +142,8 @@ export default function Stock() {
                 <div className="form-group"><label>Cost/Unit (₹)</label><input type="number" value={itemForm.unit_cost} onChange={e => setItemForm({...itemForm, unit_cost: e.target.value})} /></div>
               </div>
               <div className="mt-16 flex gap-8">
-                <button type="submit" className="btn btn-primary">Save</button>
-                <button type="button" className="btn btn-outline" onClick={() => setModal(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">{editItem ? 'Update' : 'Save'}</button>
+                <button type="button" className="btn btn-outline" onClick={() => { setModal(null); setEditItem(null) }}>Cancel</button>
               </div>
             </form>
           </div>
