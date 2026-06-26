@@ -39,6 +39,7 @@ def _fmt(t: TravelTrip):
         "calculated_amount": t.calculated_amount,
         "start_lat": t.start_lat,
         "start_lng": t.start_lng,
+        "trip_type": t.trip_type or "manual",
     }
 
 
@@ -88,6 +89,8 @@ class FuelSettingsUpdate(BaseModel):
 class MileageUpdate(BaseModel):
     bike_mileage: float
     home_location: Optional[str] = None
+    home_lat: Optional[float] = None
+    home_lng: Optional[float] = None
 
 
 # ── Fuel settings ─────────────────────────────────────────────────────────────
@@ -121,8 +124,13 @@ def update_mileage(data: MileageUpdate, db: Session = Depends(get_db), user=Depe
     emp.bike_mileage = data.bike_mileage
     if data.home_location:
         emp.home_location = data.home_location
+    if data.home_lat is not None:
+        emp.home_lat = data.home_lat
+    if data.home_lng is not None:
+        emp.home_lng = data.home_lng
     db.commit()
-    return {"ok": True, "bike_mileage": emp.bike_mileage, "home_location": emp.home_location}
+    return {"ok": True, "bike_mileage": emp.bike_mileage, "home_location": emp.home_location,
+            "home_lat": emp.home_lat, "home_lng": emp.home_lng}
 
 
 @router.get("/my-profile")
@@ -131,6 +139,8 @@ def get_my_profile(db: Session = Depends(get_db), user=Depends(get_current_user)
     return {
         "bike_mileage": emp.bike_mileage or 45.0,
         "home_location": emp.home_location or "",
+        "home_lat": emp.home_lat,
+        "home_lng": emp.home_lng,
     }
 
 
@@ -160,6 +170,158 @@ async def calculate_route(data: RouteCalcRequest):
         total += dist
 
     return {"legs": legs, "total_km": round(total, 2)}
+
+
+# ── Auto-calculate trip from today's geotagged field reports ─────────────────
+
+@router.post("/auto-from-reports")
+async def auto_trip_from_reports(
+    trip_date: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Auto-create or update a travel trip for a technician based on the GPS
+    coordinates embedded in today's field report submissions (geotagged photos).
+    Called automatically after each proof submission.
+    """
+    from ..models.field_report import FieldReport
+    from datetime import date as date_type
+
+    emp_id = employee_id or user.id
+    d = date_type.fromisoformat(trip_date) if trip_date else date_type.today()
+
+    # Only proceed if we have permission
+    if user.role not in ("admin", "deskwork") and user.id != emp_id:
+        raise HTTPException(403, "Not authorized")
+
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+
+    # Get today's reports with GPS, sorted by submission time
+    reports = (
+        db.query(FieldReport)
+        .filter(
+            FieldReport.employee_id == emp_id,
+            FieldReport.report_date == d,
+            FieldReport.latitude.isnot(None),
+            FieldReport.longitude.isnot(None),
+        )
+        .order_by(FieldReport.submitted_at)
+        .all()
+    )
+
+    if not reports:
+        return {"ok": False, "message": "No geotagged reports found for today"}
+
+    fuel_row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
+    fuel_price = fuel_row.fuel_price if fuel_row else 105.0
+    mileage = emp.bike_mileage or 45.0
+
+    # Build waypoints: home (if saved) + each report location in order
+    waypoints = []
+    if emp.home_lat and emp.home_lng:
+        waypoints.append({
+            "label": emp.home_location or "Home",
+            "lat": emp.home_lat,
+            "lng": emp.home_lng,
+            "school_id": None,
+        })
+
+    seen_coords = set()
+    for r in reports:
+        key = (round(r.latitude, 4), round(r.longitude, 4))
+        if key in seen_coords:
+            continue   # skip duplicate GPS (same location re-submitted)
+        seen_coords.add(key)
+
+        # Get school name from task
+        school_name = None
+        school_id = r.school_id
+        if r.school_id:
+            from ..models.school import School
+            sch = db.query(School).filter(School.id == r.school_id).first()
+            school_name = sch.name if sch else f"School #{r.school_id}"
+
+        waypoints.append({
+            "label": school_name or f"Visit {len(waypoints)+1}",
+            "lat": r.latitude,
+            "lng": r.longitude,
+            "school_id": school_id,
+        })
+
+    if len(waypoints) < 2:
+        return {"ok": False, "message": "Need at least 2 GPS points to calculate distance"}
+
+    # Calculate distances via OSRM
+    legs_result = []
+    total_km = 0.0
+    for i in range(len(waypoints) - 1):
+        a = waypoints[i]
+        b = waypoints[i + 1]
+        dist = await _osrm_distance(a["lat"], a["lng"], b["lat"], b["lng"])
+        legs_result.append({
+            "from": a["label"],
+            "to": b["label"],
+            "distance_km": dist,
+            "school_id": b["school_id"],
+        })
+        total_km += dist
+
+    total_km = round(total_km, 2)
+    calculated = round((total_km / mileage) * fuel_price + EXTRA_AMOUNT, 2) if mileage > 0 else EXTRA_AMOUNT
+
+    from_loc = waypoints[0]["label"]
+    to_summary = " → ".join(w["label"] for w in waypoints[1:])
+
+    # Find or create the auto trip for this employee+date
+    existing = db.query(TravelTrip).filter(
+        TravelTrip.employee_id == emp_id,
+        TravelTrip.trip_date == d,
+        TravelTrip.trip_type == "auto",
+    ).first()
+
+    if existing:
+        # Only update if still pending (don't override approved/rejected)
+        if existing.status == "pending":
+            existing.distance_km = total_km
+            existing.amount = calculated
+            existing.calculated_amount = calculated
+            existing.route_legs = json.dumps(legs_result)
+            existing.fuel_price_used = fuel_price
+            existing.mileage_used = mileage
+            existing.from_location = from_loc
+            existing.to_location = to_summary
+            existing.start_lat = waypoints[0]["lat"]
+            existing.start_lng = waypoints[0]["lng"]
+            db.commit()
+            db.refresh(existing)
+        return _fmt(existing)
+    else:
+        t = TravelTrip(
+            employee_id=emp_id,
+            trip_date=d,
+            from_location=from_loc,
+            to_location=to_summary,
+            transport_mode="bike",
+            distance_km=total_km,
+            amount=calculated,
+            notes=f"Auto-calculated from {len(reports)} geotagged proof submissions",
+            route_legs=json.dumps(legs_result),
+            fuel_price_used=fuel_price,
+            mileage_used=mileage,
+            calculated_amount=calculated,
+            start_lat=waypoints[0]["lat"],
+            start_lng=waypoints[0]["lng"],
+            status="pending",
+            trip_type="auto",
+        )
+        db.add(t)
+        db.commit()
+        db.refresh(t)
+        return _fmt(t)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────

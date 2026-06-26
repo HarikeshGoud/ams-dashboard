@@ -376,10 +376,19 @@ function LogTripModal({ onClose, onSaved }) {
         <MapPicker
           initialLabel={form.from_location}
           onClose={() => setShowMapPicker(false)}
-          onConfirm={(picked) => {
+          onConfirm={async (picked) => {
             set('from_location', picked.label)
             setStartCoords({ lat: picked.lat, lng: picked.lng, label: picked.label })
             setShowMapPicker(false)
+            // Save home coords to profile so auto-trip can use them
+            try {
+              await api.patch('/api/travel/my-profile', {
+                bike_mileage: form.mileage || 45,
+                home_location: picked.label,
+                home_lat: picked.lat,
+                home_lng: picked.lng,
+              })
+            } catch {}
           }}
         />
       )}
@@ -448,13 +457,25 @@ export default function MyTravel() {
             background: 'var(--surface)', border: `1px solid ${STATUS_COLOR[t.status] || 'var(--border)'}`,
             borderRadius: 10, padding: 14, marginBottom: 10
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>🏍️ {t.from_location}</div>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
-                background: `${STATUS_COLOR[t.status]}22`, color: STATUS_COLOR[t.status]
-              }}>{t.status}</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {t.trip_type === 'auto' && (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: 'rgba(139,92,246,.15)', color: '#a78bfa' }}>
+                    ⚡ AUTO
+                  </span>
+                )}
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
+                  background: `${STATUS_COLOR[t.status]}22`, color: STATUS_COLOR[t.status]
+                }}>{t.status}</span>
+              </div>
             </div>
+            {t.trip_type === 'auto' && (
+              <div style={{ fontSize: 10, color: '#a78bfa', marginBottom: 4 }}>
+                📸 Auto-calculated from geotagged proof submissions
+              </div>
+            )}
             <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>📅 {t.trip_date}</div>
 
             {/* Route legs */}

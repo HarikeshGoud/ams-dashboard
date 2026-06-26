@@ -25,6 +25,7 @@ class TravelTrip(Base):
     calculated_amount = Column(Float, nullable=True)  # (dist/mileage)*fuel + 50
     start_lat         = Column(Float, nullable=True)
     start_lng         = Column(Float, nullable=True)
+    trip_type         = Column(String(20), default="manual")  # manual | auto
 
     employee = relationship("Employee", back_populates="travel_trips", foreign_keys=[employee_id])
 
