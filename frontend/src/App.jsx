@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
+import { useThemeStore } from './store/themeStore'
 import Layout from './components/layout/Layout'
 import EmployeeLayout from './components/layout/EmployeeLayout'
 import Login from './pages/Login'
@@ -65,6 +67,11 @@ function EmployeeGuard({ children }) {
 }
 
 export default function App() {
+  const { theme } = useThemeStore()
+  useEffect(() => {
+    document.body.classList.toggle('light-theme', theme === 'light')
+  }, [theme])
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

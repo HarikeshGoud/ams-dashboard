@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '../../store/authStore'
+import { useThemeStore } from '../../store/themeStore'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ChangePasswordModal from '../ChangePasswordModal'
 import api from '../../api/axios'
@@ -15,6 +16,7 @@ const TITLES = {
 
 export default function Header({ onMenuClick }) {
   const { user, logout } = useAuthStore()
+  const { theme, toggle: toggleTheme } = useThemeStore()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const title = TITLES[pathname] || 'AMS Dashboard'
@@ -166,6 +168,15 @@ export default function Header({ onMenuClick }) {
               </div>
             )}
           </div>
+
+          {/* Theme toggle */}
+          <button onClick={toggleTheme} title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'} style={{
+            background: 'var(--surface2)', border: '1px solid var(--btn-outline-border)',
+            borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 15, lineHeight: 1,
+            color: 'var(--btn-outline-text)'
+          }}>
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
 
           <button className="btn btn-outline btn-sm hide-mobile" onClick={() => setShowChangePw(true)}>🔑 Password</button>
           <button className="btn btn-outline btn-sm" onClick={handleLogout}>Logout</button>

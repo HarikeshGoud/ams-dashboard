@@ -17,12 +17,12 @@ const NAV = [
 ]
 
 const linkStyle = ({ isActive }) => ({
-  display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px',
-  cursor: 'pointer', borderLeft: `3px solid ${isActive ? 'var(--accent2)' : 'transparent'}`,
-  color: isActive ? 'var(--accent2)' : 'var(--muted)',
+  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+  cursor: 'pointer', borderLeft: `3px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+  color: isActive ? 'var(--accent)' : 'var(--muted)',
   fontWeight: isActive ? 600 : 400, fontSize: 13, textDecoration: 'none',
-  background: isActive ? 'var(--surface2)' : 'transparent',
-  transition: 'all .15s'
+  background: isActive ? 'rgba(59,158,255,0.1)' : 'transparent',
+  transition: 'all .15s', letterSpacing: '-0.01em'
 })
 
 export default function Sidebar({ open, onClose }) {

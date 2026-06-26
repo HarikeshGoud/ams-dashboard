@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { useThemeStore } from '../../store/themeStore'
 import ChangePasswordModal from '../ChangePasswordModal'
 
 const NAV = [
@@ -15,6 +16,7 @@ const NAV = [
 
 export default function EmployeeLayout() {
   const { user, logout } = useAuthStore()
+  const { theme, toggle: toggleTheme } = useThemeStore()
   const navigate = useNavigate()
   const location = useLocation()
   const [showChangePw, setShowChangePw] = useState(false)
@@ -52,6 +54,10 @@ export default function EmployeeLayout() {
               {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
             </div>
           </div>
+          <button onClick={toggleTheme} style={{
+            background: 'var(--surface2)', border: '1px solid var(--btn-outline-border)',
+            borderRadius: 6, padding: '4px 7px', cursor: 'pointer', fontSize: 13, lineHeight: 1
+          }}>{theme === 'dark' ? '☀️' : '🌙'}</button>
           <button className="btn btn-outline" style={{ fontSize: 10, padding: '4px 8px' }}
             onClick={() => setShowChangePw(true)}>🔑</button>
           <button className="btn btn-outline" style={{ fontSize: 10, padding: '4px 8px' }} onClick={handleLogout}>

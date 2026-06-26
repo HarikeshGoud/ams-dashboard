@@ -105,11 +105,11 @@ export default function MyAttendance() {
           {/* Month/Year picker */}
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <select value={month} onChange={e => setMonth(+e.target.value)}
-              style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+              style={{ padding: '0.5rem 1rem', borderRadius: 8, fontSize: 14 }}>
               {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
             <select value={year} onChange={e => setYear(+e.target.value)}
-              style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+              style={{ padding: '0.5rem 1rem', borderRadius: 8, fontSize: 14 }}>
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
@@ -135,7 +135,7 @@ export default function MyAttendance() {
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                     <thead>
-                      <tr style={{ background: '#f0f4ff', textAlign: 'left' }}>
+                      <tr style={{ background: 'var(--surface2)', textAlign: 'left' }}>
                         <th style={th}>Date</th>
                         <th style={th}>Status</th>
                         <th style={th}>Check In</th>
@@ -165,23 +165,23 @@ export default function MyAttendance() {
       {tab === 'allowance' && (
         <>
           {/* Request form */}
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem', marginBottom: '1.5rem', maxWidth: 480 }}>
+          <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1.25rem', marginBottom: '1.5rem', maxWidth: 480 }}>
             <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: 15 }}>Submit Allowance Request</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <label style={{ fontSize: 13, fontWeight: 600 }}>Amount (₹)
                 <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
                   placeholder="e.g. 500"
-                  style={{ display: 'block', marginTop: 4, width: '100%', padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14, boxSizing: 'border-box' }} />
+                  style={{ display: 'block', marginTop: 4, width: '100%', padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, boxSizing: 'border-box' }} />
               </label>
               <label style={{ fontSize: 13, fontWeight: 600 }}>Reason
                 <textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="Describe the reason for your request"
                   rows={3}
-                  style={{ display: 'block', marginTop: 4, width: '100%', padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
+                  style={{ display: 'block', marginTop: 4, width: '100%', padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
               </label>
               <label style={{ fontSize: 13, fontWeight: 600 }}>Date
                 <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                  style={{ display: 'block', marginTop: 4, padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }} />
+                  style={{ display: 'block', marginTop: 4, padding: '0.4rem 0.6rem', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14 }} />
               </label>
               {allowMsg && <p style={{ margin: 0, fontSize: 13, color: allowMsg.startsWith('✅') ? '#16a34a' : '#dc2626' }}>{allowMsg}</p>}
               <button onClick={submitAllowance} disabled={submitting}
@@ -198,7 +198,7 @@ export default function MyAttendance() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {allowances.map(req => (
-                <div key={req.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0.9rem 1rem' }}>
+                <div key={req.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.9rem 1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                     <div>
                       <span style={{ fontWeight: 700, fontSize: 15 }}>₹{Number(req.amount).toLocaleString()}</span>
@@ -224,7 +224,7 @@ export default function MyAttendance() {
 
 function Card({ label, value, color, big }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0.9rem 1rem', textAlign: 'center' }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.9rem 1rem', textAlign: 'center' }}>
       <div style={{ fontSize: big ? 22 : 20, fontWeight: 700, color }}>{value}</div>
       <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{label}</div>
     </div>

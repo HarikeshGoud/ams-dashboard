@@ -13,6 +13,8 @@
     "vite": "^8.1.0"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/poppins": "^5.2.7",
     "@vitejs/plugin-react": "^6.0.3",
     "axios": "^1.18.1",
     "jspdf": "^4.2.1",
