@@ -55,7 +55,7 @@ function LogTripModal({ onClose, onSaved }) {
       api.get('/api/travel/my-profile'),
       api.get('/api/travel/fuel-settings'),
       api.get('/api/tasks/my-tasks'),
-    ]).then(([p, f, t]) => {
+    ]).then(async ([p, f, t]) => {
       setProfile(p.data)
       setFuelPrice(f.data.fuel_price)
       setForm(prev => ({
@@ -63,14 +63,22 @@ function LogTripModal({ onClose, onSaved }) {
         from_location: p.data.home_location || '',
         mileage: p.data.bike_mileage || 45,
       }))
-        // For schools without saved coordinates, geocode them on-the-fly
+      // For schools without saved coordinates, geocode them on-the-fly using mandal + address
       const tasks = t.data.filter(task => task.school_id)
       const resolved = await Promise.all(tasks.map(async task => {
         let lat = task.school_lat
         let lng = task.school_lng
         if (!lat || !lng) {
-          const coords = await geocode(task.school_name || task.title)
-          if (coords) { lat = coords.lat; lng = coords.lng }
+          // Try with mandal/address context for better accuracy
+          const searchTerms = [
+            task.school_address,
+            task.school_mandal ? `${task.school_name}, ${task.school_mandal}` : null,
+            task.school_name,
+          ].filter(Boolean)
+          for (const term of searchTerms) {
+            const coords = await geocode(term)
+            if (coords) { lat = coords.lat; lng = coords.lng; break }
+          }
         }
         return {
           label: task.school_name || task.title,
