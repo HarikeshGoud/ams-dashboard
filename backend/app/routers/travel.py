@@ -114,15 +114,37 @@ class FuelSettingsUpdate(BaseModel):
 @router.post("/fuel-settings")
 def set_fuel_settings(data: FuelSettingsUpdate, db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
     row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
+    new_rate = data.rate_per_km or 0.0
+    new_fuel = data.fuel_price
     if row:
-        row.fuel_price = data.fuel_price
-        row.rate_per_km = data.rate_per_km or 0.0
+        row.fuel_price = new_fuel
+        row.rate_per_km = new_rate
         row.set_by = user.id
         row.updated_at = datetime.utcnow()
     else:
-        db.add(FuelSettings(fuel_price=data.fuel_price, rate_per_km=data.rate_per_km or 0.0, set_by=user.id))
+        db.add(FuelSettings(fuel_price=new_fuel, rate_per_km=new_rate, set_by=user.id))
     db.commit()
-    return {"ok": True, "fuel_price": data.fuel_price, "rate_per_km": data.rate_per_km or 0.0}
+
+    # Recalculate all pending auto trips with the new rate
+    pending_trips = db.query(TravelTrip).filter(
+        TravelTrip.status == "pending",
+        TravelTrip.trip_type == "auto",
+    ).all()
+    for t in pending_trips:
+        km = float(t.distance_km or 0)
+        mileage = t.mileage_used or 45.0
+        if new_rate > 0:
+            new_amount = round(km * new_rate, 2)
+            t.rate_per_km_used = new_rate
+        else:
+            new_amount = round((km / mileage) * new_fuel + EXTRA_AMOUNT, 2) if mileage > 0 else EXTRA_AMOUNT
+            t.rate_per_km_used = None
+            t.fuel_price_used = new_fuel
+        t.amount = new_amount
+        t.calculated_amount = new_amount
+    db.commit()
+
+    return {"ok": True, "fuel_price": new_fuel, "rate_per_km": new_rate, "recalculated": len(pending_trips)}
 
 
 # ── Mileage / home location ───────────────────────────────────────────────────
