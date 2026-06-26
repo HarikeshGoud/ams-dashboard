@@ -91,6 +91,16 @@ def delete_school(sid: int, db: Session = Depends(get_db), _=Depends(get_current
     return {"ok": True}
 
 
+@router.patch("/{sid}/coords")
+def update_school_coords(sid: int, lat: float, lng: float, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    s = db.query(School).filter(School.id == sid).first()
+    if not s: raise HTTPException(404, "Not found")
+    s.latitude = lat
+    s.longitude = lng
+    db.commit()
+    return {"ok": True, "id": sid, "latitude": lat, "longitude": lng}
+
+
 @router.post("/sync-coords-from-reports")
 def sync_coords_from_reports(db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Update school lat/lng from the most recent field report GPS submitted at that school."""
