@@ -8,6 +8,7 @@ const CONDITION_LABEL = { working: '✅ Working', not_working: '❌ Not Working'
 function LogVisitModal({ onClose, onSaved, employeeId }) {
   const today = new Date().toISOString().slice(0, 10)
   const [schools, setSchools] = useState([])
+  const [stockItems, setStockItems] = useState([])
   const [form, setForm] = useState({
     school_id: '',
     visit_date: today,
@@ -28,6 +29,7 @@ function LogVisitModal({ onClose, onSaved, employeeId }) {
 
   useEffect(() => {
     api.get('/api/schools/?limit=300').then(r => setSchools(r.data?.items || r.data || []))
+    api.get('/api/stock/items').then(r => setStockItems(r.data || []))
   }, [])
 
   function set(field, val) { setForm(f => ({ ...f, [field]: val })) }
@@ -135,8 +137,24 @@ function LogVisitModal({ onClose, onSaved, employeeId }) {
         </div>
 
         <div className="form-group" style={{ marginBottom: 10 }}>
-          <label>Spares Used</label>
-          <input value={form.spares_used} onChange={e => set('spares_used', e.target.value)} placeholder="e.g. Feed pump, membrane 4040…" />
+          <label>Spares Used (select from stock)</label>
+          <select onChange={e => {
+            if (!e.target.value) return
+            const item = stockItems.find(s => String(s.id) === e.target.value)
+            if (!item) return
+            const cur = form.spares_used ? form.spares_used + ', ' + item.name : item.name
+            set('spares_used', cur)
+            e.target.value = ''
+          }}>
+            <option value="">+ Add spare from stock…</option>
+            {stockItems.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          {form.spares_used && (
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text)', background: 'var(--surface2)', padding: '6px 10px', borderRadius: 6 }}>
+              {form.spares_used} <span style={{ cursor: 'pointer', color: 'var(--red)', marginLeft: 8 }} onClick={() => set('spares_used', '')}>✕ clear</span>
+            </div>
+          )}
+          <input style={{ marginTop: 6 }} value={form.spares_used} onChange={e => set('spares_used', e.target.value)} placeholder="Or type manually…" />
         </div>
 
         <div className="form-group" style={{ marginBottom: 10 }}>

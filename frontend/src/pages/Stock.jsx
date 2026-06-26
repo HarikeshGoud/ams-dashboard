@@ -4,6 +4,8 @@ import api from '../api/axios'
 export default function Stock() {
   const [items, setItems] = useState([])
   const [ledger, setLedger] = useState([])
+  const [employees, setEmployees] = useState([])
+  const [schools, setSchools] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null) // 'add-item' | 'edit-item' | 'receive' | 'transfer' | 'issue'
   const [editItem, setEditItem] = useState(null)
@@ -13,9 +15,20 @@ export default function Stock() {
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
+  const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
+
   function load() {
-    Promise.all([api.get('/api/stock/items'), api.get('/api/stock/ledger')]).then(([it, lg]) => {
-      setItems(it.data); setLedger(lg.data); setLoading(false)
+    Promise.all([
+      api.get('/api/stock/items'),
+      api.get('/api/stock/ledger'),
+      api.get('/api/employees/'),
+      api.get('/api/schools/?limit=200'),
+    ]).then(([it, lg, emp, sch]) => {
+      setItems(it.data)
+      setLedger(lg.data)
+      setEmployees(emp.data || [])
+      setSchools(sch.data?.items || sch.data || [])
+      setLoading(false)
     })
   }
 
@@ -136,8 +149,17 @@ export default function Stock() {
             <form onSubmit={saveItem}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Name *</label><input required value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})} /></div>
-                <div className="form-group"><label>Category</label><input value={itemForm.category} onChange={e => setItemForm({...itemForm, category: e.target.value})} /></div>
-                <div className="form-group"><label>Unit</label><input value={itemForm.unit} onChange={e => setItemForm({...itemForm, unit: e.target.value})} /></div>
+                <div className="form-group"><label>Category</label>
+                  <select value={itemForm.category} onChange={e => setItemForm({...itemForm, category: e.target.value})}>
+                    <option value="">— Select —</option>
+                    {STOCK_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group"><label>Unit</label>
+                  <select value={itemForm.unit} onChange={e => setItemForm({...itemForm, unit: e.target.value})}>
+                    {['pcs','nos','ltrs','kgs','mtrs','sets','rolls'].map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
                 <div className="form-group"><label>Min Qty</label><input type="number" value={itemForm.min_qty} onChange={e => setItemForm({...itemForm, min_qty: e.target.value})} /></div>
                 <div className="form-group"><label>Cost/Unit (₹)</label><input type="number" value={itemForm.unit_cost} onChange={e => setItemForm({...itemForm, unit_cost: e.target.value})} /></div>
               </div>
@@ -164,13 +186,25 @@ export default function Stock() {
                   </select>
                 </div>
                 <div className="form-group"><label>Quantity *</label><input required type="number" min="1" value={ledgerForm.quantity} onChange={e => setLedgerForm({...ledgerForm, quantity: e.target.value})} /></div>
-                <div className="form-group"><label>{modal === 'receive' ? 'Seller' : 'Person'}</label><input value={ledgerForm.person} onChange={e => setLedgerForm({...ledgerForm, person: e.target.value})} /></div>
+                <div className="form-group"><label>{modal === 'receive' ? 'Received By' : 'Issued To (Employee)'}</label>
+                  <select value={ledgerForm.person} onChange={e => setLedgerForm({...ledgerForm, person: e.target.value})}>
+                    <option value="">— Select Employee —</option>
+                    {employees.map(e => <option key={e.id} value={e.name}>{e.name} ({e.employee_code})</option>)}
+                  </select>
+                </div>
                 {modal === 'receive' && <>
                   <div className="form-group"><label>Buy Price (₹)</label><input type="number" value={ledgerForm.buy_price} onChange={e => setLedgerForm({...ledgerForm, buy_price: e.target.value})} /></div>
                   <div className="form-group"><label>Logistics 1 (Mfr→Office)</label><input type="number" value={ledgerForm.logistics1} onChange={e => setLedgerForm({...ledgerForm, logistics1: e.target.value})} /></div>
                   <div className="form-group"><label>Logistics 2 (Office→Tech)</label><input type="number" value={ledgerForm.logistics2} onChange={e => setLedgerForm({...ledgerForm, logistics2: e.target.value})} /></div>
                 </>}
-                {modal === 'issue' && <div className="form-group form-full"><label>School / Dest.</label><input value={ledgerForm.school_dest} onChange={e => setLedgerForm({...ledgerForm, school_dest: e.target.value})} /></div>}
+                {modal === 'issue' && (
+                  <div className="form-group form-full"><label>School / Destination</label>
+                    <select value={ledgerForm.school_dest} onChange={e => setLedgerForm({...ledgerForm, school_dest: e.target.value})}>
+                      <option value="">— Select School —</option>
+                      {schools.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="form-group form-full"><label>Note</label><input value={ledgerForm.note} onChange={e => setLedgerForm({...ledgerForm, note: e.target.value})} /></div>
               </div>
               <div className="mt-16 flex gap-8">
