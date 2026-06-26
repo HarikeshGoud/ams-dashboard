@@ -23,14 +23,20 @@ class TaskCreate(BaseModel):
 
 def _fmt(t: Task):
     school_name = None
+    school_lat = None
+    school_lng = None
     if t.school_id and hasattr(t, 'school') and t.school:
         school_name = t.school.name
+        school_lat  = t.school.latitude
+        school_lng  = t.school.longitude
     return {
         "id": t.id, "title": t.title, "description": t.description,
         "assigned_to_id": t.assigned_to_id,
         "assigned_to_name": t.assigned_to.name if t.assigned_to else None,
         "school_id": t.school_id,
         "school_name": school_name,
+        "school_lat": school_lat,
+        "school_lng": school_lng,
         "priority": t.priority, "status": t.status,
         "due_date": t.due_date.isoformat() if t.due_date else None,
         "created_at": t.created_at.isoformat() if t.created_at else None,

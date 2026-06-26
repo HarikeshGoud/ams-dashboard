@@ -17,6 +17,8 @@ class Employee(Base):
     is_active      = Column(Boolean, default=True)
     password_hash  = Column(String(255), nullable=True)
     base_salary    = Column(Float, default=10000.0, nullable=True)
+    bike_mileage   = Column(Float, default=45.0, nullable=True)   # km per litre
+    home_location  = Column(String(300), nullable=True)           # home address text
 
     mandal         = relationship("Mandal", back_populates="employees")
     mandals        = relationship("Mandal", secondary="employee_mandals", backref="technicians")
