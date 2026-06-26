@@ -25,3 +25,8 @@ api.interceptors.response.use(
 )
 
 export default api
+
+// Ping backend every 10 mins to prevent Render free tier sleep
+setInterval(() => {
+  fetch('https://ams-dashboard-twu7.onrender.com/').catch(() => {})
+}, 600000)
