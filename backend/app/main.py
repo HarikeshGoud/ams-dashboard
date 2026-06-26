@@ -11,6 +11,7 @@ from . import models  # ensure all models are registered
 from .routers import auth, employees, clients, schools, visits, complaints
 from .routers import stock, billing, salary, attendance, tasks, travel, dashboard, mandals, field_reports
 from .routers import notifications, allowances, salary_overrides
+from .routers import amc_reports
 
 
 def _auto_generate_daily_tasks():
@@ -111,6 +112,7 @@ app.include_router(field_reports.router)
 app.include_router(notifications.router)
 app.include_router(allowances.router)
 app.include_router(salary_overrides.router)
+app.include_router(amc_reports.router)
 
 @app.get("/")
 def root():

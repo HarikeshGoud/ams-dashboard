@@ -10,7 +10,7 @@ import Employees from './pages/Employees'
 import Clients from './pages/Clients'
 import Schools from './pages/Schools'
 import Visits from './pages/Visits'
-import Complaints from './pages/Complaints'
+import AMCReports from './pages/AMCReports'
 import Stock from './pages/Stock'
 import Billing from './pages/Billing'
 import Salary from './pages/Salary'
@@ -103,7 +103,7 @@ export default function App() {
         <Route path="clients"      element={<Clients />} />
         <Route path="schools"      element={<Schools />} />
         <Route path="visits"       element={<Visits />} />
-        <Route path="complaints"   element={<Complaints />} />
+        <Route path="amc-reports"  element={<AMCReports />} />
         <Route path="stock"        element={<Stock />} />
         <Route path="billing"      element={<Billing />} />
         <Route path="salary"       element={<Salary />} />

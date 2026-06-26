@@ -6,7 +6,7 @@ const NAV = [
   { to: '/clients',    icon: '🏢', label: 'Clients'         },
   { to: '/schools',    icon: '🏫', label: 'Schools / Sites' },
   { to: '/visits',     icon: '📋', label: 'Visits'          },
-  { to: '/complaints', icon: '🔴', label: 'Complaints'      },
+  { to: '/amc-reports', icon: '📋', label: 'AMC Reports'     },
   { to: '/stock',      icon: '📦', label: 'Stock'           },
   { to: '/billing',    icon: '💰', label: 'Billing'         },
   { to: '/salary',     icon: '🧾', label: 'Salary'          },
