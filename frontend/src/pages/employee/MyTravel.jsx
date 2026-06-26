@@ -408,7 +408,7 @@ export default function MyTravel() {
 
   function load() {
     api.get('/api/travel/')
-      .then(r => { setTrips(r.data); setLoading(false) })
+      .then(r => { setTrips(r.data.filter(t => t.trip_type === 'auto')); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
