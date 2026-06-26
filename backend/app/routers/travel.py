@@ -250,25 +250,17 @@ async def auto_trip_from_reports(
     rate_per_km = (fuel_row.rate_per_km or 0.0) if fuel_row else 0.0
     mileage = emp.bike_mileage or 45.0
 
-    # Build waypoints: use report GPS if available, fallback to school coords
+    # Build waypoints from proof GPS only — no fallback to school coords
     from ..models.school import School
     waypoints = []
     seen_school_ids = set()
     for r in reports:
         if r.school_id in seen_school_ids:
-            continue   # skip duplicate school visits
+            continue
         seen_school_ids.add(r.school_id)
 
-        lat, lng = r.latitude, r.longitude
-
-        # Fallback: use school's saved coordinates
-        if (lat is None or lng is None) and r.school_id:
-            sch = db.query(School).filter(School.id == r.school_id).first()
-            if sch and sch.latitude and sch.longitude:
-                lat, lng = sch.latitude, sch.longitude
-
-        if lat is None or lng is None:
-            continue   # no GPS at all for this visit — skip
+        if r.latitude is None or r.longitude is None:
+            continue   # proof had no GPS — skip
 
         school_name = None
         if r.school_id:
@@ -277,8 +269,8 @@ async def auto_trip_from_reports(
 
         waypoints.append({
             "label": school_name or f"Visit {len(waypoints)+1}",
-            "lat": lat,
-            "lng": lng,
+            "lat": r.latitude,
+            "lng": r.longitude,
             "school_id": r.school_id,
         })
 
