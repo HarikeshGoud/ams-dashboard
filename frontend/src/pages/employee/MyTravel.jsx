@@ -48,6 +48,7 @@ function LogTripModal({ onClose, onSaved }) {
   const [calculating, setCalculating] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [pinning, setPinning] = useState(null)   // index of school being GPS-pinned
 
   useEffect(() => {
     // Load profile + fuel price + today's tasks
@@ -55,7 +56,7 @@ function LogTripModal({ onClose, onSaved }) {
       api.get('/api/travel/my-profile'),
       api.get('/api/travel/fuel-settings'),
       api.get('/api/tasks/my-tasks'),
-    ]).then(([p, f, t]) => {
+    ]).then(async ([p, f, t]) => {
       setProfile(p.data)
       setFuelPrice(f.data.fuel_price)
       setForm(prev => ({
@@ -63,14 +64,22 @@ function LogTripModal({ onClose, onSaved }) {
         from_location: p.data.home_location || '',
         mileage: p.data.bike_mileage || 45,
       }))
-        // For schools without saved coordinates, geocode them on-the-fly
+      // For schools without saved coordinates, geocode them on-the-fly using mandal + address
       const tasks = t.data.filter(task => task.school_id)
       const resolved = await Promise.all(tasks.map(async task => {
         let lat = task.school_lat
         let lng = task.school_lng
         if (!lat || !lng) {
-          const coords = await geocode(task.school_name || task.title)
-          if (coords) { lat = coords.lat; lng = coords.lng }
+          // Try with mandal/address context for better accuracy
+          const searchTerms = [
+            task.school_address,
+            task.school_mandal ? `${task.school_name}, ${task.school_mandal}` : null,
+            task.school_name,
+          ].filter(Boolean)
+          for (const term of searchTerms) {
+            const coords = await geocode(term)
+            if (coords) { lat = coords.lat; lng = coords.lng; break }
+          }
         }
         return {
           label: task.school_name || task.title,
@@ -88,6 +97,27 @@ function LogTripModal({ onClose, onSaved }) {
 
   function toggleSchool(idx) {
     setTodaySchools(prev => prev.map((s, i) => i === idx ? { ...s, selected: !s.selected } : s))
+  }
+
+  function pinMyLocation(idx) {
+    if (!navigator.geolocation) { setError('GPS not supported on this device'); return }
+    setPinning(idx)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        const school = todaySchools[idx]
+        try {
+          await api.patch(`/api/schools/${school.school_id}/coords`, null, { params: { lat, lng } })
+          setTodaySchools(prev => prev.map((s, i) => i === idx ? { ...s, lat, lng, hasCoords: true } : s))
+        } catch (e) {
+          setError('Could not save GPS. Try again.')
+        }
+        setPinning(null)
+      },
+      () => { setError('Could not get GPS. Enable location on your phone.'); setPinning(null) },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
   }
 
   async function geocodeStart() {
@@ -228,29 +258,45 @@ function LogTripModal({ onClose, onSaved }) {
               </div>
             ) : (
               todaySchools.map((s, i) => (
-                <div key={i}
-                  onClick={() => s.hasCoords && toggleSchool(i)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 8, marginBottom: 6,
-                    cursor: s.hasCoords ? 'pointer' : 'not-allowed',
-                    opacity: s.hasCoords ? 1 : 0.5,
-                    border: `1.5px solid ${s.selected ? 'var(--accent)' : s.hasCoords ? 'var(--border)' : 'var(--red)'}`,
-                    background: s.selected ? 'rgba(56,189,248,.1)' : 'var(--surface2)',
-                  }}>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: 4,
-                    border: `2px solid ${s.selected ? 'var(--accent)' : 'var(--border)'}`,
-                    background: s.selected ? 'var(--accent)' : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0
-                  }}>{s.selected ? '✓' : ''}</div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>🏫 {s.label}</div>
-                    {s.hasCoords
-                      ? <div style={{ fontSize: 10, color: 'var(--muted)' }}>📍 {s.lat?.toFixed(4)}, {s.lng?.toFixed(4)}</div>
-                      : <div style={{ fontSize: 10, color: 'var(--red)' }}>⚠️ No coordinates — ask admin to run geocode script</div>
-                    }
+                <div key={i} style={{
+                  borderRadius: 8, marginBottom: 6,
+                  border: `1.5px solid ${s.selected ? 'var(--accent)' : s.hasCoords ? 'var(--border)' : 'rgba(251,191,36,.5)'}`,
+                  background: s.selected ? 'rgba(56,189,248,.1)' : 'var(--surface2)',
+                  overflow: 'hidden',
+                }}>
+                  <div
+                    onClick={() => s.hasCoords && toggleSchool(i)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: s.hasCoords ? 'pointer' : 'default' }}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 4, flexShrink: 0,
+                      border: `2px solid ${s.selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: s.selected ? 'var(--accent)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12,
+                    }}>{s.selected ? '✓' : ''}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>🏫 {s.label}</div>
+                      {s.hasCoords
+                        ? <div style={{ fontSize: 10, color: 'var(--green)' }}>📍 {s.lat?.toFixed(5)}, {s.lng?.toFixed(5)}</div>
+                        : <div style={{ fontSize: 10, color: 'var(--yellow)' }}>⚠️ No GPS — tap button below to pin location</div>
+                      }
+                    </div>
                   </div>
+                  {!s.hasCoords && (
+                    <div style={{ padding: '0 12px 10px' }}>
+                      <button
+                        onClick={() => pinMyLocation(i)}
+                        disabled={pinning === i}
+                        style={{
+                          width: '100%', padding: '7px 0', borderRadius: 7, border: 'none', cursor: 'pointer',
+                          background: 'rgba(251,191,36,.18)', color: '#fbbf24', fontWeight: 700, fontSize: 12,
+                        }}>
+                        {pinning === i ? '📡 Getting GPS…' : "📍 I'm Here — Pin This School"}
+                      </button>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, textAlign: 'center' }}>
+                        Be at the school, then tap. Saves permanently.
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}
