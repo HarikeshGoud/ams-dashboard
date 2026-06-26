@@ -121,7 +121,7 @@ export default function Billing() {
                     {/* Grouped stock picker */}
                     <div style={{ marginBottom: 6 }}>
                       <select onChange={e => pickStockItem(i, e.target.value)} defaultValue=""
-                        style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 6, padding: '6px 8px', color: 'var(--text)', fontSize: 12 }}>
+                        style={{ width: '100%', borderRadius: 6, padding: '6px 8px', fontSize: 12 }}>
                         <option value="">📋 Pick from approved price list (auto-fills price)…</option>
                         <optgroup label={`── ${CAT_A} ──`}>
                           {stockItems.filter(s => s.category === CAT_A).map(s => (

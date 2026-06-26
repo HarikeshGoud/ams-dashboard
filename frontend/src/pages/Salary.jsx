@@ -118,11 +118,11 @@ export default function Salary() {
         <>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <select value={month} onChange={e => setMonth(+e.target.value)}
-              style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+              style={{ padding: '0.5rem 1rem', borderRadius: 8, fontSize: 14 }}>
               {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
             <select value={year} onChange={e => setYear(+e.target.value)}
-              style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14 }}>
+              style={{ padding: '0.5rem 1rem', borderRadius: 8, fontSize: 14 }}>
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             {data && <span style={{ color: '#666', fontSize: 13 }}>Working days: <b>{data.working_days}</b></span>}
@@ -151,19 +151,18 @@ export default function Salary() {
             const hasOverrides = data.technicians.some(t => overrides[t.employee_id])
             return (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                <TotalCard label="Total Employees" value={data.technicians.length} sub="technicians this month" color="#475569" bg="#f8fafc" />
-                <TotalCard label="Total Calc Salary" value={`₹${Number(totalCalc).toLocaleString('en-IN')}`} sub="based on attendance" color="#2563eb" bg="#eff6ff" />
+                <TotalCard label="Total Employees" value={data.technicians.length} sub="technicians this month" accent="var(--muted)" />
+                <TotalCard label="Total Calc Salary" value={`₹${Number(totalCalc).toLocaleString('en-IN')}`} sub="based on attendance" accent="var(--accent)" />
                 {hasOverrides
-                  ? <TotalCard label="Total Final Payout" value={`₹${Number(totalFinal).toLocaleString('en-IN')}`} sub="after overrides applied" color="#7c3aed" bg="#f5f3ff" big />
-                  : <TotalCard label="Total Final Payout" value={`₹${Number(totalFinal).toLocaleString('en-IN')}`} sub="no overrides this month" color="#16a34a" bg="#dcfce7" big />
+                  ? <TotalCard label="Total Final Payout" value={`₹${Number(totalFinal).toLocaleString('en-IN')}`} sub="after overrides applied" accent="var(--purple)" big />
+                  : <TotalCard label="Total Final Payout" value={`₹${Number(totalFinal).toLocaleString('en-IN')}`} sub="no overrides this month" accent="var(--green)" big />
                 }
                 {hasOverrides && (
                   <TotalCard
                     label="Override Difference"
                     value={`${totalFinal >= totalCalc ? '+' : ''}₹${Number(totalFinal - totalCalc).toLocaleString('en-IN')}`}
                     sub={totalFinal >= totalCalc ? 'extra paid vs calculated' : 'saved vs calculated'}
-                    color={totalFinal >= totalCalc ? '#b91c1c' : '#16a34a'}
-                    bg={totalFinal >= totalCalc ? '#fee2e2' : '#dcfce7'}
+                    accent={totalFinal >= totalCalc ? 'var(--red)' : 'var(--green)'}
                   />
                 )}
               </div>
@@ -174,7 +173,7 @@ export default function Salary() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ background: '#f0f4ff', textAlign: 'left' }}>
+                  <tr style={{ background: 'var(--surface2)', textAlign: 'left' }}>
                     {['Employee','Present','Att%','Base Salary','Calc Salary','Final Payout','Override Note','Actions'].map(h => (
                       <th key={h} style={{ padding: '0.6rem 0.8rem', borderBottom: '2px solid #ddd', whiteSpace: 'nowrap', fontSize: 12 }}>{h}</th>
                     ))}
@@ -292,12 +291,12 @@ export default function Salary() {
   )
 }
 
-function TotalCard({ label, value, sub, color, bg, big }) {
+function TotalCard({ label, value, sub, accent, big }) {
   return (
-    <div style={{ background: bg, border: `1px solid ${color}33`, borderRadius: 12, padding: '1rem 1.25rem' }}>
-      <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: big ? 22 : 18, fontWeight: 800, color }}>{value}</div>
-      <div style={{ fontSize: 11, color: '#aaa', marginTop: 3 }}>{sub}</div>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: `3px solid ${accent}`, borderRadius: 12, padding: '1rem 1.25rem' }}>
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: big ? 22 : 18, fontWeight: 800, color: accent }}>{value}</div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>{sub}</div>
     </div>
   )
 }
@@ -317,7 +316,7 @@ function AllowancePanel({ allowances, onReview }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       {allowances.map(req => (
-        <div key={req.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0.9rem 1rem' }}>
+        <div key={req.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.9rem 1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div><b>{req.employee_name}</b><span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>{req.date}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

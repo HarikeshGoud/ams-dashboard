@@ -95,8 +95,8 @@ export default function MySalary() {
                 return (
                   <div key={`${h.month}-${h.year}`} onClick={() => setSelected(idx)}
                     style={{ padding: '0.75rem 1rem', borderRadius: 10, cursor: 'pointer',
-                      border: isActive ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                      background: isActive ? '#eff6ff' : 'var(--surface,#fff)',
+                      border: isActive ? '2px solid #2563eb' : '1px solid var(--border)',
+                      background: isActive ? 'var(--surface2)' : 'var(--surface,#fff)',
                       transition: 'all 0.15s' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{MONTHS[h.month]} {h.year}</div>
@@ -117,19 +117,19 @@ export default function MySalary() {
 
             {/* Detail panel */}
             {cur && s && (
-              <div style={{ background: 'var(--surface,#fff)', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem' }}>
+              <div style={{ background: 'var(--surface,#fff)', border: '1px solid var(--border)', borderRadius: 12, padding: '1.25rem' }}>
                 <h3 style={{ margin: '0 0 1rem', fontSize: 17 }}>{MONTHS[cur.month]} {cur.year}</h3>
 
                 {/* Salary breakdown */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                  <SalaryCard label="Base Salary"    value={`₹${Number(s.base_salary).toLocaleString('en-IN')}`}       color="#475569" bg="#f8fafc" />
-                  <SalaryCard label="Working Days"   value={s.working_days}                                              color="#475569" bg="#f8fafc" />
+                  <SalaryCard label="Base Salary"    value={`₹${Number(s.base_salary).toLocaleString('en-IN')}`}       color="#475569" bg="var(--surface2)" />
+                  <SalaryCard label="Working Days"   value={s.working_days}                                              color="#475569" bg="var(--surface2)" />
                   <SalaryCard label="Days Present"   value={`${s.present} + ½×${s.half_day} = ${s.effective_days}`}    color="#15803d" bg="#dcfce7" />
-                  <SalaryCard label="Attendance"     value={`${s.attendance_pct}%`}                                     color={pctColor(s.attendance_pct)} bg="#f0f4ff" />
+                  <SalaryCard label="Attendance"     value={`${s.attendance_pct}%`}                                     color={pctColor(s.attendance_pct)} bg="var(--surface2)" />
                 </div>
 
                 {/* Salary formula */}
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0.9rem 1rem', marginBottom: '1rem' }}>
+                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '0.9rem 1rem', marginBottom: '1rem' }}>
                   <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>Salary Calculation</div>
                   <div style={{ fontSize: 13, color: '#475569' }}>
                     ₹{Number(s.base_salary).toLocaleString()} × {s.effective_days} ÷ {s.working_days} =&nbsp;
@@ -150,7 +150,7 @@ export default function MySalary() {
                     <span>Attendance</span>
                     <span>{s.attendance_pct}%</span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 4, background: '#e2e8f0', overflow: 'hidden' }}>
+                  <div style={{ height: 8, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${Math.min(s.attendance_pct, 100)}%`,
                       background: s.attendance_pct >= 80 ? '#22c55e' : s.attendance_pct >= 50 ? '#f59e0b' : '#ef4444',
                       borderRadius: 4, transition: 'width 0.4s' }} />
@@ -167,7 +167,7 @@ export default function MySalary() {
 
 function SalaryCard({ label, value, color, bg }) {
   return (
-    <div style={{ background: bg, border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.7rem 0.9rem' }}>
+    <div style={{ background: bg, border: '1px solid var(--border)', borderRadius: 8, padding: '0.7rem 0.9rem' }}>
       <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>{label}</div>
       <div style={{ fontWeight: 700, fontSize: 14, color }}>{value}</div>
     </div>

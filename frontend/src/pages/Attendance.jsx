@@ -132,15 +132,13 @@ export default function Attendance() {
       <h2 style={{ marginBottom: '1rem' }}>Attendance</h2>
 
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={month} onChange={e => setMonth(+e.target.value)}
-          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14, background: 'var(--surface)' }}>
+        <select value={month} onChange={e => setMonth(+e.target.value)}>
           {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
-        <select value={year} onChange={e => setYear(+e.target.value)}
-          style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #ccc', fontSize: 14, background: 'var(--surface)' }}>
+        <select value={year} onChange={e => setYear(+e.target.value)}>
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        {summary && <span style={{ fontSize: 13, color: '#888' }}>Working days: <b>{summary.working_days}</b></span>}
+        {summary && <span style={{ fontSize: 13, color: 'var(--muted)' }}>Working days: <b style={{ color: 'var(--text)' }}>{summary.working_days}</b></span>}
         {summary && summary.technicians.length > 0 && (
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
             <button onClick={() => exportAttendanceExcel(summary.technicians, month, year, summary.working_days)}
@@ -170,8 +168,8 @@ export default function Attendance() {
               return (
                 <div key={emp.employee_id} onClick={() => selectTech(emp.employee_id)}
                   style={{ padding: '0.9rem 1rem', borderRadius: 10, cursor: 'pointer',
-                    border: isActive ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                    background: isActive ? '#eff6ff' : 'var(--surface,#fff)', transition: 'all 0.15s' }}>
+                    border: isActive ? '2px solid #2563eb' : '1px solid var(--border)',
+                    background: isActive ? 'var(--surface2)' : 'var(--surface,#fff)', transition: 'all 0.15s' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{emp.employee_name}</div>
@@ -194,7 +192,7 @@ export default function Attendance() {
 
           {/* Detail panel */}
           {selected && selectedEmp && (
-            <div style={{ background: 'var(--surface,#fff)', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem', position: 'relative' }}>
+            <div style={{ background: 'var(--surface,#fff)', border: '1px solid var(--border)', borderRadius: 12, padding: '1.25rem', position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 17 }}>{selectedEmp.employee_name}</h3>
@@ -210,17 +208,17 @@ export default function Attendance() {
                 <StatCard label="Half Day"    value={selectedEmp.half_day}  color="#a16207" bg="#fef9c3" />
                 <StatCard label="Absent"      value={selectedEmp.absent}    color="#b91c1c" bg="#fee2e2" />
                 <StatCard label="Att %"       value={`${selectedEmp.attendance_pct}%`}
-                  color={selectedEmp.attendance_pct >= 80 ? '#15803d' : '#b91c1c'} bg="#f0f4ff" />
-                <StatCard label="Calc Salary" value={`₹${Number(selectedEmp.calculated_salary).toLocaleString()}`} color="#2563eb" bg="#eff6ff" />
+                  color={selectedEmp.attendance_pct >= 80 ? '#15803d' : '#b91c1c'} bg="var(--surface2)" />
+                <StatCard label="Calc Salary" value={`₹${Number(selectedEmp.calculated_salary).toLocaleString()}`} color="#2563eb" bg="var(--surface2)" />
               </div>
 
               {/* Base salary */}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: '1.25rem', padding: '0.75rem', background: '#f8fafc', borderRadius: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: '1.25rem', padding: '0.75rem', background: 'var(--surface2)', borderRadius: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, color: '#555' }}>Base Salary:</span>
                 <b style={{ fontSize: 14 }}>₹{Number(selectedEmp.base_salary).toLocaleString()}</b>
                 <input type="number" placeholder="New amount" value={baseSalaryEdit}
                   onChange={e => { setBaseSalaryEdit(e.target.value); setSaveMsg('') }}
-                  style={{ width: 110, padding: '0.3rem 0.5rem', borderRadius: 6, border: '1px solid #ccc', fontSize: 13 }} />
+                  style={{ width: 110, padding: '0.3rem 0.5rem', borderRadius: 6, border: '1px solid var(--border)', fontSize: 13 }} />
                 <button onClick={() => saveBaseSalary(selected)} disabled={saving || !baseSalaryEdit}
                   style={{ padding: '0.3rem 0.8rem', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13,
                     opacity: (!baseSalaryEdit || saving) ? 0.6 : 1 }}>
@@ -253,7 +251,7 @@ export default function Attendance() {
                   {/* Popup for marking */}
                   {popup && (
                     <div ref={popupRef} style={{
-                      position: 'absolute', zIndex: 100, background: '#fff', border: '1px solid #e2e8f0',
+                      position: 'absolute', zIndex: 100, background: 'var(--surface)', border: '1px solid var(--border)',
                       borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '0.75rem',
                       minWidth: 180, top: 'auto', left: '50%', transform: 'translateX(-50%)'
                     }}>
@@ -270,7 +268,7 @@ export default function Attendance() {
                           <button key={k} onClick={() => markAttendance(k)}
                             disabled={markingStatus !== null}
                             style={{ padding: '0.4rem 0.8rem', borderRadius: 6, border: `1px solid ${v.color}`,
-                              background: popup.currentStatus === k ? v.bg : '#fff',
+                              background: popup.currentStatus === k ? v.bg : 'var(--surface)',
                               color: v.color, fontWeight: popup.currentStatus === k ? 700 : 400,
                               cursor: 'pointer', textAlign: 'left', fontSize: 13,
                               opacity: markingStatus ? 0.6 : 1 }}>
@@ -279,7 +277,7 @@ export default function Attendance() {
                         ))}
                       </div>
                       <button onClick={() => setPopup(null)}
-                        style={{ marginTop: 8, width: '100%', padding: '0.3rem', borderRadius: 6, border: '1px solid #e2e8f0', background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#888' }}>
+                        style={{ marginTop: 8, width: '100%', padding: '0.3rem', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#888' }}>
                         Cancel
                       </button>
                     </div>
@@ -294,7 +292,7 @@ export default function Attendance() {
                       </span>
                     ))}
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#f1f5f9', border: '1px solid #cbd5e1' }} />
+                      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: 'var(--surface2)', border: '1px solid var(--border)' }} />
                       No record
                     </span>
                   </div>
@@ -324,8 +322,8 @@ function CalendarGrid({ calDays, recordByDate, onDayClick }) {
             style={{
               aspectRatio: '1', display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', borderRadius: 6,
-              background: s ? s.bg : '#f1f5f9',
-              border: isSunday && !rec ? '1px dashed #94a3b8' : `1px solid ${s ? s.color+'55' : '#cbd5e1'}`,
+              background: s ? s.bg : 'var(--surface2)',
+              border: isSunday && !rec ? '1px dashed #94a3b8' : `1px solid ${s ? s.color+'55' : 'var(--border)'}`,
               color: s ? s.color : isSunday ? '#94a3b8' : '#64748b',
               fontWeight: s ? 700 : 400,
               cursor: 'pointer',

@@ -113,7 +113,7 @@ export default function DeskTravel() {
       {/* Filter */}
       <div style={{ marginBottom: 12 }}>
         <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}
-          style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}>
+          style={{ padding: '6px 10px', borderRadius: 8, fontSize: 13 }}>
           <option value="">All Technicians</option>
           {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
         </select>

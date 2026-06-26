@@ -205,7 +205,7 @@ export default function Tasks() {
               background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
           />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            style={{ padding: '7px 10px', fontSize: 13, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}>
+            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 8 }}>
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
             <option value="in_progress">In Progress</option>
@@ -213,7 +213,7 @@ export default function Tasks() {
             <option value="completed">Completed</option>
           </select>
           <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
-            style={{ padding: '7px 10px', fontSize: 13, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}>
+            style={{ padding: '7px 10px', fontSize: 13, borderRadius: 8 }}>
             <option value="">All Priorities</option>
             <option value="high">High</option>
             <option value="medium">Medium</option>
