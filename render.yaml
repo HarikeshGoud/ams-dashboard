@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: ams-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://neondb_owner:npg_uKZr0B6gyCeS@ep-fancy-wildflower-aokefnrg.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+      - key: SECRET_KEY
+        value: ams-super-secret-key-change-in-production
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 1440
+
+  - type: web
+    name: ams-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npx serve -s dist -l $PORT
+    envVars:
+      - key: VITE_API_URL
+        value: https://ams-backend.onrender.com
