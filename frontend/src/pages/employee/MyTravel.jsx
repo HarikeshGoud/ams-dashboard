@@ -48,6 +48,7 @@ function LogTripModal({ onClose, onSaved }) {
   const [calculating, setCalculating] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [pinning, setPinning] = useState(null)   // index of school being GPS-pinned
 
   useEffect(() => {
     // Load profile + fuel price + today's tasks
@@ -96,6 +97,27 @@ function LogTripModal({ onClose, onSaved }) {
 
   function toggleSchool(idx) {
     setTodaySchools(prev => prev.map((s, i) => i === idx ? { ...s, selected: !s.selected } : s))
+  }
+
+  function pinMyLocation(idx) {
+    if (!navigator.geolocation) { setError('GPS not supported on this device'); return }
+    setPinning(idx)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        const school = todaySchools[idx]
+        try {
+          await api.patch(`/api/schools/${school.school_id}/coords`, null, { params: { lat, lng } })
+          setTodaySchools(prev => prev.map((s, i) => i === idx ? { ...s, lat, lng, hasCoords: true } : s))
+        } catch (e) {
+          setError('Could not save GPS. Try again.')
+        }
+        setPinning(null)
+      },
+      () => { setError('Could not get GPS. Enable location on your phone.'); setPinning(null) },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
   }
 
   async function geocodeStart() {
