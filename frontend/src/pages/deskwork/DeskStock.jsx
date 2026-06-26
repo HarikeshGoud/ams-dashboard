@@ -30,15 +30,9 @@ export default function DeskStock() {
         <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>+ Add Stock</button>
       </div>
 
-      {lowStock.length > 0 && (
-        <div className="alert alert-red" style={{ marginBottom: 14 }}>
-          <span>⚠️</span>
-          <div><b>{lowStock.length} items</b> are running low: {lowStock.map(i => i.name || i.item_name).join(', ')}</div>
-        </div>
-      )}
-
       <input value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="Search stock items…" style={{ marginBottom: 14, display: 'block', width: '100%' }} />
+        placeholder="Search stock items…"
+        style={{ marginBottom: 14, display: 'block', width: '100%', fontSize: 15, padding: '12px 16px' }} />
 
       {loading ? <div className="spinner" /> : (
         <div style={{ overflowX: 'auto' }}>

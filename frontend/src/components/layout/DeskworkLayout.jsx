@@ -4,11 +4,11 @@ import { useAuthStore } from '../../store/authStore'
 import ChangePasswordModal from '../ChangePasswordModal'
 
 const NAV = [
-  { path: '/deskwork',            icon: '🏠', label: 'Dashboard' },
-  { path: '/deskwork/tasks',      icon: '📋', label: 'Tasks'     },
-  { path: '/deskwork/attendance', icon: '📅', label: 'Attendance'},
-  { path: '/deskwork/stock',      icon: '📦', label: 'Stock'     },
-  { path: '/deskwork/travel',     icon: '🚗', label: 'Travel'    },
+  { path: '/deskwork',            icon: '🏠', label: 'Home'       },
+  { path: '/deskwork/tasks',      icon: '📋', label: 'Tasks'      },
+  { path: '/deskwork/attendance', icon: '📅', label: 'Attendance' },
+  { path: '/deskwork/stock',      icon: '📦', label: 'Stock'      },
+  { path: '/deskwork/travel',     icon: '🚗', label: 'Travel'     },
 ]
 
 export default function DeskworkLayout() {
@@ -16,35 +16,34 @@ export default function DeskworkLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [showChangePw, setShowChangePw] = useState(false)
-
-  function handleLogout() { logout(); navigate('/login') }
   const activePath = location.pathname.replace(/\/$/, '') || '/deskwork'
 
+  function handleLogout() { logout(); navigate('/login') }
+
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 70 }}>
       {/* Top bar */}
       <div style={{
         background: 'var(--surface)', borderBottom: '1px solid var(--border)',
-        padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 100
+        padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        position: 'sticky', top: 0, zIndex: 100, gap: 8
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 22 }}>💧</span>
+          <span style={{ fontSize: 20 }}>💧</span>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent2)' }}>AMS Dashboard</div>
-            <div style={{ fontSize: 10, color: 'var(--muted)' }}>
-              Deskwork — {user?.designation || 'Office Staff'}
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent2)' }}>AMS Dashboard</div>
+            <div style={{ fontSize: 10, color: 'var(--muted)' }}>Deskwork — {user?.designation || 'Office Staff'}</div>
           </div>
         </div>
 
-        {/* Nav links (horizontal for desktop) */}
-        <nav style={{ display: 'flex', gap: 4 }}>
+        {/* Desktop nav links */}
+        <nav style={{ display: 'flex', gap: 4, flex: 1, justifyContent: 'center', flexWrap: 'wrap' }}
+          className="deskwork-topnav">
           {NAV.map(n => {
             const isActive = n.path === '/deskwork' ? activePath === '/deskwork' : activePath.startsWith(n.path)
             return (
               <button key={n.path} onClick={() => navigate(n.path)} style={{
-                padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: isActive ? 700 : 400,
+                padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: isActive ? 700 : 400,
                 cursor: 'pointer', background: isActive ? 'rgba(56,189,248,.15)' : 'none',
                 border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                 color: isActive ? 'var(--accent)' : 'var(--muted)'
@@ -55,18 +54,41 @@ export default function DeskworkLayout() {
           })}
         </nav>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
             🖥️ {user?.name}
-            {user?.employee_code && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--muted)' }}>[{user.employee_code}]</span>}
-          </div>
-          <button className="btn btn-outline" style={{ fontSize: 11 }} onClick={() => setShowChangePw(true)}>🔑</button>
-          <button className="btn btn-outline" style={{ fontSize: 11 }} onClick={handleLogout}>Logout</button>
+          </span>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowChangePw(true)}>🔑</button>
+          <button className="btn btn-outline btn-sm" onClick={handleLogout}>Logout</button>
         </div>
       </div>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 20px' }}>
+      {/* Content */}
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px 80px' }}>
         <Outlet />
+      </div>
+
+      {/* Bottom nav — mobile only */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+        background: 'var(--surface)', borderTop: '1px solid var(--border)',
+        display: 'flex', padding: '4px 0'
+      }} className="deskwork-bottomnav">
+        {NAV.map(n => {
+          const isActive = n.path === '/deskwork' ? activePath === '/deskwork' : activePath.startsWith(n.path)
+          return (
+            <button key={n.path} onClick={() => navigate(n.path)} style={{
+              flex: 1, padding: '6px 4px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              background: 'none', border: 'none', cursor: 'pointer',
+              borderTop: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+              color: isActive ? 'var(--accent)' : 'var(--muted)'
+            }}>
+              <span style={{ fontSize: 18 }}>{n.icon}</span>
+              <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 400 }}>{n.label}</span>
+            </button>
+          )
+        })}
       </div>
 
       {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}

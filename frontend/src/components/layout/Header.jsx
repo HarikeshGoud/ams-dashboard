@@ -13,7 +13,7 @@ const TITLES = {
   '/proof-review': 'Proof Review'
 }
 
-export default function Header() {
+export default function Header({ onMenuClick }) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -29,7 +29,6 @@ export default function Header() {
   function loadUnread() {
     api.get('/api/notifications/unread-count').then(r => setUnread(r.data.count || 0)).catch(() => {})
   }
-
   function loadNotifs() {
     api.get('/api/notifications/').then(r => setNotifs(r.data || [])).catch(() => {})
   }
@@ -54,7 +53,6 @@ export default function Header() {
     await api.patch('/api/notifications/mark-all-read').catch(() => {})
     loadNotifs(); loadUnread()
   }
-
   async function markRead(id) {
     await api.patch(`/api/notifications/${id}/read`).catch(() => {})
     setNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
@@ -65,21 +63,30 @@ export default function Header() {
     <>
       <div style={{
         background: 'var(--surface)', borderBottom: '1px solid var(--border)',
-        padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0
+        padding: '10px 16px', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', flexShrink: 0, gap: 8
       }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600 }}>{title}</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+        {/* Left: hamburger + title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <button className="hamburger-btn" onClick={onMenuClick}>☰</button>
+          <h2 style={{ fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {title}
+          </h2>
+        </div>
+
+        {/* Right: user info + actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {/* Date — hidden on mobile */}
+          <span className="hide-mobile" style={{ fontSize: 12, color: 'var(--muted)' }}>
             {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
           </span>
+
           {user && (
-            <span style={{ fontSize: 12, color: 'var(--accent2)', fontWeight: 600 }}>
+            <span style={{ fontSize: 12, color: 'var(--accent2)', fontWeight: 600, whiteSpace: 'nowrap' }}>
               👤 {user.name}
-              {user.employee_code && (
-                <span style={{ marginLeft: 4, color: 'var(--muted)', fontWeight: 400 }}>
-                  [{user.employee_code}]
-                </span>
-              )}
+              <span className="hide-mobile" style={{ marginLeft: 4, color: 'var(--muted)', fontWeight: 400 }}>
+                {user.employee_code ? `[${user.employee_code}]` : ''}
+              </span>
             </span>
           )}
 
@@ -88,7 +95,7 @@ export default function Header() {
             <button onClick={() => setShowNotifs(v => !v)} style={{
               background: showNotifs ? 'rgba(56,189,248,.15)' : 'var(--surface2)',
               border: `1px solid ${showNotifs ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 16,
+              borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 16,
               position: 'relative', lineHeight: 1
             }}>
               🔔
@@ -104,9 +111,10 @@ export default function Header() {
 
             {showNotifs && (
               <div style={{
-                position: 'absolute', right: 0, top: '110%', width: 320, maxHeight: 400,
+                position: 'fixed', right: 12, top: 56,
+                width: 'min(320px, calc(100vw - 24px))', maxHeight: 400,
                 background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
-                boxShadow: '0 8px 32px rgba(0,0,0,.35)', zIndex: 200, overflow: 'hidden',
+                boxShadow: '0 8px 32px rgba(0,0,0,.35)', zIndex: 500, overflow: 'hidden',
                 display: 'flex', flexDirection: 'column'
               }}>
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -126,7 +134,7 @@ export default function Header() {
                       background: n.is_read ? 'transparent' : 'rgba(56,189,248,.06)',
                       cursor: n.is_read ? 'default' : 'pointer'
                     }}>
-                      <div style={{ fontSize: 12, fontWeight: n.is_read ? 400 : 600, color: 'var(--text)' }}>{n.message}</div>
+                      <div style={{ fontSize: 12, fontWeight: n.is_read ? 400 : 600 }}>{n.message}</div>
                       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>
                         {new Date(n.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         {!n.is_read && <span style={{ marginLeft: 8, color: 'var(--accent)', fontWeight: 700 }}>● new</span>}
@@ -138,13 +146,8 @@ export default function Header() {
             )}
           </div>
 
-          <button className="btn btn-outline" style={{ fontSize: 11 }}
-            onClick={() => setShowChangePw(true)}>
-            🔑 Password
-          </button>
-          <button className="btn btn-outline" style={{ fontSize: 11 }} onClick={handleLogout}>
-            Logout
-          </button>
+          <button className="btn btn-outline btn-sm hide-mobile" onClick={() => setShowChangePw(true)}>🔑 Password</button>
+          <button className="btn btn-outline btn-sm" onClick={handleLogout}>Logout</button>
         </div>
       </div>
 

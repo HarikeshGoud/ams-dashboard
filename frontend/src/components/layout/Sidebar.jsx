@@ -12,12 +12,12 @@ const NAV = [
   { to: '/salary',     icon: '🧾', label: 'Salary'          },
   { to: '/attendance', icon: '🗓️', label: 'Attendance'      },
   { to: '/tasks',      icon: '✅', label: 'Tasks'           },
-  { to: '/travel',       icon: '🚗', label: 'Travel'         },
-  { to: '/proof-review', icon: '🔍', label: 'Proof Review'   },
+  { to: '/travel',     icon: '🚗', label: 'Travel'          },
+  { to: '/proof-review', icon: '🔍', label: 'Proof Review'  },
 ]
 
 const linkStyle = ({ isActive }) => ({
-  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+  display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px',
   cursor: 'pointer', borderLeft: `3px solid ${isActive ? 'var(--accent2)' : 'transparent'}`,
   color: isActive ? 'var(--accent2)' : 'var(--muted)',
   fontWeight: isActive ? 600 : 400, fontSize: 13, textDecoration: 'none',
@@ -25,27 +25,36 @@ const linkStyle = ({ isActive }) => ({
   transition: 'all .15s'
 })
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }) {
   return (
-    <div style={{
-      width: 220, background: 'var(--surface)', borderRight: '1px solid var(--border)',
-      display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto'
-    }}>
-      <div style={{ padding: '18px 16px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent2)' }}>💧 AMS Dashboard</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Water Purifier Management</div>
+    <>
+      {/* Overlay for mobile */}
+      <div className={`sidebar-overlay${open ? ' open' : ''}`} onClick={onClose} />
+
+      <div className={`sidebar${open ? ' open' : ''}`}>
+        <div style={{ padding: '16px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent2)' }}>💧 AMS Dashboard</div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>Water Purifier Management</div>
+          </div>
+          {/* Close button — mobile only */}
+          <button onClick={onClose} style={{
+            background: 'var(--surface2)', border: 'none', color: 'var(--muted)',
+            borderRadius: 8, padding: '4px 8px', cursor: 'pointer', fontSize: 16, lineHeight: 1
+          }}>✕</button>
+        </div>
+        <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
+          {NAV.map(n => (
+            <NavLink key={n.to} to={n.to} end={n.to === '/'} style={linkStyle} onClick={onClose}>
+              <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{n.icon}</span>
+              {n.label}
+            </NavLink>
+          ))}
+        </nav>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--muted)' }}>
+          Telangana Water Dept.<br />18 Mandals · 843 Schools
+        </div>
       </div>
-      <nav style={{ flex: 1, padding: '8px 0' }}>
-        {NAV.map(n => (
-          <NavLink key={n.to} to={n.to} end={n.to === '/'} style={linkStyle}>
-            <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{n.icon}</span>
-            {n.label}
-          </NavLink>
-        ))}
-      </nav>
-      <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--muted)' }}>
-        Telangana Water Dept.<br />18 Mandals · 843 Schools
-      </div>
-    </div>
+    </>
   )
 }
