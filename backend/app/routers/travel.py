@@ -39,6 +39,8 @@ def _fmt(t: TravelTrip):
         "calculated_amount": t.calculated_amount,
         "start_lat": t.start_lat,
         "start_lng": t.start_lng,
+        "trip_type": t.trip_type or "manual",
+        "rate_per_km_used": t.rate_per_km_used,
     }
 
 
@@ -82,12 +84,12 @@ class TripCreate(BaseModel):
     notes: Optional[str] = None
     legs: List[RouteLeg]        # ordered list of visit waypoints
 
-class FuelSettingsUpdate(BaseModel):
-    fuel_price: float
 
 class MileageUpdate(BaseModel):
     bike_mileage: float
     home_location: Optional[str] = None
+    home_lat: Optional[float] = None
+    home_lng: Optional[float] = None
 
 
 # ── Fuel settings ─────────────────────────────────────────────────────────────
@@ -96,21 +98,53 @@ class MileageUpdate(BaseModel):
 def get_fuel_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
     row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
     if not row:
-        return {"fuel_price": 105.0, "updated_at": None}
-    return {"fuel_price": row.fuel_price, "updated_at": row.updated_at.isoformat() if row.updated_at else None}
+        return {"fuel_price": 105.0, "rate_per_km": 0.0, "updated_at": None}
+    return {
+        "fuel_price": row.fuel_price,
+        "rate_per_km": row.rate_per_km or 0.0,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+class FuelSettingsUpdate(BaseModel):
+    fuel_price: float
+    rate_per_km: Optional[float] = 0.0
 
 
 @router.post("/fuel-settings")
 def set_fuel_settings(data: FuelSettingsUpdate, db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
     row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
+    new_rate = data.rate_per_km or 0.0
+    new_fuel = data.fuel_price
     if row:
-        row.fuel_price = data.fuel_price
+        row.fuel_price = new_fuel
+        row.rate_per_km = new_rate
         row.set_by = user.id
         row.updated_at = datetime.utcnow()
     else:
-        db.add(FuelSettings(fuel_price=data.fuel_price, set_by=user.id))
+        db.add(FuelSettings(fuel_price=new_fuel, rate_per_km=new_rate, set_by=user.id))
     db.commit()
-    return {"ok": True, "fuel_price": data.fuel_price}
+
+    # Recalculate all pending auto trips with the new rate
+    pending_trips = db.query(TravelTrip).filter(
+        TravelTrip.status == "pending",
+        TravelTrip.trip_type == "auto",
+    ).all()
+    for t in pending_trips:
+        km = float(t.distance_km or 0)
+        mileage = t.mileage_used or 45.0
+        if new_rate > 0:
+            new_amount = round(km * new_rate, 2)
+            t.rate_per_km_used = new_rate
+        else:
+            new_amount = round((km / mileage) * new_fuel + EXTRA_AMOUNT, 2) if mileage > 0 else EXTRA_AMOUNT
+            t.rate_per_km_used = None
+            t.fuel_price_used = new_fuel
+        t.amount = new_amount
+        t.calculated_amount = new_amount
+    db.commit()
+
+    return {"ok": True, "fuel_price": new_fuel, "rate_per_km": new_rate, "recalculated": len(pending_trips)}
 
 
 # ── Mileage / home location ───────────────────────────────────────────────────
@@ -121,8 +155,13 @@ def update_mileage(data: MileageUpdate, db: Session = Depends(get_db), user=Depe
     emp.bike_mileage = data.bike_mileage
     if data.home_location:
         emp.home_location = data.home_location
+    if data.home_lat is not None:
+        emp.home_lat = data.home_lat
+    if data.home_lng is not None:
+        emp.home_lng = data.home_lng
     db.commit()
-    return {"ok": True, "bike_mileage": emp.bike_mileage, "home_location": emp.home_location}
+    return {"ok": True, "bike_mileage": emp.bike_mileage, "home_location": emp.home_location,
+            "home_lat": emp.home_lat, "home_lng": emp.home_lng}
 
 
 @router.get("/my-profile")
@@ -131,6 +170,8 @@ def get_my_profile(db: Session = Depends(get_db), user=Depends(get_current_user)
     return {
         "bike_mileage": emp.bike_mileage or 45.0,
         "home_location": emp.home_location or "",
+        "home_lat": emp.home_lat,
+        "home_lng": emp.home_lng,
     }
 
 
@@ -160,6 +201,155 @@ async def calculate_route(data: RouteCalcRequest):
         total += dist
 
     return {"legs": legs, "total_km": round(total, 2)}
+
+
+# ── Auto-calculate trip from today's geotagged field reports ─────────────────
+
+@router.post("/auto-from-reports")
+async def auto_trip_from_reports(
+    trip_date: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Auto-create or update a travel trip for a technician based on the GPS
+    coordinates embedded in today's field report submissions (geotagged photos).
+    Called automatically after each proof submission.
+    """
+    from ..models.field_report import FieldReport
+    from datetime import date as date_type
+
+    emp_id = employee_id or user.id
+    d = date_type.fromisoformat(trip_date) if trip_date else date_type.today()
+
+    # Only proceed if we have permission
+    if user.role not in ("admin", "deskwork") and user.id != emp_id:
+        raise HTTPException(403, "Not authorized")
+
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+
+    # Get ALL today's reports sorted by submission time (GPS optional)
+    reports = (
+        db.query(FieldReport)
+        .filter(
+            FieldReport.employee_id == emp_id,
+            FieldReport.report_date == d,
+        )
+        .order_by(FieldReport.submitted_at)
+        .all()
+    )
+
+    if not reports:
+        return {"ok": False, "message": "No proof submissions found for today"}
+
+    fuel_row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
+    fuel_price = fuel_row.fuel_price if fuel_row else 105.0
+    rate_per_km = (fuel_row.rate_per_km or 0.0) if fuel_row else 0.0
+    mileage = emp.bike_mileage or 45.0
+
+    # Build waypoints from proof GPS only — no fallback to school coords
+    from ..models.school import School
+    waypoints = []
+    seen_school_ids = set()
+    for r in reports:
+        if r.school_id in seen_school_ids:
+            continue
+        seen_school_ids.add(r.school_id)
+
+        if r.latitude is None or r.longitude is None:
+            continue   # proof had no GPS — skip
+
+        school_name = None
+        if r.school_id:
+            sch = db.query(School).filter(School.id == r.school_id).first()
+            school_name = sch.name if sch else f"School #{r.school_id}"
+
+        waypoints.append({
+            "label": school_name or f"Visit {len(waypoints)+1}",
+            "lat": r.latitude,
+            "lng": r.longitude,
+            "school_id": r.school_id,
+        })
+
+    if len(waypoints) < 2:
+        return {"ok": False, "message": "Need at least 2 GPS points to calculate distance"}
+
+    # Calculate distances via OSRM
+    legs_result = []
+    total_km = 0.0
+    for i in range(len(waypoints) - 1):
+        a = waypoints[i]
+        b = waypoints[i + 1]
+        dist = await _osrm_distance(a["lat"], a["lng"], b["lat"], b["lng"])
+        legs_result.append({
+            "from": a["label"],
+            "to": b["label"],
+            "distance_km": dist,
+            "school_id": b["school_id"],
+        })
+        total_km += dist
+
+    total_km = round(total_km, 2)
+    # Use flat rate if admin has set one, otherwise fuel formula
+    if rate_per_km and rate_per_km > 0:
+        calculated = round(total_km * rate_per_km, 2)
+    else:
+        calculated = round((total_km / mileage) * fuel_price + EXTRA_AMOUNT, 2) if mileage > 0 else EXTRA_AMOUNT
+
+    from_loc = waypoints[0]["label"]
+    to_summary = " → ".join(w["label"] for w in waypoints[1:]) if len(waypoints) > 1 else from_loc
+
+    # Find or create the auto trip for this employee+date
+    existing = db.query(TravelTrip).filter(
+        TravelTrip.employee_id == emp_id,
+        TravelTrip.trip_date == d,
+        TravelTrip.trip_type == "auto",
+    ).first()
+
+    if existing:
+        # Only update if still pending (don't override approved/rejected)
+        if existing.status == "pending":
+            existing.distance_km = total_km
+            existing.amount = calculated
+            existing.calculated_amount = calculated
+            existing.route_legs = json.dumps(legs_result)
+            existing.fuel_price_used = fuel_price
+            existing.mileage_used = mileage
+            existing.rate_per_km_used = rate_per_km if rate_per_km and rate_per_km > 0 else None
+            existing.from_location = from_loc
+            existing.to_location = to_summary
+            existing.start_lat = waypoints[0]["lat"]
+            existing.start_lng = waypoints[0]["lng"]
+            db.commit()
+            db.refresh(existing)
+        return _fmt(existing)
+    else:
+        t = TravelTrip(
+            employee_id=emp_id,
+            trip_date=d,
+            from_location=from_loc,
+            to_location=to_summary,
+            transport_mode="bike",
+            distance_km=total_km,
+            amount=calculated,
+            notes=f"Auto-calculated from {len(reports)} geotagged proof submissions",
+            route_legs=json.dumps(legs_result),
+            fuel_price_used=fuel_price,
+            mileage_used=mileage,
+            rate_per_km_used=rate_per_km if rate_per_km and rate_per_km > 0 else None,
+            calculated_amount=calculated,
+            start_lat=waypoints[0]["lat"],
+            start_lng=waypoints[0]["lng"],
+            status="pending",
+            trip_type="auto",
+        )
+        db.add(t)
+        db.commit()
+        db.refresh(t)
+        return _fmt(t)
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────

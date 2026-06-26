@@ -19,6 +19,8 @@ class Employee(Base):
     base_salary    = Column(Float, default=10000.0, nullable=True)
     bike_mileage   = Column(Float, default=45.0, nullable=True)   # km per litre
     home_location  = Column(String(300), nullable=True)           # home address text
+    home_lat       = Column(Float, nullable=True)                 # home GPS lat
+    home_lng       = Column(Float, nullable=True)                 # home GPS lng
 
     mandal         = relationship("Mandal", back_populates="employees")
     mandals        = relationship("Mandal", secondary="employee_mandals", backref="technicians")

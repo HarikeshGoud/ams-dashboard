@@ -25,6 +25,8 @@ class TravelTrip(Base):
     calculated_amount = Column(Float, nullable=True)  # (dist/mileage)*fuel + 50
     start_lat         = Column(Float, nullable=True)
     start_lng         = Column(Float, nullable=True)
+    trip_type         = Column(String(20), default="manual")  # manual | auto
+    rate_per_km_used  = Column(Float, nullable=True)          # flat rate used (if set)
 
     employee = relationship("Employee", back_populates="travel_trips", foreign_keys=[employee_id])
 
@@ -33,5 +35,6 @@ class FuelSettings(Base):
     __tablename__ = "fuel_settings"
     id             = Column(Integer, primary_key=True, index=True)
     fuel_price     = Column(Float, default=105.0)   # Rs per litre
+    rate_per_km    = Column(Float, default=0.0)     # Rs per km flat rate (0 = use fuel formula)
     set_by         = Column(Integer, ForeignKey("employees.id"), nullable=True)
     updated_at     = Column(DateTime, default=datetime.utcnow)

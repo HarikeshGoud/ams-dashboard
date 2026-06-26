@@ -229,6 +229,16 @@ async def submit_field_report(
     # Auto-mark attendance based on task completion ratio for today
     _auto_mark_attendance(user.id, today, db)
 
+    # Auto-calculate travel trip from all GPS submissions today
+    if latitude and longitude:
+        try:
+            from .travel import auto_trip_from_reports
+            await auto_trip_from_reports(
+                trip_date=str(today), employee_id=user.id, db=db, user=user
+            )
+        except Exception:
+            pass  # never block proof submission
+
     db.refresh(report)
     return _fmt_report(report)
 

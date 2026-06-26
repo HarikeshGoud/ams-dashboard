@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
+import MapPicker from '../../components/MapPicker'
 
 const STATUS_COLOR = { pending: 'var(--yellow)', approved: 'var(--green)', rejected: 'var(--red)' }
 
@@ -49,6 +50,7 @@ function LogTripModal({ onClose, onSaved }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [pinning, setPinning] = useState(null)   // index of school being GPS-pinned
+  const [showMapPicker, setShowMapPicker] = useState(false)
 
   useEffect(() => {
     // Load profile + fuel price + today's tasks
@@ -121,11 +123,13 @@ function LogTripModal({ onClose, onSaved }) {
   }
 
   async function geocodeStart() {
-    if (!form.from_location.trim()) { setError('Enter your start location'); return }
+    if (!form.from_location.trim()) { setError('Tap the location field to pick on map'); return }
+    // If already pinned via map picker, skip geocoding
+    if (startCoords && startCoords.lat) { setStep(2); setError(''); return }
     setGeocoding(true); setError('')
     const coords = await geocode(form.from_location)
     setGeocoding(false)
-    if (!coords) { setError('Location not found. Skip the house number — enter just area/landmark and city. Example: "Uppal Depot, Hyderabad"'); return }
+    if (!coords) { setError('Location not found. Tap the field to pick on map instead.'); return }
     setStartCoords(coords)
     setStep(2)
     setError('')
@@ -215,13 +219,19 @@ function LogTripModal({ onClose, onSaved }) {
             </div>
             <div className="form-group" style={{ marginBottom: 10 }}>
               <label>Start Location (your home address) *</label>
-              <input
-                value={form.from_location}
-                onChange={e => set('from_location', e.target.value)}
-                placeholder="e.g. Buddha Nagar Road No.7, Nalgonda"
-              />
+              <div
+                onClick={() => setShowMapPicker(true)}
+                style={{
+                  padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)',
+                  background: 'var(--surface2)', cursor: 'pointer', fontSize: 13,
+                  color: form.from_location ? 'var(--text)' : 'var(--muted)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                <span>{form.from_location || 'Tap to pick on map…'}</span>
+                <span style={{ fontSize: 18 }}>🗺️</span>
+              </div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-                Be specific — include landmark, area, city for accurate geocoding
+                Tap to open map — search, pin, or use GPS
               </div>
             </div>
             <div className="form-group" style={{ marginBottom: 10 }}>
@@ -361,6 +371,27 @@ function LogTripModal({ onClose, onSaved }) {
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         </div>
       </div>
+
+      {showMapPicker && (
+        <MapPicker
+          initialLabel={form.from_location}
+          onClose={() => setShowMapPicker(false)}
+          onConfirm={async (picked) => {
+            set('from_location', picked.label)
+            setStartCoords({ lat: picked.lat, lng: picked.lng, label: picked.label })
+            setShowMapPicker(false)
+            // Save home coords to profile so auto-trip can use them
+            try {
+              await api.patch('/api/travel/my-profile', {
+                bike_mileage: form.mileage || 45,
+                home_location: picked.label,
+                home_lat: picked.lat,
+                home_lng: picked.lng,
+              })
+            } catch {}
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -371,13 +402,31 @@ export default function MyTravel() {
   const [trips, setTrips] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [calculating, setCalculating] = useState(false)
   const [toast, setToast] = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
+  async function calcToday() {
+    setCalculating(true)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const r = await api.post('/api/travel/auto-from-reports', null, { params: { trip_date: today } })
+      if (r.data.ok === false) {
+        showToast('⚠️ ' + r.data.message)
+      } else {
+        showToast('✅ Travel calculated!')
+        load()
+      }
+    } catch (e) {
+      showToast('❌ ' + (e.response?.data?.detail || 'Calculation failed'))
+    }
+    setCalculating(false)
+  }
+
   function load() {
     api.get('/api/travel/')
-      .then(r => { setTrips(r.data); setLoading(false) })
+      .then(r => { setTrips(r.data.filter(t => t.trip_type === 'auto')); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
@@ -392,8 +441,8 @@ export default function MyTravel() {
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
         <h3>🏍️ My Travel</h3>
-        <button className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px' }} onClick={() => setShowForm(true)}>
-          + Log Trip
+        <button className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px' }} onClick={calcToday} disabled={calculating}>
+          {calculating ? '📡 Calculating…' : '⚡ Calculate Today\'s Travel'}
         </button>
       </div>
 
@@ -416,9 +465,8 @@ export default function MyTravel() {
       {loading ? <div className="spinner" /> : trips.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>🏍️</div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>No trips logged</div>
-          <div style={{ fontSize: 12, marginBottom: 16 }}>Log your daily travel — distance is auto-calculated via OSRM</div>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Log First Trip</button>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>No travel records yet</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>Travel distance is automatically calculated when you submit geotagged proof photos</div>
         </div>
       ) : (
         trips.map(t => (
@@ -426,13 +474,25 @@ export default function MyTravel() {
             background: 'var(--surface)', border: `1px solid ${STATUS_COLOR[t.status] || 'var(--border)'}`,
             borderRadius: 10, padding: 14, marginBottom: 10
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
               <div style={{ fontWeight: 700, fontSize: 13 }}>🏍️ {t.from_location}</div>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
-                background: `${STATUS_COLOR[t.status]}22`, color: STATUS_COLOR[t.status]
-              }}>{t.status}</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {t.trip_type === 'auto' && (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: 'rgba(139,92,246,.15)', color: '#a78bfa' }}>
+                    ⚡ AUTO
+                  </span>
+                )}
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
+                  background: `${STATUS_COLOR[t.status]}22`, color: STATUS_COLOR[t.status]
+                }}>{t.status}</span>
+              </div>
             </div>
+            {t.trip_type === 'auto' && (
+              <div style={{ fontSize: 10, color: '#a78bfa', marginBottom: 4 }}>
+                📸 Auto-calculated from geotagged proof submissions
+              </div>
+            )}
             <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>📅 {t.trip_date}</div>
 
             {/* Route legs */}
@@ -456,7 +516,7 @@ export default function MyTravel() {
         ))
       )}
 
-      {showForm && <LogTripModal onClose={() => setShowForm(false)} onSaved={() => { load(); showToast('✅ Trip submitted for approval!') }} />}
+      {/* Manual log trip removed — trips are auto-calculated from geotagged proof submissions */}
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
