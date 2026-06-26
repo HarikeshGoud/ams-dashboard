@@ -207,12 +207,12 @@ export default function AMCReports() {
 
   useEffect(() => {
     load()
-    api.get('/schools/').then(r => setSchools(r.data || []))
-    api.get('/employees/').then(r => setEmployees((r.data || []).filter(e => e.role === 'technician' || e.role === 'admin')))
+    api.get('/api/schools/').then(r => setSchools(r.data || []))
+    api.get('/api/employees/').then(r => setEmployees((r.data || []).filter(e => e.role === 'technician' || e.role === 'admin')))
   }, [])
 
   function load() {
-    api.get('/amc-reports/').then(r => setReports(r.data || []))
+    api.get('/api/amc-reports/').then(r => setReports(r.data || []))
   }
 
   function handleChange(e) {
@@ -233,8 +233,8 @@ export default function AMCReports() {
     setSaving(true)
     try {
       const payload = { ...form, school_id: form.school_id ? Number(form.school_id) : null, service_engineer_id: form.service_engineer_id ? Number(form.service_engineer_id) : null }
-      if (editId) await api.put(`/amc-reports/${editId}`, payload)
-      else await api.post('/amc-reports/', payload)
+      if (editId) await api.put(`/api/amc-reports/${editId}`, payload)
+      else await api.post('/api/amc-reports/', payload)
       load()
       setShowForm(false)
       setEditId(null)
@@ -253,7 +253,7 @@ export default function AMCReports() {
 
   async function handleDelete(id) {
     if (!confirm('Delete this AMC report?')) return
-    await api.delete(`/amc-reports/${id}`)
+    await api.delete(`/api/amc-reports/${id}`)
     load()
     setViewReport(null)
   }

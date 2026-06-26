@@ -9,7 +9,7 @@ from ..models.amc_report import AMCReport
 from ..models.school import School
 from ..models.employee import Employee
 
-router = APIRouter(prefix="/amc-reports", tags=["amc-reports"])
+router = APIRouter(prefix="/api/amc-reports", tags=["amc-reports"])
 
 
 class AMCReportCreate(BaseModel):
