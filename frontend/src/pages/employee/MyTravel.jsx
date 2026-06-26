@@ -55,7 +55,7 @@ function LogTripModal({ onClose, onSaved }) {
       api.get('/api/travel/my-profile'),
       api.get('/api/travel/fuel-settings'),
       api.get('/api/tasks/my-tasks'),
-    ]).then(([p, f, t]) => {
+    ]).then(async ([p, f, t]) => {
       setProfile(p.data)
       setFuelPrice(f.data.fuel_price)
       setForm(prev => ({
@@ -63,7 +63,7 @@ function LogTripModal({ onClose, onSaved }) {
         from_location: p.data.home_location || '',
         mileage: p.data.bike_mileage || 45,
       }))
-        // For schools without saved coordinates, geocode them on-the-fly
+      // For schools without saved coordinates, geocode them on-the-fly
       const tasks = t.data.filter(task => task.school_id)
       const resolved = await Promise.all(tasks.map(async task => {
         let lat = task.school_lat

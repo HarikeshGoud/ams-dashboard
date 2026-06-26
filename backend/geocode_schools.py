@@ -59,10 +59,10 @@ def main():
             c.execute("UPDATE schools SET latitude=?, longitude=? WHERE id=?", (lat, lng, school_id))
             conn.commit()
             found += 1
-            print(f"[{i+1}/{total}] ✅ {name} → {lat:.5f}, {lng:.5f}  ({matched_query})")
+            print(f"[{i+1}/{total}] OK  {name} -> {lat:.5f}, {lng:.5f}")
         else:
             not_found.append(name)
-            print(f"[{i+1}/{total}] ❌ {name} — not found")
+            print(f"[{i+1}/{total}] NOT FOUND: {name}")
         time.sleep(1)  # Nominatim ToS
 
     print(f"\nDone. Found: {found}/{total}")
