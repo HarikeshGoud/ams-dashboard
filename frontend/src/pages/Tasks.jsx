@@ -15,7 +15,11 @@ export default function Tasks() {
   const [toast, setToast]         = useState('')
   const [generating, setGenerating] = useState(false)
   const [filterDate, setFilterDate] = useState('')
-  const [activeTech, setActiveTech] = useState(null)  // selected technician tab
+  const [activeTech, setActiveTech] = useState(null)
+  const [techSearch, setTechSearch] = useState('')    // technician tab search
+  const [taskSearch, setTaskSearch] = useState('')    // task search within technician
+  const [statusFilter, setStatusFilter] = useState('')  // status filter
+  const [priorityFilter, setPriorityFilter] = useState('')  // priority filter
   const today = new Date().toISOString().slice(0, 10)
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
@@ -69,14 +73,30 @@ export default function Tasks() {
   // All technicians from employees list
   const technicians = employees.filter(e => e.role === 'technician')
 
-  // Tasks for the active technician
-  const techTasks = activeTech ? tasks.filter(t => t.assigned_to_id === activeTech) : []
+  // Filtered technician tabs by search
+  const visibleTechs = technicians.filter(e =>
+    e.name.toLowerCase().includes(techSearch.toLowerCase()) ||
+    (e.employee_code || '').toLowerCase().includes(techSearch.toLowerCase())
+  )
+
+  // Tasks for the active technician, filtered by task search + status + priority
+  const techTasks = activeTech ? tasks.filter(t => {
+    if (t.assigned_to_id !== activeTech) return false
+    if (statusFilter && t.status !== statusFilter) return false
+    if (priorityFilter && t.priority !== priorityFilter) return false
+    if (taskSearch) {
+      const q = taskSearch.toLowerCase()
+      return (t.title || '').toLowerCase().includes(q) ||
+             (t.school_name || '').toLowerCase().includes(q)
+    }
+    return true
+  }) : []
 
   // Group by status
   const grouped = {}
   STATUS_ORDER.forEach(s => { grouped[s] = techTasks.filter(t => t.status === s) })
 
-  // Summary counts per technician
+  // Summary counts per technician (unfiltered — always show real totals on tabs)
   const techSummary = technicians.map(tech => {
     const tt = tasks.filter(t => t.assigned_to_id === tech.id)
     return {
@@ -108,29 +128,43 @@ export default function Tasks() {
         </div>
       </div>
 
-      {/* Technician tabs */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-        {techSummary.map(tech => (
-          <button key={tech.id} onClick={() => setActiveTech(tech.id)}
-            style={{
-              padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)',
-              background: activeTech === tech.id ? 'var(--primary)' : 'var(--surface)',
-              color: activeTech === tech.id ? '#fff' : 'var(--text)',
-              cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: 8
-            }}>
-            <span>{tech.name}</span>
-            <span style={{
-              background: activeTech === tech.id ? 'rgba(255,255,255,0.25)' : 'var(--surface2)',
-              borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700
-            }}>{tech.total}</span>
-            {tech.submitted > 0 && (
-              <span style={{ background: 'var(--yellow)', color: '#000', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
-                {tech.submitted} review
-              </span>
-            )}
-          </button>
-        ))}
+      {/* Technician search + tabs */}
+      <div className="card" style={{ marginBottom: 16, padding: '12px 14px' }}>
+        <div style={{ marginBottom: 10 }}>
+          <input
+            placeholder="🔍 Search technician by name or ID..."
+            value={techSearch}
+            onChange={e => setTechSearch(e.target.value)}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', fontSize: 13,
+              background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {visibleTechs.length === 0 && (
+            <div style={{ color: 'var(--muted)', fontSize: 13 }}>No technicians match "{techSearch}"</div>
+          )}
+          {techSummary.filter(t => visibleTechs.find(v => v.id === t.id)).map(tech => (
+            <button key={tech.id} onClick={() => { setActiveTech(tech.id); setTaskSearch(''); setStatusFilter(''); setPriorityFilter('') }}
+              style={{
+                padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                background: activeTech === tech.id ? 'var(--primary)' : 'var(--surface2)',
+                color: activeTech === tech.id ? '#fff' : 'var(--text)',
+                cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 7
+              }}>
+              <span>{tech.name}</span>
+              <span style={{
+                background: activeTech === tech.id ? 'rgba(255,255,255,0.25)' : 'var(--surface)',
+                borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700
+              }}>{tech.total}</span>
+              {tech.submitted > 0 && (
+                <span style={{ background: 'var(--yellow)', color: '#000', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                  {tech.submitted} review
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Active technician info bar */}
@@ -159,6 +193,43 @@ export default function Tasks() {
           </div>
         )
       })()}
+
+      {/* Task search + filter bar */}
+      {activeTech && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            placeholder="🔍 Search tasks or schools..."
+            value={taskSearch}
+            onChange={e => setTaskSearch(e.target.value)}
+            style={{ flex: 1, minWidth: 180, padding: '7px 12px', fontSize: 13,
+              background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+          />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            style={{ padding: '7px 10px', fontSize: 13, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}>
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="submitted">Submitted</option>
+            <option value="completed">Completed</option>
+          </select>
+          <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
+            style={{ padding: '7px 10px', fontSize: 13, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}>
+            <option value="">All Priorities</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          {(taskSearch || statusFilter || priorityFilter) && (
+            <button className="btn btn-outline btn-sm"
+              onClick={() => { setTaskSearch(''); setStatusFilter(''); setPriorityFilter('') }}>
+              Clear filters
+            </button>
+          )}
+          <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+            {techTasks.length} task{techTasks.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
 
       {/* Status columns for active technician */}
       {techTasks.length === 0 ? (
