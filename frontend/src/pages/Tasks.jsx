@@ -1,34 +1,51 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 
+const PRIORITY_PILL = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
+const STATUS_PILL   = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
+const STATUS_ORDER  = ['pending', 'in_progress', 'submitted', 'completed']
+const STATUS_LABEL  = { pending: 'Pending', in_progress: 'In Progress', submitted: 'Submitted', completed: 'Completed' }
+
 export default function Tasks() {
-  const [tasks, setTasks] = useState([])
+  const [tasks, setTasks]         = useState([])
   const [employees, setEmployees] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', assigned_to_id: '', priority: 'medium', due_date: '' })
-  const [toast, setToast] = useState('')
+  const [loading, setLoading]     = useState(true)
+  const [modal, setModal]         = useState(false)
+  const [form, setForm]           = useState({ title: '', description: '', assigned_to_id: '', priority: 'medium', due_date: '' })
+  const [toast, setToast]         = useState('')
   const [generating, setGenerating] = useState(false)
+  const [filterDate, setFilterDate] = useState('')
+  const [activeTech, setActiveTech] = useState(null)  // selected technician tab
   const today = new Date().toISOString().slice(0, 10)
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
 
   function load() {
-    Promise.all([api.get('/api/tasks/'), api.get('/api/employees/')]).then(([t, e]) => {
-      setTasks(t.data); setEmployees(e.data); setLoading(false)
+    const params = new URLSearchParams()
+    if (filterDate) params.append('task_date', filterDate)
+    Promise.all([
+      api.get(`/api/tasks/?${params}`),
+      api.get('/api/employees/')
+    ]).then(([t, e]) => {
+      setTasks(t.data)
+      const techs = e.data.filter(emp => emp.role === 'technician')
+      setEmployees(e.data)
+      if (!activeTech && techs.length > 0) setActiveTech(techs[0].id)
+      setLoading(false)
     })
   }
-  useEffect(() => { load() }, [])
+
+  useEffect(() => { load() }, [filterDate])
 
   async function generateDaily() {
     setGenerating(true)
     try {
       const r = await api.post('/api/tasks/generate-daily', null, { params: { task_date: today } })
       const total = r.data.results.reduce((s, x) => s + (x.generated || 0), 0)
-      showToast(`✅ Generated ${total} tasks for ${r.data.processed} technicians`)
+      showToast(`Generated ${total} tasks for ${r.data.processed} technicians`)
       load()
-    } catch { showToast('❌ Failed to generate tasks') }
+    } catch { showToast('Failed to generate tasks') }
     setGenerating(false)
   }
 
@@ -49,23 +66,40 @@ export default function Tasks() {
     setTasks(tasks.filter(t => t.id !== id))
   }
 
-  const priorityPill = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
-  const statusPill = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
+  // All technicians from employees list
+  const technicians = employees.filter(e => e.role === 'technician')
 
-  const grouped = {
-    pending: tasks.filter(t => t.status === 'pending'),
-    in_progress: tasks.filter(t => t.status === 'in_progress'),
-    submitted: tasks.filter(t => t.status === 'submitted'),
-    completed: tasks.filter(t => t.status === 'completed'),
-  }
+  // Tasks for the active technician
+  const techTasks = activeTech ? tasks.filter(t => t.assigned_to_id === activeTech) : []
+
+  // Group by status
+  const grouped = {}
+  STATUS_ORDER.forEach(s => { grouped[s] = techTasks.filter(t => t.status === s) })
+
+  // Summary counts per technician
+  const techSummary = technicians.map(tech => {
+    const tt = tasks.filter(t => t.assigned_to_id === tech.id)
+    return {
+      ...tech,
+      total: tt.length,
+      pending: tt.filter(t => t.status === 'pending').length,
+      in_progress: tt.filter(t => t.status === 'in_progress').length,
+      submitted: tt.filter(t => t.status === 'submitted').length,
+      completed: tt.filter(t => t.status === 'completed').length,
+    }
+  })
 
   if (loading) return <div className="spinner" />
 
   return (
     <div>
+      {/* Header */}
       <div className="section-header">
         <h3>✅ Tasks</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+            style={{ fontSize: 12, padding: '6px 10px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)' }} />
+          {filterDate && <button className="btn btn-outline btn-sm" onClick={() => setFilterDate('')}>Clear</button>}
           <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
             onClick={generateDaily} disabled={generating}>
             {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks'}
@@ -74,34 +108,110 @@ export default function Tasks() {
         </div>
       </div>
 
-      <div className="grid-3">
-        {Object.entries(grouped).map(([status, list]) => (
-          <div key={status} className="card">
-            <div className="card-title" style={{ textTransform: 'capitalize' }}>
-              {status.replace('_', ' ')} <span style={{ background: 'var(--surface2)', borderRadius: 10, padding: '1px 8px', fontSize: 11 }}>{list.length}</span>
-            </div>
-            {list.map(t => (
-              <div key={t.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
-                  👤 {t.assigned_to_name} {t.due_date && `· Due: ${t.due_date}`}
-                </div>
-                <div className="flex gap-8 items-center">
-                  <span className={`pill ${priorityPill[t.priority] || 'pill-gray'}`} style={{ fontSize: 10 }}>{t.priority}</span>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                    {status === 'pending'     && <button className="btn btn-outline btn-sm" onClick={() => updateStatus(t.id, 'in_progress')}>Start</button>}
-                    {status === 'in_progress' && <button className="btn btn-green btn-sm"   onClick={() => updateStatus(t.id, 'completed')}>Done</button>}
-                    {status === 'submitted'   && <><button className="btn btn-green btn-sm" onClick={() => updateStatus(t.id, 'completed')} style={{ marginRight: 4 }}>✅ Verify</button><button className="btn btn-danger btn-sm" onClick={() => updateStatus(t.id, 'pending')}>✕ Reject</button></>}
-                    <button className="btn btn-danger btn-sm" onClick={() => del(t.id)}>×</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {list.length === 0 && <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: 12 }}>Empty</div>}
-          </div>
+      {/* Technician tabs */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+        {techSummary.map(tech => (
+          <button key={tech.id} onClick={() => setActiveTech(tech.id)}
+            style={{
+              padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)',
+              background: activeTech === tech.id ? 'var(--primary)' : 'var(--surface)',
+              color: activeTech === tech.id ? '#fff' : 'var(--text)',
+              cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 8
+            }}>
+            <span>{tech.name}</span>
+            <span style={{
+              background: activeTech === tech.id ? 'rgba(255,255,255,0.25)' : 'var(--surface2)',
+              borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 700
+            }}>{tech.total}</span>
+            {tech.submitted > 0 && (
+              <span style={{ background: 'var(--yellow)', color: '#000', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                {tech.submitted} review
+              </span>
+            )}
+          </button>
         ))}
       </div>
 
+      {/* Active technician info bar */}
+      {activeTech && (() => {
+        const tech = techSummary.find(t => t.id === activeTech)
+        if (!tech) return null
+        return (
+          <div className="card" style={{ marginBottom: 16, padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{tech.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>{tech.employee_code}</div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Pending',     val: tech.pending,     color: 'var(--yellow)' },
+                  { label: 'In Progress', val: tech.in_progress, color: 'var(--orange)' },
+                  { label: 'Submitted',   val: tech.submitted,   color: 'var(--cyan)'   },
+                  { label: 'Completed',   val: tech.completed,   color: 'var(--green)'  },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: s.color }}>{s.val}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Status columns for active technician */}
+      {techTasks.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+          No tasks assigned to this technician{filterDate ? ` on ${filterDate}` : ''}.
+        </div>
+      ) : (
+        <div className="grid-3">
+          {STATUS_ORDER.filter(s => s !== 'completed').concat(['completed']).map(status => (
+            <div key={status} className="card">
+              <div className="card-title" style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{STATUS_LABEL[status]}</span>
+                <span style={{ background: 'var(--surface2)', borderRadius: 10, padding: '1px 8px', fontSize: 11 }}>
+                  {grouped[status]?.length || 0}
+                </span>
+              </div>
+              {(grouped[status] || []).map(t => (
+                <div key={t.id} style={{
+                  background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: 8, padding: 12, marginBottom: 8
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{t.title}</div>
+                  {t.school_name && (
+                    <div style={{ fontSize: 11, color: 'var(--accent2)', marginBottom: 3 }}>🏫 {t.school_name}</div>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
+                    {t.due_date && `📅 Due: ${t.due_date}`}
+                  </div>
+                  <div className="flex gap-8 items-center">
+                    <span className={`pill ${PRIORITY_PILL[t.priority] || 'pill-gray'}`} style={{ fontSize: 10 }}>{t.priority}</span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                      {status === 'pending'     && <button className="btn btn-outline btn-sm" onClick={() => updateStatus(t.id, 'in_progress')}>Start</button>}
+                      {status === 'in_progress' && <button className="btn btn-green btn-sm" onClick={() => updateStatus(t.id, 'completed')}>Done</button>}
+                      {status === 'submitted'   && (
+                        <>
+                          <button className="btn btn-green btn-sm" onClick={() => updateStatus(t.id, 'completed')}>✅ Verify</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => updateStatus(t.id, 'pending')}>✕ Reject</button>
+                        </>
+                      )}
+                      <button className="btn btn-danger btn-sm" onClick={() => del(t.id)}>×</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(grouped[status] || []).length === 0 && (
+                <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: 12 }}>Empty</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create Task Modal */}
       {modal && (
         <div className="modal-backdrop">
           <div className="modal-box">
@@ -114,15 +224,21 @@ export default function Tasks() {
                 <div className="form-group"><label>Assign To *</label>
                   <select required value={form.assigned_to_id} onChange={f('assigned_to_id')}>
                     <option value="">Select...</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    {employees.filter(e => e.role === 'technician').map(e => (
+                      <option key={e.id} value={e.id}>{e.name} ({e.employee_code})</option>
+                    ))}
                   </select>
                 </div>
                 <div className="form-group"><label>Priority</label>
                   <select value={form.priority} onChange={f('priority')}>
-                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
                   </select>
                 </div>
-                <div className="form-group form-full"><label>Due Date</label><input type="date" value={form.due_date} onChange={f('due_date')} /></div>
+                <div className="form-group form-full"><label>Due Date</label>
+                  <input type="date" value={form.due_date} onChange={f('due_date')} />
+                </div>
               </div>
               <div className="mt-16 flex gap-8">
                 <button type="submit" className="btn btn-primary">Create</button>
@@ -132,6 +248,7 @@ export default function Tasks() {
           </div>
         </div>
       )}
+
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
