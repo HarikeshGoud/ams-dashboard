@@ -236,29 +236,45 @@ function LogTripModal({ onClose, onSaved }) {
               </div>
             ) : (
               todaySchools.map((s, i) => (
-                <div key={i}
-                  onClick={() => s.hasCoords && toggleSchool(i)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 8, marginBottom: 6,
-                    cursor: s.hasCoords ? 'pointer' : 'not-allowed',
-                    opacity: s.hasCoords ? 1 : 0.5,
-                    border: `1.5px solid ${s.selected ? 'var(--accent)' : s.hasCoords ? 'var(--border)' : 'var(--red)'}`,
-                    background: s.selected ? 'rgba(56,189,248,.1)' : 'var(--surface2)',
-                  }}>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: 4,
-                    border: `2px solid ${s.selected ? 'var(--accent)' : 'var(--border)'}`,
-                    background: s.selected ? 'var(--accent)' : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0
-                  }}>{s.selected ? '✓' : ''}</div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>🏫 {s.label}</div>
-                    {s.hasCoords
-                      ? <div style={{ fontSize: 10, color: 'var(--muted)' }}>📍 {s.lat?.toFixed(4)}, {s.lng?.toFixed(4)}</div>
-                      : <div style={{ fontSize: 10, color: 'var(--red)' }}>⚠️ No coordinates — ask admin to run geocode script</div>
-                    }
+                <div key={i} style={{
+                  borderRadius: 8, marginBottom: 6,
+                  border: `1.5px solid ${s.selected ? 'var(--accent)' : s.hasCoords ? 'var(--border)' : 'rgba(251,191,36,.5)'}`,
+                  background: s.selected ? 'rgba(56,189,248,.1)' : 'var(--surface2)',
+                  overflow: 'hidden',
+                }}>
+                  <div
+                    onClick={() => s.hasCoords && toggleSchool(i)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: s.hasCoords ? 'pointer' : 'default' }}>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 4, flexShrink: 0,
+                      border: `2px solid ${s.selected ? 'var(--accent)' : 'var(--border)'}`,
+                      background: s.selected ? 'var(--accent)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12,
+                    }}>{s.selected ? '✓' : ''}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>🏫 {s.label}</div>
+                      {s.hasCoords
+                        ? <div style={{ fontSize: 10, color: 'var(--green)' }}>📍 {s.lat?.toFixed(5)}, {s.lng?.toFixed(5)}</div>
+                        : <div style={{ fontSize: 10, color: 'var(--yellow)' }}>⚠️ No GPS — tap button below to pin location</div>
+                      }
+                    </div>
                   </div>
+                  {!s.hasCoords && (
+                    <div style={{ padding: '0 12px 10px' }}>
+                      <button
+                        onClick={() => pinMyLocation(i)}
+                        disabled={pinning === i}
+                        style={{
+                          width: '100%', padding: '7px 0', borderRadius: 7, border: 'none', cursor: 'pointer',
+                          background: 'rgba(251,191,36,.18)', color: '#fbbf24', fontWeight: 700, fontSize: 12,
+                        }}>
+                        {pinning === i ? '📡 Getting GPS…' : "📍 I'm Here — Pin This School"}
+                      </button>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, textAlign: 'center' }}>
+                        Be at the school, then tap. Saves permanently.
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}
