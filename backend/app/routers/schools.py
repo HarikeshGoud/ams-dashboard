@@ -89,3 +89,43 @@ def delete_school(sid: int, db: Session = Depends(get_db), _=Depends(get_current
     if not s: raise HTTPException(404, "Not found")
     s.is_active = False; db.commit()
     return {"ok": True}
+
+
+@router.post("/sync-coords-from-reports")
+def sync_coords_from_reports(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Update school lat/lng from the most recent field report GPS submitted at that school."""
+    from ..models.field_report import FieldReport
+    from sqlalchemy import func
+
+    # Get latest GPS per school from field reports
+    subq = (
+        db.query(
+            FieldReport.school_id,
+            FieldReport.latitude,
+            FieldReport.longitude,
+        )
+        .filter(
+            FieldReport.school_id.isnot(None),
+            FieldReport.latitude.isnot(None),
+            FieldReport.longitude.isnot(None),
+        )
+        .order_by(FieldReport.school_id, FieldReport.created_at.desc())
+        .all()
+    )
+
+    seen = {}
+    for row in subq:
+        if row.school_id not in seen:
+            seen[row.school_id] = (row.latitude, row.longitude)
+
+    updated = 0
+    for school_id, (lat, lng) in seen.items():
+        school = db.query(School).filter(School.id == school_id).first()
+        if school:
+            school.latitude = lat
+            school.longitude = lng
+            updated += 1
+
+    db.commit()
+    return {"ok": True, "updated": updated, "total_schools": db.query(School).count()}
+
