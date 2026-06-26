@@ -5,13 +5,30 @@ import { useAuthStore } from '../../store/authStore'
 const STATUS_COLOR = { pending: 'var(--yellow)', approved: 'var(--green)', rejected: 'var(--red)' }
 
 // ── Nominatim geocoder ────────────────────────────────────────────────────────
+// Progressively simplifies address if exact match fails
 async function geocode(text) {
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text + ', Telangana, India')}&format=json&limit=1`
-    const r = await fetch(url, { headers: { 'Accept-Language': 'en' } })
-    const data = await r.json()
-    if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), label: data[0].display_name }
-  } catch {}
+  // Build a list of queries to try: full address → strip house no → area only
+  const queries = [text]
+
+  // Remove leading "house no.X-Y/Z, " style prefixes
+  const noHouse = text.replace(/^(house\s*no\.?\s*[\w\d\/\-]+,?\s*)/i, '').trim()
+  if (noHouse !== text) queries.push(noHouse)
+
+  // Take last 2 comma-parts (area + city)
+  const parts = text.split(',').map(s => s.trim()).filter(Boolean)
+  if (parts.length > 2) queries.push(parts.slice(-2).join(', '))
+  if (parts.length > 1) queries.push(parts[parts.length - 1])
+
+  for (const q of queries) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', Telangana, India')}&format=json&limit=1`
+      const r = await fetch(url, { headers: { 'Accept-Language': 'en' } })
+      const data = await r.json()
+      if (data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), label: data[0].display_name }
+      }
+    } catch {}
+  }
   return null
 }
 
@@ -71,9 +88,10 @@ function LogTripModal({ onClose, onSaved }) {
     setGeocoding(true); setError('')
     const coords = await geocode(form.from_location)
     setGeocoding(false)
-    if (!coords) { setError('Could not find that location. Try adding city/district name.'); return }
+    if (!coords) { setError('Location not found. Skip the house number — enter just area/landmark and city. Example: "Uppal Depot, Hyderabad"'); return }
     setStartCoords(coords)
     setStep(2)
+    setError('')
   }
 
   async function calculateRoute() {
@@ -192,6 +210,7 @@ function LogTripModal({ onClose, onSaved }) {
           <>
             <div style={{ background: 'rgba(52,211,153,.08)', border: '1px solid var(--green)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12 }}>
               📍 Start: <b>{form.from_location}</b>
+              {startCoords && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>📌 Matched: {startCoords.label?.split(',').slice(0, 3).join(',')}</div>}
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase' }}>
               Select today's school visits (in order)
