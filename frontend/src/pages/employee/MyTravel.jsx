@@ -402,9 +402,27 @@ export default function MyTravel() {
   const [trips, setTrips] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [calculating, setCalculating] = useState(false)
   const [toast, setToast] = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function calcToday() {
+    setCalculating(true)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const r = await api.post('/api/travel/auto-from-reports', null, { params: { trip_date: today } })
+      if (r.data.ok === false) {
+        showToast('⚠️ ' + r.data.message)
+      } else {
+        showToast('✅ Travel calculated!')
+        load()
+      }
+    } catch (e) {
+      showToast('❌ ' + (e.response?.data?.detail || 'Calculation failed'))
+    }
+    setCalculating(false)
+  }
 
   function load() {
     api.get('/api/travel/')
@@ -423,6 +441,9 @@ export default function MyTravel() {
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
         <h3>🏍️ My Travel</h3>
+        <button className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px' }} onClick={calcToday} disabled={calculating}>
+          {calculating ? '📡 Calculating…' : '⚡ Calculate Today\'s Travel'}
+        </button>
       </div>
 
       {trips.length > 0 && (

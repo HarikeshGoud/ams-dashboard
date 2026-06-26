@@ -209,49 +209,55 @@ async def auto_trip_from_reports(
     if not emp:
         raise HTTPException(404, "Employee not found")
 
-    # Get today's reports with GPS, sorted by submission time
+    # Get ALL today's reports sorted by submission time (GPS optional)
     reports = (
         db.query(FieldReport)
         .filter(
             FieldReport.employee_id == emp_id,
             FieldReport.report_date == d,
-            FieldReport.latitude.isnot(None),
-            FieldReport.longitude.isnot(None),
         )
         .order_by(FieldReport.submitted_at)
         .all()
     )
 
     if not reports:
-        return {"ok": False, "message": "No geotagged reports found for today"}
+        return {"ok": False, "message": "No proof submissions found for today"}
 
     fuel_row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
     fuel_price = fuel_row.fuel_price if fuel_row else 105.0
     rate_per_km = (fuel_row.rate_per_km or 0.0) if fuel_row else 0.0
     mileage = emp.bike_mileage or 45.0
 
-    # Build waypoints from school GPS only (in submission order) — no home leg
+    # Build waypoints: use report GPS if available, fallback to school coords
+    from ..models.school import School
     waypoints = []
-    seen_coords = set()
+    seen_school_ids = set()
     for r in reports:
-        key = (round(r.latitude, 4), round(r.longitude, 4))
-        if key in seen_coords:
-            continue   # skip duplicate GPS (same location re-submitted)
-        seen_coords.add(key)
+        if r.school_id in seen_school_ids:
+            continue   # skip duplicate school visits
+        seen_school_ids.add(r.school_id)
 
-        # Get school name from task
+        lat, lng = r.latitude, r.longitude
+
+        # Fallback: use school's saved coordinates
+        if (lat is None or lng is None) and r.school_id:
+            sch = db.query(School).filter(School.id == r.school_id).first()
+            if sch and sch.latitude and sch.longitude:
+                lat, lng = sch.latitude, sch.longitude
+
+        if lat is None or lng is None:
+            continue   # no GPS at all for this visit — skip
+
         school_name = None
-        school_id = r.school_id
         if r.school_id:
-            from ..models.school import School
             sch = db.query(School).filter(School.id == r.school_id).first()
             school_name = sch.name if sch else f"School #{r.school_id}"
 
         waypoints.append({
             "label": school_name or f"Visit {len(waypoints)+1}",
-            "lat": r.latitude,
-            "lng": r.longitude,
-            "school_id": school_id,
+            "lat": lat,
+            "lng": lng,
+            "school_id": r.school_id,
         })
 
     if len(waypoints) < 2:
