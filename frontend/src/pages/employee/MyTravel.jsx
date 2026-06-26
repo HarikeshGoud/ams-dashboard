@@ -423,9 +423,6 @@ export default function MyTravel() {
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
         <h3>🏍️ My Travel</h3>
-        <button className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px' }} onClick={() => setShowForm(true)}>
-          + Log Trip
-        </button>
       </div>
 
       {trips.length > 0 && (
@@ -447,9 +444,8 @@ export default function MyTravel() {
       {loading ? <div className="spinner" /> : trips.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>🏍️</div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>No trips logged</div>
-          <div style={{ fontSize: 12, marginBottom: 16 }}>Log your daily travel — distance is auto-calculated via OSRM</div>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Log First Trip</button>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>No travel records yet</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>Travel distance is automatically calculated when you submit geotagged proof photos</div>
         </div>
       ) : (
         trips.map(t => (
@@ -499,7 +495,7 @@ export default function MyTravel() {
         ))
       )}
 
-      {showForm && <LogTripModal onClose={() => setShowForm(false)} onSaved={() => { load(); showToast('✅ Trip submitted for approval!') }} />}
+      {/* Manual log trip removed — trips are auto-calculated from geotagged proof submissions */}
       {toast && <div className="toast">{toast}</div>}
     </div>
   )

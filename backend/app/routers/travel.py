@@ -220,16 +220,8 @@ async def auto_trip_from_reports(
     fuel_price = fuel_row.fuel_price if fuel_row else 105.0
     mileage = emp.bike_mileage or 45.0
 
-    # Build waypoints: home (if saved) + each report location in order
+    # Build waypoints from school GPS only (in submission order) — no home leg
     waypoints = []
-    if emp.home_lat and emp.home_lng:
-        waypoints.append({
-            "label": emp.home_location or "Home",
-            "lat": emp.home_lat,
-            "lng": emp.home_lng,
-            "school_id": None,
-        })
-
     seen_coords = set()
     for r in reports:
         key = (round(r.latitude, 4), round(r.longitude, 4))
@@ -274,7 +266,7 @@ async def auto_trip_from_reports(
     calculated = round((total_km / mileage) * fuel_price + EXTRA_AMOUNT, 2) if mileage > 0 else EXTRA_AMOUNT
 
     from_loc = waypoints[0]["label"]
-    to_summary = " → ".join(w["label"] for w in waypoints[1:])
+    to_summary = " → ".join(w["label"] for w in waypoints[1:]) if len(waypoints) > 1 else from_loc
 
     # Find or create the auto trip for this employee+date
     existing = db.query(TravelTrip).filter(
