@@ -10,7 +10,7 @@ from .billing import Invoice, InvoiceLineItem, Payment
 from .salary import SalaryRecord
 from .attendance import Attendance
 from .task import Task
-from .travel import TravelTrip
+from .travel import TravelTrip, FuelSettings
 from .field_report import FieldReport, WorkProof
 from .notification import Notification
 from .allowance import AllowanceRequest
