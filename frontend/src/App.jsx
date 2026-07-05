@@ -34,7 +34,6 @@ import DeskAttendance from './pages/deskwork/DeskAttendance'
 import DeskStock from './pages/deskwork/DeskStock'
 import DeskTravel from './pages/deskwork/DeskTravel'
 import ServiceReports from './pages/ServiceReports'
-import Clients from './pages/Clients'
 
 function Guard({ children }) {
   const { token } = useAuthStore()
