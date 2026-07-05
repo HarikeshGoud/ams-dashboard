@@ -126,6 +126,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [remarks, setRemarks] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [extraPhotos, setExtraPhotos]   = useState([])    // [{file, preview, label}]
+  const [extraLabels, setExtraLabels]   = useState([])    // editable label per extra photo
 
   // Step 3 — service report fields
   const [lastReportId,      setLastReportId]      = useState(null)
@@ -186,8 +188,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   }
 
   function handleCaptured(key, file, previewUrl) {
-    setPhotos(p => ({ ...p, [key]: file }))
-    setPreviews(p => ({ ...p, [key]: previewUrl }))
+    if (key.startsWith('extra_')) {
+      const idx = parseInt(key.split('_')[1])
+      setExtraPhotos(p => p.map((ep, i) => i === idx ? { ...ep, file, preview: previewUrl } : ep))
+    } else {
+      setPhotos(p => ({ ...p, [key]: file }))
+      setPreviews(p => ({ ...p, [key]: previewUrl }))
+    }
     setActiveCamera(null)
   }
 
@@ -221,6 +228,10 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         if (photos[`before_${i}`]) fd.append(`before_photo_${i}`, photos[`before_${i}`])
         if (photos[`after_${i}`])  fd.append(`after_photo_${i}`,  photos[`after_${i}`])
         if (photos[`photo_${i}`])  fd.append(`item_photo_${i}`,   photos[`photo_${i}`])
+      })
+      // Extra photos (up to 5)
+      extraPhotos.slice(0, 5).forEach((ep, i) => {
+        if (ep.file) fd.append(`extra_photo_${i}`, ep.file)
       })
 
       const res = await api.post('/api/field-reports/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
@@ -460,6 +471,70 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   </div>
                 )
               })}
+
+              {/* Extra photos */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                    📎 Extra Photos <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span>
+                  </div>
+                  {extraPhotos.length < 5 && (
+                    <button
+                      onClick={() => {
+                        setExtraPhotos(p => [...p, { file: null, preview: null }])
+                        setExtraLabels(l => [...l, ''])
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8,
+                        fontSize: 12, fontWeight: 700, background: 'rgba(56,189,248,.15)', color: 'var(--accent)',
+                        border: '1.5px dashed var(--accent)', cursor: 'pointer' }}>
+                      + Add Extra Photo
+                    </button>
+                  )}
+                </div>
+                {extraPhotos.map((ep, i) => (
+                  <div key={i} style={{
+                    border: `2px dashed ${ep.preview ? 'var(--green)' : 'var(--border)'}`,
+                    borderRadius: 10, padding: 10, marginBottom: 8,
+                    background: ep.preview ? 'rgba(52,211,153,.05)' : 'var(--surface2)',
+                    display: 'flex', alignItems: 'center', gap: 10
+                  }}>
+                    {ep.preview ? (
+                      <img src={ep.preview} alt={`extra_${i}`}
+                        style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 60, height: 60, background: 'var(--surface)', borderRadius: 8,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
+                        📷
+                      </div>
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <input
+                        value={extraLabels[i] || ''}
+                        onChange={e => setExtraLabels(l => l.map((v, j) => j === i ? e.target.value : v))}
+                        placeholder={`Label (e.g. Water quality meter)`}
+                        style={{ width: '100%', boxSizing: 'border-box', marginBottom: 5, fontSize: 11,
+                          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6,
+                          padding: '4px 8px', color: 'var(--text)' }}
+                      />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setActiveCamera(`extra_${i}`)} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6,
+                          fontSize: 11, fontWeight: 600, background: ep.preview ? 'var(--green)' : 'var(--accent)',
+                          color: '#fff', border: 'none', cursor: 'pointer' }}>
+                          📷 {ep.preview ? 'Retake' : 'Open Camera'}
+                        </button>
+                        <button onClick={() => {
+                          setExtraPhotos(p => p.filter((_, j) => j !== i))
+                          setExtraLabels(l => l.filter((_, j) => j !== i))
+                        }} style={{ padding: '4px 8px', borderRadius: 6, fontSize: 11,
+                          background: 'rgba(248,113,113,.15)', color: 'var(--red)', border: '1px solid var(--red)', cursor: 'pointer' }}>
+                          ✕ Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
               <div className="form-group" style={{ marginBottom: 14 }}>
                 <label>Remarks (optional)</label>

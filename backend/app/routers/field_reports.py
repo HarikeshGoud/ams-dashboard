@@ -154,6 +154,11 @@ async def submit_field_report(
     before_photo_5: Optional[UploadFile] = File(None),
     after_photo_5:  Optional[UploadFile] = File(None),
     item_photo_5:   Optional[UploadFile] = File(None),
+    extra_photo_0:  Optional[UploadFile] = File(None),
+    extra_photo_1:  Optional[UploadFile] = File(None),
+    extra_photo_2:  Optional[UploadFile] = File(None),
+    extra_photo_3:  Optional[UploadFile] = File(None),
+    extra_photo_4:  Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -219,6 +224,10 @@ async def submit_field_report(
         await save_photo(bp, f"before_{idx}", latitude, longitude)
         await save_photo(ap, f"after_{idx}",  latitude, longitude)
         await save_photo(ip, f"item_{idx}",   latitude, longitude)
+
+    # Extra photos (optional, up to 5)
+    for idx, ep in enumerate([extra_photo_0, extra_photo_1, extra_photo_2, extra_photo_3, extra_photo_4]):
+        await save_photo(ep, f"extra_{idx}", latitude, longitude)
 
     # Mark task as submitted (under review) — NOT completed yet
     # It becomes "completed" only after admin/deskwork verifies the proof
