@@ -27,9 +27,13 @@ class VisitCreate(BaseModel):
     remarks: Optional[str] = None
 
 def _fmt(v: Visit):
+    mandal_name = None
+    if v.school and v.school.mandal:
+        mandal_name = v.school.mandal.name
     return {
         "id": v.id, "school_id": v.school_id,
         "school_name": v.school.name if v.school else None,
+        "mandal_name": mandal_name,
         "employee_id": v.employee_id,
         "employee_name": v.employee.name if v.employee else None,
         "visit_date": v.visit_date.isoformat() if v.visit_date else None,
@@ -48,6 +52,8 @@ def _fmt(v: Visit):
 def list_visits(
     page: int = Query(1, ge=1), limit: int = Query(50),
     employee_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db), user=Depends(get_current_user)
 ):
     q = db.query(Visit)
@@ -55,6 +61,10 @@ def list_visits(
         q = q.filter(Visit.employee_id == user.id)
     elif employee_id:
         q = q.filter(Visit.employee_id == employee_id)
+    if date_from:
+        q = q.filter(Visit.visit_date >= date.fromisoformat(date_from))
+    if date_to:
+        q = q.filter(Visit.visit_date <= date.fromisoformat(date_to))
     total = q.count()
     visits = q.order_by(Visit.visit_date.desc()).offset((page-1)*limit).limit(limit).all()
     return {"total": total, "items": [_fmt(v) for v in visits]}

@@ -13,6 +13,7 @@ const NAV = [
   { to: '/attendance', icon: '🗓️', label: 'Attendance'      },
   { to: '/tasks',      icon: '✅', label: 'Tasks'           },
   { to: '/travel',     icon: '🚗', label: 'Travel'          },
+  { to: '/reports',     icon: '📊', label: 'Reports'        },
   { to: '/proof-review', icon: '🔍', label: 'Proof Review'  },
 ]
 

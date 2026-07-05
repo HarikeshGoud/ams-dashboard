@@ -25,6 +25,7 @@ import MyBilling from './pages/employee/MyBilling'
 import MyTravel from './pages/employee/MyTravel'
 import MyVisits from './pages/employee/MyVisits'
 import ProofReview from './pages/ProofReview'
+import Reports from './pages/Reports'
 import DeskworkLayout from './components/layout/DeskworkLayout'
 import DeskHome from './pages/deskwork/DeskHome'
 import DeskTasks from './pages/deskwork/DeskTasks'
@@ -111,6 +112,7 @@ export default function App() {
         <Route path="tasks"        element={<Tasks />} />
         <Route path="travel"       element={<Travel />} />
         <Route path="proof-review" element={<ProofReview />} />
+        <Route path="reports"      element={<Reports />} />
       </Route>
 
       <Route path="*" element={<RedirectByRole />} />
