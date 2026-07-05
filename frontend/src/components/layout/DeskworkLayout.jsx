@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import ChangePasswordModal from '../ChangePasswordModal'
@@ -11,6 +11,13 @@ const NAV = [
   { path: '/deskwork/travel',          icon: '🚗', label: 'Travel'          },
   { path: '/deskwork/service-reports', icon: '📄', label: 'Service Reports' },
   { path: '/deskwork/schools',         icon: '🏫', label: 'Schools'         },
+  { path: '/deskwork/clients',         icon: '🏢', label: 'Clients'         },
+]
+
+const UNITS = [
+  { path: '/deskwork/unit/1', icon: '🔵', label: 'Unit 1 — Telangana'      },
+  { path: '/deskwork/unit/2', icon: '🟣', label: 'Unit 2 — Andhra Pradesh' },
+  { path: '/deskwork/unit/3', icon: '🔷', label: 'Unit 3 — Other States'   },
 ]
 
 export default function DeskworkLayout() {
@@ -19,6 +26,14 @@ export default function DeskworkLayout() {
   const location = useLocation()
   const [showChangePw, setShowChangePw] = useState(false)
   const activePath = location.pathname.replace(/\/$/, '') || '/deskwork'
+  const [clientsOpen, setClientsOpen] = useState(false)
+  const clientsRef = useRef(null)
+
+  useEffect(() => {
+    function handleClick(e) { if (clientsRef.current && !clientsRef.current.contains(e.target)) setClientsOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   function handleLogout() { logout(); navigate('/login') }
 
@@ -42,6 +57,43 @@ export default function DeskworkLayout() {
         <nav style={{ display: 'flex', gap: 4, flex: 1, justifyContent: 'center', flexWrap: 'wrap' }}
           className="deskwork-topnav">
           {NAV.map(n => {
+            // Clients button gets a dropdown for units
+            if (n.path === '/deskwork/clients') {
+              const isActive = activePath.startsWith('/deskwork/clients') || activePath.startsWith('/deskwork/unit/')
+              return (
+                <div key={n.path} ref={clientsRef} style={{ position: 'relative' }}>
+                  <button onClick={() => setClientsOpen(o => !o)} style={{
+                    padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: isActive ? 700 : 400,
+                    cursor: 'pointer', background: isActive ? 'rgba(56,189,248,.15)' : 'none',
+                    border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                    color: isActive ? 'var(--accent)' : 'var(--muted)', display: 'flex', alignItems: 'center', gap: 5
+                  }}>
+                    {n.icon} {n.label} <span style={{ fontSize: 10 }}>▼</span>
+                  </button>
+                  {clientsOpen && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, zIndex: 200, minWidth: 200,
+                      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
+                      boxShadow: '0 8px 24px rgba(0,0,0,.4)', padding: '6px 0', marginTop: 4
+                    }}>
+                      <button onClick={() => { navigate('/deskwork/clients'); setClientsOpen(false) }} style={{
+                        width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none',
+                        border: 'none', color: 'var(--text)', fontSize: 13, cursor: 'pointer', fontWeight: 600
+                      }}>🏢 All Clients</button>
+                      <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+                      {UNITS.map(u => (
+                        <button key={u.path} onClick={() => { navigate(u.path); setClientsOpen(false) }} style={{
+                          width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none',
+                          border: 'none', color: 'var(--muted)', fontSize: 12, cursor: 'pointer'
+                        }}>
+                          <span style={{ marginRight: 6 }}>{u.icon}</span>{u.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            }
             const isActive = n.path === '/deskwork' ? activePath === '/deskwork' : activePath.startsWith(n.path)
             return (
               <button key={n.path} onClick={() => navigate(n.path)} style={{
