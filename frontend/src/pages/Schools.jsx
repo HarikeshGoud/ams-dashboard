@@ -13,7 +13,7 @@ export default function Schools() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState(null)
-  const [form, setForm] = useState({ name: '', client_id: '', model: 'normal', mandal: '', capacity: '', plant_model: '' })
+  const [form, setForm] = useState({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc' })
   const [toast, setToast] = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -39,8 +39,8 @@ export default function Schools() {
   useEffect(() => { load() }, [page, search, mandalFilter, techFilter])
 
 
-  function openAdd() { setForm({ name: '', client_id: '', model: 'normal', mandal: '', capacity: '', plant_model: '' }); setEditId(null); setModal(true) }
-  function openEdit(s) { setForm({ name: s.name, client_id: s.client_id || '', model: s.model, mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '' }); setEditId(s.id); setModal(true) }
+  function openAdd() { setForm({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc' }); setEditId(null); setModal(true) }
+  function openEdit(s) { setForm({ name: s.name, client_id: s.client_id || '', model: s.model || 'school', mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '', unit_number: s.unit_number || '', amc_status: s.amc_status || 'amc' }); setEditId(s.id); setModal(true) }
 
   async function save(ev) {
     ev.preventDefault()
@@ -80,19 +80,19 @@ export default function Schools() {
           <div className="table-wrap scroll-table">
             <table>
               <thead>
-                <tr><th>#</th><th>School Name</th><th>Client</th><th>Model</th><th>Mandal</th><th>Technician</th><th>Last Visit</th><th>AMC</th><th>Action</th></tr>
+                <tr><th>#</th><th>Site Name</th><th>Unit</th><th>Segment</th><th>Contract</th><th>Mandal</th><th>Technician</th><th>Last Visit</th><th>Action</th></tr>
               </thead>
               <tbody>
                 {data.items.map((s, i) => (
                   <tr key={s.id}>
                     <td>{(page - 1) * 50 + i + 1}</td>
                     <td style={{ fontWeight: 500 }}>{s.name}</td>
-                    <td>{s.client_name || '—'}</td>
-                    <td><span className={`pill ${s.model === 'temple' ? 'pill-orange' : 'pill-blue'}`}>{s.model}</span></td>
+                    <td><span className="pill pill-blue">{s.unit_number ? `Unit ${s.unit_number}` : '—'}</span></td>
+                    <td><span className={`pill ${s.model === 'temple' ? 'pill-orange' : 'pill-blue'}`}>{s.model || '—'}</span></td>
+                    <td><span className={`pill ${s.amc_status === 'amc' ? 'pill-green' : s.amc_status === 'warranty' ? 'pill-orange' : 'pill-red'}`}>{(s.amc_status || '—').toUpperCase()}</span></td>
                     <td>{s.mandal_name || '—'}</td>
                     <td>{s.technician_name || '—'}</td>
                     <td>{s.last_visit_date || '—'}</td>
-                    <td><span className={`pill ${s.amc_status === 'active' ? 'pill-green' : 'pill-red'}`}>{s.amc_status}</span></td>
                     <td>
                       <button className="btn btn-outline btn-sm" onClick={() => openEdit(s)}>Edit</button>{' '}
                       <button className="btn btn-danger btn-sm" onClick={() => del(s.id)}>Del</button>
@@ -126,10 +126,30 @@ export default function Schools() {
                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="form-group"><label>Model</label>
+                <div className="form-group"><label>Unit (State)</label>
+                  <select value={form.unit_number} onChange={f('unit_number')}>
+                    <option value="">— Select Unit —</option>
+                    <option value="1">Unit 1 — Telangana</option>
+                    <option value="2">Unit 2 — Andhra Pradesh</option>
+                    <option value="3">Unit 3 — Other States</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Segment / Type</label>
                   <select value={form.model} onChange={f('model')}>
-                    <option value="normal">Normal</option>
+                    <option value="school">School</option>
+                    <option value="hospital">Hospital</option>
                     <option value="temple">Temple</option>
+                    <option value="park">Park</option>
+                    <option value="village">Village</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="form-group"><label>Contract Type</label>
+                  <select value={form.amc_status} onChange={f('amc_status')}>
+                    <option value="amc">AMC</option>
+                    <option value="warranty">Warranty</option>
+                    <option value="chargeable">Chargeable</option>
+                    <option value="others">Others</option>
                   </select>
                 </div>
                 <div className="form-group"><label>Mandal</label>

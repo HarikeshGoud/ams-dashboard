@@ -13,11 +13,12 @@ router = APIRouter(prefix="/api/schools", tags=["schools"])
 class SchoolCreate(BaseModel):
     name: str
     client_id: Optional[int] = None
-    model: str = "normal"
+    model: str = "school"
     mandal: Optional[str] = None
     capacity: Optional[str] = None
     plant_model: Optional[str] = None
     unit_number: Optional[str] = None
+    amc_status: Optional[str] = "amc"
 
 def _fmt(s: School):
     tech = s.technician if hasattr(s, 'technician') and s.technician_id else None
@@ -47,6 +48,9 @@ def list_schools(
     mandal_id: Optional[int] = None,
     client_id: Optional[int] = None,
     technician_id: Optional[int] = None,
+    unit_number: Optional[str] = None,
+    segment: Optional[str] = None,
+    contract_type: Optional[str] = None,
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
@@ -59,6 +63,12 @@ def list_schools(
         q = q.filter(School.client_id == client_id)
     if technician_id:
         q = q.filter(School.technician_id == technician_id)
+    if unit_number:
+        q = q.filter(School.unit_number == unit_number)
+    if segment:
+        q = q.filter(School.model == segment)
+    if contract_type:
+        q = q.filter(School.amc_status == contract_type)
     total = q.count()
     schools = q.offset((page - 1) * limit).limit(limit).all()
     return {"total": total, "page": page, "limit": limit, "items": [_fmt(s) for s in schools]}
@@ -68,7 +78,8 @@ def create_school(data: SchoolCreate, db: Session = Depends(get_db), _=Depends(g
     mandal = db.query(Mandal).filter(Mandal.name == data.mandal).first() if data.mandal else None
     s = School(name=data.name, client_id=data.client_id, model=data.model,
                mandal_id=mandal.id if mandal else None,
-               capacity=data.capacity, plant_model=data.plant_model)
+               capacity=data.capacity, plant_model=data.plant_model,
+               unit_number=data.unit_number, amc_status=data.amc_status or "amc")
     db.add(s); db.commit(); db.refresh(s)
     return _fmt(s)
 
@@ -80,6 +91,7 @@ def update_school(sid: int, data: SchoolCreate, db: Session = Depends(get_db), _
     s.name = data.name; s.client_id = data.client_id; s.model = data.model
     s.mandal_id = mandal.id if mandal else s.mandal_id
     s.capacity = data.capacity; s.plant_model = data.plant_model
+    s.unit_number = data.unit_number; s.amc_status = data.amc_status or s.amc_status
     db.commit(); db.refresh(s)
     return _fmt(s)
 

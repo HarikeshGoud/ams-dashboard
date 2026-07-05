@@ -26,6 +26,7 @@ import MyTravel from './pages/employee/MyTravel'
 import MyVisits from './pages/employee/MyVisits'
 import ProofReview from './pages/ProofReview'
 import Reports from './pages/Reports'
+import UnitPage from './pages/UnitPage'
 import DeskworkLayout from './components/layout/DeskworkLayout'
 import DeskHome from './pages/deskwork/DeskHome'
 import DeskTasks from './pages/deskwork/DeskTasks'
@@ -113,6 +114,7 @@ export default function App() {
         <Route path="travel"       element={<Travel />} />
         <Route path="proof-review" element={<ProofReview />} />
         <Route path="reports"      element={<Reports />} />
+        <Route path="unit/:unit"   element={<UnitPage />} />
       </Route>
 
       <Route path="*" element={<RedirectByRole />} />
