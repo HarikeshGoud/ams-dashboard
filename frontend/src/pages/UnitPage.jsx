@@ -28,10 +28,17 @@ const CONTRACT_OPTS = [
 ]
 
 function condColor(c) {
-  return c === 'working' ? '#198754' : c === 'not_working' ? '#dc3545' : '#fd7e14'
+  if (!c)                  return '#6c757d'
+  if (c === 'working')     return '#198754'
+  if (c === 'not_working') return '#dc3545'
+  return '#fd7e14'
 }
 function condLabel(c) {
-  return c === 'working' ? 'Working' : c === 'not_working' ? 'Not Working' : 'Under Repair'
+  if (!c)                return 'Not Visited'
+  if (c === 'working')   return 'Working'
+  if (c === 'not_working') return 'Not Working'
+  if (c === 'under_repair' || c === 'repair') return 'Under Repair'
+  return c
 }
 function contractColor(s) {
   return s === 'amc' ? '#fd7e14' : s === 'warranty' ? '#7c3aed' : '#6c757d'
@@ -238,7 +245,7 @@ export default function UnitPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ limit: 200, unit_number: unit })
+      const params = new URLSearchParams({ limit: 2000, unit_number: unit })
       if (segment !== 'all') params.append('segment', segment)
       if (contract !== 'all') params.append('contract_type', contract)
       const r = await api.get(`/api/schools/?${params}`)
@@ -259,11 +266,13 @@ export default function UnitPage() {
   )
 
   const statCards = [
-    ['Total Sites', filtered.length, meta.color],
-    ['Working', filtered.filter(s => s.plant_condition === 'working').length, '#198754'],
-    ['Not Working', filtered.filter(s => s.plant_condition === 'not_working').length, '#dc3545'],
-    ['AMC', filtered.filter(s => s.amc_status === 'amc').length, '#fd7e14'],
-    ['Warranty', filtered.filter(s => s.amc_status === 'warranty').length, '#7c3aed'],
+    ['Total Sites',   sites.length,                                                          meta.color],
+    ['Working',       sites.filter(s => s.plant_condition === 'working').length,             '#198754' ],
+    ['Not Working',   sites.filter(s => s.plant_condition === 'not_working').length,         '#dc3545' ],
+    ['Not Visited',   sites.filter(s => !s.plant_condition).length,                          '#6c757d' ],
+    ['AMC',           sites.filter(s => s.amc_status === 'amc').length,                     '#fd7e14' ],
+    ['Warranty',      sites.filter(s => s.amc_status === 'warranty').length,                '#7c3aed' ],
+    ['Chargeable',    sites.filter(s => s.amc_status === 'chargeable').length,              '#0891b2' ],
   ]
 
   return (
