@@ -16,3 +16,4 @@ from .notification import Notification
 from .allowance import AllowanceRequest
 from .salary_override import SalaryOverride
 from .amc_report import AMCReport
+from .service_report import ServiceReport

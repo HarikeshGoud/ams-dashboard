@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import api from '../../api/axios'
+import SignaturePad from '../../components/SignaturePad'
 
 // ── Camera capture ────────────────────────────────────────────────────────────
 function CameraCapture({ onCapture, onClose, gps }) {
@@ -126,6 +127,21 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  // Step 3 — service report fields
+  const [lastReportId, setLastReportId] = useState(null)
+  const [problemDesc,  setProblemDesc]  = useState('')
+  const [observation,  setObservation]  = useState('')
+  const [actionTaken,  setActionTaken]  = useState('')
+  const [tdsInput,     setTdsInput]     = useState('')
+  const [tdsOutput,    setTdsOutput]    = useState('')
+  const [voltage,      setVoltage]      = useState('')
+  const [flowRate,     setFlowRate]     = useState('')
+  const [techSig,      setTechSig]      = useState(null)
+  const [principalSig, setPrincipalSig] = useState(null)
+  const [principalName,setPrincipalName]= useState('')
+  const [srSubmitting, setSrSubmitting] = useState(false)
+  const [pdfUrl,       setPdfUrl]       = useState(null)
+
   const CAT_A = '50/100 LPH RO Units'
   const CAT_B = '1000/1500/2000 LPH RO Units'
 
@@ -191,12 +207,39 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         if (photos[`photo_${i}`])  fd.append(`item_photo_${i}`,   photos[`photo_${i}`])
       })
 
-      await api.post('/api/field-reports/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-      onSubmitted()
+      const res = await api.post('/api/field-reports/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setLastReportId(res.data?.id || null)
+      setStep(3)
     } catch (e) {
       setError(e.response?.data?.detail || 'Submission failed. Try again.')
     }
     setSubmitting(false)
+  }
+
+  async function handleServiceReport() {
+    setSrSubmitting(true)
+    try {
+      const res = await api.post('/api/service-reports/', {
+        field_report_id: lastReportId,
+        task_id: task.id,
+        school_id: task.school_id,
+        problem_description: problemDesc,
+        observation,
+        action_taken: actionTaken,
+        spare_parts: selectedItems.join(', '),
+        tds_input:  tdsInput  ? Number(tdsInput)  : null,
+        tds_output: tdsOutput ? Number(tdsOutput) : null,
+        voltage:    voltage   ? Number(voltage)   : null,
+        flow_rate:  flowRate  ? Number(flowRate)  : null,
+        technician_signature_b64: techSig,
+        principal_signature_b64:  principalSig,
+        principal_name: principalName,
+      })
+      setPdfUrl(res.data.pdf_url)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Service report failed. Try again.')
+    }
+    setSrSubmitting(false)
   }
 
   const doneCount = selectedItems.reduce((acc, _, i) =>
@@ -220,12 +263,12 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>{task.title}</div>
 
           {/* Step indicator */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            {['1. Select Items', '2. Take Photos'].map((label, i) => {
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+            {['1. Select Items', '2. Take Photos', '3. Service Report'].map((label, i) => {
               const active = step === i + 1, done = step > i + 1
               return (
                 <div key={i} style={{
-                  flex: 1, textAlign: 'center', padding: '6px 0', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                  flex: 1, textAlign: 'center', padding: '6px 4px', borderRadius: 8, fontSize: 10, fontWeight: 700,
                   background: active ? 'rgba(56,189,248,.15)' : done ? 'rgba(52,211,153,.15)' : 'var(--surface2)',
                   color: active ? 'var(--accent)' : done ? 'var(--green)' : 'var(--muted)',
                   border: `1.5px solid ${active ? 'var(--accent)' : done ? 'var(--green)' : 'var(--border)'}`
@@ -407,8 +450,115 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 </div>
               )}
               <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
-                Proof will be sent for admin review. Attendance is marked separately by admin.
+                Photos submitted! Now fill the service report in Step 3.
               </div>
+            </>
+          )}
+
+          {/* ── STEP 3: Service report + signatures ── */}
+          {step === 3 && (
+            <>
+              {pdfUrl ? (
+                /* ── Success: PDF ready ── */
+                <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                  <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Service Report Generated!</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>PDF is ready with signatures and school stamp.</div>
+                  <a href={pdfUrl} target="_blank" rel="noreferrer"
+                    style={{ display: 'inline-block', padding: '10px 24px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13, textDecoration: 'none', marginBottom: 12 }}>
+                    📄 Download PDF
+                  </a>
+                  <br />
+                  <button className="btn btn-outline" style={{ fontSize: 12 }} onClick={onSubmitted}>Close</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 10 }}>
+                    🔧 Work Details
+                  </div>
+
+                  {/* Items used — pre-filled */}
+                  <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(56,189,248,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 12 }}>
+                    <b style={{ color: 'var(--accent)' }}>Parts Installed:</b> {selectedItems.join(' · ')}
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 11 }}>Problem / Complaint</label>
+                    <textarea value={problemDesc} onChange={e => setProblemDesc(e.target.value)} rows={2} placeholder="What was the problem found?" style={{ fontSize: 13 }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 11 }}>Observation</label>
+                    <textarea value={observation} onChange={e => setObservation(e.target.value)} rows={2} placeholder="What did you observe?" style={{ fontSize: 13 }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 11 }}>Action Taken</label>
+                    <textarea value={actionTaken} onChange={e => setActionTaken(e.target.value)} rows={2} placeholder="What did you do to fix it?" style={{ fontSize: 13 }} />
+                  </div>
+
+                  {/* Plant readings */}
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>
+                    📊 Plant Readings
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                    {[
+                      ['TDS Input (ppm)',  tdsInput,  setTdsInput],
+                      ['TDS Output (ppm)', tdsOutput, setTdsOutput],
+                      ['Voltage (V)',      voltage,   setVoltage],
+                      ['Flow Rate (LPH)',  flowRate,  setFlowRate],
+                    ].map(([label, val, setter]) => (
+                      <div key={label} className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 10 }}>{label}</label>
+                        <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="—"
+                          style={{ fontSize: 13, padding: '6px 10px' }} />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Principal name */}
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label style={{ fontSize: 11 }}>Principal / In-charge Name</label>
+                    <input type="text" value={principalName} onChange={e => setPrincipalName(e.target.value)} placeholder="Name of person who verified" style={{ fontSize: 13 }} />
+                  </div>
+
+                  {/* Technician signature */}
+                  <SignaturePad
+                    label="Your Signature (Technician)"
+                    onSigned={setTechSig}
+                    style={{ marginBottom: 14 }}
+                  />
+
+                  {/* Principal signature */}
+                  <div style={{
+                    padding: 12, borderRadius: 10, border: '2px solid var(--yellow)',
+                    background: 'rgba(251,191,36,.06)', marginBottom: 14
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', marginBottom: 8 }}>
+                      📱 Hand phone to Principal / In-charge
+                    </div>
+                    <SignaturePad
+                      label="Principal / In-charge Signature"
+                      onSigned={setPrincipalSig}
+                    />
+                  </div>
+
+                  {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
+
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-outline" style={{ fontSize: 12 }} onClick={onSubmitted} disabled={srSubmitting}>
+                      Skip — Close
+                    </button>
+                    <button className="btn btn-primary" style={{ flex: 1, fontSize: 13 }}
+                      onClick={handleServiceReport} disabled={srSubmitting || !techSig || !principalSig}>
+                      {srSubmitting ? '⏳ Generating PDF…' : '✅ Generate Service Report PDF'}
+                    </button>
+                  </div>
+                  {(!techSig || !principalSig) && (
+                    <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', textAlign: 'center' }}>
+                      ⚠️ Both signatures required before generating PDF
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>

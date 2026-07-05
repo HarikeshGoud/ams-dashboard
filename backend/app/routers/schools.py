@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import os, shutil
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -150,4 +151,33 @@ def sync_coords_from_reports(db: Session = Depends(get_db), _=Depends(get_curren
 
     db.commit()
     return {"ok": True, "updated": updated, "total_schools": db.query(School).count()}
+
+
+UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+
+@router.post("/{sid}/stamp")
+async def upload_school_stamp(sid: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(get_current_user)):
+    s = db.query(School).filter(School.id == sid).first()
+    if not s:
+        raise HTTPException(404, "School not found")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+    if ext not in ("png", "jpg", "jpeg"):
+        raise HTTPException(400, "Only PNG/JPG allowed")
+    stamp_dir = os.path.join(UPLOADS_DIR, "stamps")
+    os.makedirs(stamp_dir, exist_ok=True)
+    # Save as {school_id}.png (always PNG naming regardless)
+    dest = os.path.join(stamp_dir, f"{sid}.{ext}")
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    return {"ok": True, "school_id": sid, "stamp_url": f"http://localhost:8000/uploads/stamps/{sid}.{ext}"}
+
+
+@router.get("/{sid}/stamp")
+def get_school_stamp(sid: int):
+    stamp_dir = os.path.join(UPLOADS_DIR, "stamps")
+    for ext in ("png", "jpg", "jpeg"):
+        path = os.path.join(stamp_dir, f"{sid}.{ext}")
+        if os.path.exists(path):
+            return {"ok": True, "stamp_url": f"http://localhost:8000/uploads/stamps/{sid}.{ext}"}
+    return {"ok": False, "stamp_url": None}
 
