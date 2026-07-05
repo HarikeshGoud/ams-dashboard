@@ -128,19 +128,35 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [error, setError] = useState('')
 
   // Step 3 — service report fields
-  const [lastReportId, setLastReportId] = useState(null)
-  const [problemDesc,  setProblemDesc]  = useState('')
-  const [observation,  setObservation]  = useState('')
-  const [actionTaken,  setActionTaken]  = useState('')
-  const [tdsInput,     setTdsInput]     = useState('')
-  const [tdsOutput,    setTdsOutput]    = useState('')
-  const [voltage,      setVoltage]      = useState('')
-  const [flowRate,     setFlowRate]     = useState('')
-  const [techSig,      setTechSig]      = useState(null)
-  const [principalSig, setPrincipalSig] = useState(null)
-  const [principalName,setPrincipalName]= useState('')
-  const [srSubmitting, setSrSubmitting] = useState(false)
-  const [pdfUrl,       setPdfUrl]       = useState(null)
+  const [lastReportId,      setLastReportId]      = useState(null)
+  const [reportNo,          setReportNo]          = useState('')
+  const [complaintNo,       setComplaintNo]       = useState('')
+  const [unitType,          setUnitType]          = useState('AMC')
+  const [problemDesc,       setProblemDesc]       = useState('')
+  const [observation,       setObservation]       = useState('')
+  const [actionTaken,       setActionTaken]       = useState('')
+  const [sparesRequired,    setSparesRequired]    = useState('')
+  const [plantCapacity,     setPlantCapacity]     = useState('')
+  const [designRwTds,       setDesignRwTds]       = useState('')
+  const [freeChlorine,      setFreeChlorine]      = useState('')
+  const [hoursRunning,      setHoursRunning]      = useState('')
+  const [membraneCond,      setMembraneCond]      = useState('OK')
+  const [uvLampCond,        setUvLampCond]        = useState('OK')
+  const [sensorsCond,       setSensorsCond]       = useState('OK')
+  const [prefilterCond,     setPrefilterCond]     = useState('OK')
+  const [tdsInput,          setTdsInput]          = useState('')
+  const [tdsOutput,         setTdsOutput]         = useState('')
+  const [voltage,           setVoltage]           = useState('')
+  const [flowRate,          setFlowRate]          = useState('')
+  const [currentAmps,       setCurrentAmps]       = useState('')
+  const [principalName,     setPrincipalName]     = useState('')
+  const [customerMobile,    setCustomerMobile]    = useState('')
+  const [customerRemarks,   setCustomerRemarks]   = useState('')
+  const [status,            setStatus]            = useState('PROBLEM RESOLVED')
+  const [techSig,           setTechSig]           = useState(null)
+  const [principalSig,      setPrincipalSig]      = useState(null)
+  const [srSubmitting,      setSrSubmitting]      = useState(false)
+  const [pdfUrl,            setPdfUrl]            = useState(null)
 
   const CAT_A = '50/100 LPH RO Units'
   const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -220,20 +236,35 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     setSrSubmitting(true)
     try {
       const res = await api.post('/api/service-reports/', {
-        field_report_id: lastReportId,
-        task_id: task.id,
-        school_id: task.school_id,
-        problem_description: problemDesc,
+        field_report_id:          lastReportId,
+        task_id:                  task.id,
+        school_id:                task.school_id,
+        report_no:                reportNo,
+        complaint_no:             complaintNo,
+        unit_type:                unitType,
+        problem_description:      problemDesc,
         observation,
-        action_taken: actionTaken,
-        spare_parts: selectedItems.join(', '),
+        action_taken:             actionTaken,
+        spare_parts:              sparesRequired || selectedItems.join(', '),
+        plant_capacity:           plantCapacity,
+        design_rw_tds:            designRwTds,
+        free_chlorine_rw:         freeChlorine,
+        hours_running:            hoursRunning,
+        membrane_condition:       membraneCond,
+        uv_lamp_condition:        uvLampCond,
+        sensors_condition:        sensorsCond,
+        prefilter_condition:      prefilterCond,
         tds_input:  tdsInput  ? Number(tdsInput)  : null,
         tds_output: tdsOutput ? Number(tdsOutput) : null,
         voltage:    voltage   ? Number(voltage)   : null,
         flow_rate:  flowRate  ? Number(flowRate)  : null,
+        current_amps:             currentAmps,
+        principal_name:           principalName,
+        customer_mobile:          customerMobile,
+        customer_remarks:         customerRemarks,
+        status,
         technician_signature_b64: techSig,
         principal_signature_b64:  principalSig,
-        principal_name: principalName,
       })
       setPdfUrl(res.data.pdf_url)
     } catch (e) {
@@ -473,72 +504,137 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 10 }}>
+                  {/* ── Section label helper ── */}
+                  {/* Report Meta */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                    📋 Report Info
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Report No</label>
+                      <input value={reportNo} onChange={e => setReportNo(e.target.value)} placeholder="e.g. SR-001" style={{ fontSize: 12 }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Complaint No</label>
+                      <input value={complaintNo} onChange={e => setComplaintNo(e.target.value)} placeholder="e.g. CMP-001" style={{ fontSize: 12 }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Unit Type</label>
+                      <select value={unitType} onChange={e => setUnitType(e.target.value)} style={{ fontSize: 12 }}>
+                        <option>AMC</option><option>Warranty</option><option>Chargeable</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Problem / Observation / Action */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
                     🔧 Work Details
                   </div>
-
-                  {/* Items used — pre-filled */}
-                  <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(56,189,248,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 12 }}>
-                    <b style={{ color: 'var(--accent)' }}>Parts Installed:</b> {selectedItems.join(' · ')}
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 10 }}>Problem Reported</label>
+                    <textarea value={problemDesc} onChange={e => setProblemDesc(e.target.value)} rows={2} placeholder="What was the problem?" style={{ fontSize: 12 }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 10 }}>Observation &amp; Action Taken</label>
+                    <textarea value={observation} onChange={e => setObservation(e.target.value)} rows={2} placeholder="What was observed and done?" style={{ fontSize: 12 }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 10 }}>Spares Required / Consumed</label>
+                    <input value={sparesRequired} onChange={e => setSparesRequired(e.target.value)}
+                      placeholder={selectedItems.join(', ') || 'e.g. Filter, Membrane'} style={{ fontSize: 12 }} />
                   </div>
 
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: 11 }}>Problem / Complaint</label>
-                    <textarea value={problemDesc} onChange={e => setProblemDesc(e.target.value)} rows={2} placeholder="What was the problem found?" style={{ fontSize: 13 }} />
+                  {/* Unit Details / Site Condition */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                    🏭 Unit Details / Site Condition
                   </div>
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: 11 }}>Observation</label>
-                    <textarea value={observation} onChange={e => setObservation(e.target.value)} rows={2} placeholder="What did you observe?" style={{ fontSize: 13 }} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: 11 }}>Action Taken</label>
-                    <textarea value={actionTaken} onChange={e => setActionTaken(e.target.value)} rows={2} placeholder="What did you do to fix it?" style={{ fontSize: 13 }} />
-                  </div>
-
-                  {/* Plant readings */}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>
-                    📊 Plant Readings
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                     {[
-                      ['TDS Input (ppm)',  tdsInput,  setTdsInput],
-                      ['TDS Output (ppm)', tdsOutput, setTdsOutput],
-                      ['Voltage (V)',      voltage,   setVoltage],
-                      ['Flow Rate (LPH)',  flowRate,  setFlowRate],
-                    ].map(([label, val, setter]) => (
-                      <div key={label} className="form-group" style={{ marginBottom: 0 }}>
-                        <label style={{ fontSize: 10 }}>{label}</label>
-                        <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="—"
-                          style={{ fontSize: 13, padding: '6px 10px' }} />
+                      ['Plant Capacity',     plantCapacity,  setPlantCapacity,  'e.g. 1000 LPH'],
+                      ['Design R/W TDS',     designRwTds,    setDesignRwTds,    'ppm'],
+                      ['Free Chlorine R/W',  freeChlorine,   setFreeChlorine,   'mg/L'],
+                      ['No. of Hours Running',hoursRunning,  setHoursRunning,   'hrs/day'],
+                    ].map(([lbl, val, setter, ph]) => (
+                      <div key={lbl} className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 10 }}>{lbl}</label>
+                        <input value={val} onChange={e => setter(e.target.value)} placeholder={ph} style={{ fontSize: 12 }} />
+                      </div>
+                    ))}
+                  </div>
+                  {/* Condition dropdowns */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    {[
+                      ['Membrane Condition',  membraneCond,  setMembraneCond],
+                      ['UV Lamp Condition',   uvLampCond,    setUvLampCond],
+                      ['Sensors Condition',   sensorsCond,   setSensorsCond],
+                      ['Pre-Filter Condition',prefilterCond, setPrefilterCond],
+                    ].map(([lbl, val, setter]) => (
+                      <div key={lbl} className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 10 }}>{lbl}</label>
+                        <select value={val} onChange={e => setter(e.target.value)} style={{ fontSize: 12 }}>
+                          <option>OK</option><option>Not OK</option><option>To be replaced</option>
+                        </select>
                       </div>
                     ))}
                   </div>
 
-                  {/* Principal name */}
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 11 }}>Principal / In-charge Name</label>
-                    <input type="text" value={principalName} onChange={e => setPrincipalName(e.target.value)} placeholder="Name of person who verified" style={{ fontSize: 13 }} />
+                  {/* Plant Readings */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                    📊 Plant Readings
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    {[
+                      ['Raw Water TDS (ppm)',    tdsInput,    setTdsInput],
+                      ['Product Water TDS (ppm)',tdsOutput,   setTdsOutput],
+                      ['Flow Rate (LPH)',         flowRate,    setFlowRate],
+                      ['Voltage (V)',             voltage,     setVoltage],
+                      ['Current (Amps)',          currentAmps, setCurrentAmps],
+                    ].map(([lbl, val, setter]) => (
+                      <div key={lbl} className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 10 }}>{lbl}</label>
+                        <input type="number" value={val} onChange={e => setter(e.target.value)} placeholder="—" style={{ fontSize: 12 }} />
+                      </div>
+                    ))}
                   </div>
 
-                  {/* Technician signature */}
-                  <SignaturePad
-                    label="Your Signature (Technician)"
-                    onSigned={setTechSig}
-                    style={{ marginBottom: 14 }}
-                  />
-
-                  {/* Principal signature */}
-                  <div style={{
-                    padding: 12, borderRadius: 10, border: '2px solid var(--yellow)',
-                    background: 'rgba(251,191,36,.06)', marginBottom: 14
-                  }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', marginBottom: 8 }}>
-                      📱 Hand phone to Principal / In-charge
+                  {/* Status */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Status</label>
+                      <select value={status} onChange={e => setStatus(e.target.value)} style={{ fontSize: 12, color: status.includes('UNRESOLVED') ? '#ef4444' : '#22c55e', fontWeight: 700 }}>
+                        <option value="PROBLEM RESOLVED">✅ PROBLEM RESOLVED</option>
+                        <option value="PROBLEM UNRESOLVED">❌ PROBLEM UNRESOLVED</option>
+                      </select>
                     </div>
-                    <SignaturePad
-                      label="Principal / In-charge Signature"
-                      onSigned={setPrincipalSig}
-                    />
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Customer Remarks</label>
+                      <input value={customerRemarks} onChange={e => setCustomerRemarks(e.target.value)} placeholder="Any feedback" style={{ fontSize: 12 }} />
+                    </div>
+                  </div>
+
+                  {/* Customer info */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                    🧑‍💼 Customer / Principal
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Principal / In-charge Name</label>
+                      <input value={principalName} onChange={e => setPrincipalName(e.target.value)} placeholder="Name" style={{ fontSize: 12 }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Mobile Number</label>
+                      <input value={customerMobile} onChange={e => setCustomerMobile(e.target.value)} placeholder="10-digit mobile" style={{ fontSize: 12 }} />
+                    </div>
+                  </div>
+
+                  {/* Signatures */}
+                  <SignaturePad label="Your Signature (Service Engineer)" onSigned={setTechSig} style={{ marginBottom: 14 }} />
+
+                  <div style={{ padding: 12, borderRadius: 10, border: '2px solid var(--yellow)', background: 'rgba(251,191,36,.06)', marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', marginBottom: 8 }}>
+                      📱 Hand phone to Customer / Principal for signature
+                    </div>
+                    <SignaturePad label="Customer Signature" onSigned={setPrincipalSig} />
                   </div>
 
                   {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}

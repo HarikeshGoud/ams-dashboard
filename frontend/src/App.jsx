@@ -99,6 +99,7 @@ export default function App() {
         <Route path="travel"          element={<DeskTravel />} />
         <Route path="service-reports" element={<ServiceReports />} />
         <Route path="schools"         element={<Schools />} />
+        <Route path="clients"         element={<Clients />} />
         <Route path="unit/:unit"      element={<UnitPage />} />
       </Route>
 

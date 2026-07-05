@@ -15,26 +15,45 @@ router = APIRouter(prefix="/api/service-reports", tags=["service-reports"])
 
 UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
 
+COMPANY_NAME    = "SRI HAMSINI & CHANDRA ENTERPRISES"
+COMPANY_ADDRESS = "Office Address: 2-1-49/244, Park Street, Street No. 17, Suryanagar Colony, Uppal, Hyderabad, Telangana - 500039"
+COMPANY_EMAIL   = "E-mail Id: ch.srini1979@yahoo.com / ch.srini1979@rediffmail.com"
+COMPANY_TEL     = "Tel No. 7670873623"
+
 
 class CreateServiceReport(BaseModel):
-    field_report_id:     Optional[int]   = None
-    task_id:             Optional[int]   = None
-    school_id:           Optional[int]   = None
-    problem_description: Optional[str]   = None
-    observation:         Optional[str]   = None
-    action_taken:        Optional[str]   = None
-    spare_parts:         Optional[str]   = None
-    tds_input:           Optional[float] = None
-    tds_output:          Optional[float] = None
-    voltage:             Optional[float] = None
-    flow_rate:           Optional[float] = None
-    technician_signature_b64: Optional[str] = None  # base64 PNG
-    principal_signature_b64:  Optional[str] = None  # base64 PNG
-    principal_name:      Optional[str]   = None
+    field_report_id:          Optional[int]   = None
+    task_id:                  Optional[int]   = None
+    school_id:                Optional[int]   = None
+    report_no:                Optional[str]   = None
+    complaint_no:             Optional[str]   = None
+    unit_type:                Optional[str]   = "AMC"
+    problem_description:      Optional[str]   = None
+    observation:              Optional[str]   = None
+    action_taken:             Optional[str]   = None
+    spare_parts:              Optional[str]   = None
+    plant_capacity:           Optional[str]   = None
+    design_rw_tds:            Optional[str]   = None
+    free_chlorine_rw:         Optional[str]   = None
+    hours_running:            Optional[str]   = None
+    membrane_condition:       Optional[str]   = "OK"
+    uv_lamp_condition:        Optional[str]   = "OK"
+    sensors_condition:        Optional[str]   = "OK"
+    prefilter_condition:      Optional[str]   = "OK"
+    tds_input:                Optional[float] = None   # Raw Water TDS
+    tds_output:               Optional[float] = None   # Product Water TDS
+    voltage:                  Optional[float] = None
+    flow_rate:                Optional[float] = None   # Flow in LPH
+    current_amps:             Optional[str]   = None
+    customer_mobile:          Optional[str]   = None
+    customer_remarks:         Optional[str]   = None
+    status:                   Optional[str]   = "PROBLEM RESOLVED"
+    technician_signature_b64: Optional[str]   = None
+    principal_signature_b64:  Optional[str]   = None
+    principal_name:           Optional[str]   = None
 
 
 def _save_b64_image(b64_str: str, path: str):
-    """Decode base64 data-URL or raw base64 and save as PNG."""
     if not b64_str:
         return
     if "," in b64_str:
@@ -46,185 +65,323 @@ def _save_b64_image(b64_str: str, path: str):
 
 
 def _generate_pdf(report: ServiceReport, db: Session) -> str:
-    """Generate PDF and return relative path (from uploads/)."""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
         from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, HRFlowable
+        from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                        Paragraph, Spacer, Image as RLImage, HRFlowable)
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
     except ImportError:
         return None
 
-    rel_dir = f"service_reports/{report.report_date.year}/{report.report_date.month}"
-    abs_dir = os.path.join(UPLOADS_DIR, rel_dir)
+    rel_dir  = f"service_reports/{report.report_date.year}/{report.report_date.month}"
+    abs_dir  = os.path.join(UPLOADS_DIR, rel_dir)
     os.makedirs(abs_dir, exist_ok=True)
     rel_path = f"{rel_dir}/report_{report.id}.pdf"
     abs_path = os.path.join(UPLOADS_DIR, rel_path)
 
+    BLUE   = colors.HexColor("#1565C0")
+    LBLUE  = colors.HexColor("#E3F2FD")
+    WHITE  = colors.white
+    BLACK  = colors.black
+    PINK   = colors.HexColor("#FFEBEE")
+    RED    = colors.HexColor("#C62828")
+    LGREY  = colors.HexColor("#F5F5F5")
+    BORDER = colors.HexColor("#BDBDBD")
+
+    PAGE_W = A4[0] - 20*mm
+    LM = RM = 10*mm
+
     doc = SimpleDocTemplate(abs_path, pagesize=A4,
-                            topMargin=15*mm, bottomMargin=15*mm,
-                            leftMargin=15*mm, rightMargin=15*mm)
+                            topMargin=8*mm, bottomMargin=8*mm,
+                            leftMargin=LM, rightMargin=RM)
 
-    styles = getSampleStyleSheet()
-    W = A4[0] - 30*mm  # usable width
+    def ps(name, size=9, bold=False, color=BLACK, align=TA_LEFT, leading=None):
+        return ParagraphStyle(name, fontSize=size,
+                              fontName="Helvetica-Bold" if bold else "Helvetica",
+                              textColor=color, alignment=align,
+                              leading=leading or size * 1.3)
 
-    title_style   = ParagraphStyle("title",   fontSize=16, fontName="Helvetica-Bold", alignment=TA_CENTER, spaceAfter=2)
-    sub_style     = ParagraphStyle("sub",     fontSize=9,  fontName="Helvetica",      alignment=TA_CENTER, spaceAfter=8, textColor=colors.grey)
-    label_style   = ParagraphStyle("label",   fontSize=8,  fontName="Helvetica-Bold", textColor=colors.grey)
-    value_style   = ParagraphStyle("value",   fontSize=10, fontName="Helvetica")
-    section_style = ParagraphStyle("section", fontSize=9,  fontName="Helvetica-Bold", textColor=colors.HexColor("#1e40af"), spaceBefore=8, spaceAfter=4)
+    school_name  = report.school.name  if report.school  else "—"
+    tech_name    = report.employee.name if report.employee else "—"
+
+    def val(v, unit=""):
+        if v is None or v == "" or v == "—":
+            return "—"
+        return f"{v}{unit}"
+
+    def sig_img(path, w=55*mm, h=18*mm):
+        if path:
+            full = os.path.join(UPLOADS_DIR, path)
+            if os.path.exists(full):
+                try:
+                    img = RLImage(full)
+                    r = min(w / img.imageWidth, h / img.imageHeight)
+                    img.drawWidth  = img.imageWidth  * r
+                    img.drawHeight = img.imageHeight * r
+                    return img
+                except Exception:
+                    pass
+        return Paragraph("", ps("empty"))
+
+    # ── School stamp ──────────────────────────────────────────────────────────
+    stamp_img = None
+    if report.school_id:
+        for ext in ("png", "jpg", "jpeg"):
+            sp = os.path.join(UPLOADS_DIR, "stamps", f"{report.school_id}.{ext}")
+            if os.path.exists(sp):
+                try:
+                    img = RLImage(sp)
+                    r = min(30*mm / img.imageWidth, 15*mm / img.imageHeight)
+                    img.drawWidth  = img.imageWidth  * r
+                    img.drawHeight = img.imageHeight * r
+                    stamp_img = img
+                except Exception:
+                    pass
+                break
 
     story = []
 
-    # ── Header ──────────────────────────────────────────────────────────────
-    school_name = report.school.name if report.school else "—"
-    tech_name   = report.employee.name if report.employee else "—"
-
-    story.append(Paragraph("SERVICE REPORT", title_style))
-    story.append(Paragraph("Water Purifier Maintenance & Service", sub_style))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#1e40af")))
-    story.append(Spacer(1, 4*mm))
-
-    # ── Info table ──────────────────────────────────────────────────────────
-    info_data = [
-        [Paragraph("SCHOOL / CLIENT", label_style), Paragraph(school_name, value_style),
-         Paragraph("DATE", label_style),            Paragraph(str(report.report_date), value_style)],
-        [Paragraph("TECHNICIAN", label_style),      Paragraph(tech_name, value_style),
-         Paragraph("PRINCIPAL / CONTACT", label_style), Paragraph(report.principal_name or "—", value_style)],
-    ]
-    info_table = Table(info_data, colWidths=[30*mm, 70*mm, 30*mm, 60*mm])
-    info_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-        ("BOX",        (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("INNERGRID",  (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
-        ("TOPPADDING",    (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+    # ══════════════════════════════════════════════════════════════════════════
+    # 1. HEADER — blue background with company name
+    # ══════════════════════════════════════════════════════════════════════════
+    header_data = [[
+        Paragraph(COMPANY_NAME, ps("h1", 14, bold=True, color=WHITE, align=TA_CENTER))
+    ]]
+    header_tbl = Table(header_data, colWidths=[PAGE_W])
+    header_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,-1), BLUE),
+        ("TOPPADDING",    (0,0), (-1,-1), 7),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ("LEFTPADDING",   (0,0), (-1,-1), 8),
     ]))
-    story.append(info_table)
-    story.append(Spacer(1, 3*mm))
+    story.append(header_tbl)
 
-    # ── Parts serviced ───────────────────────────────────────────────────────
-    story.append(Paragraph("PARTS INSTALLED / SERVICED", section_style))
-    parts_text = report.spare_parts or "—"
-    story.append(Paragraph(parts_text, value_style))
-    story.append(Spacer(1, 2*mm))
-
-    # ── Work details ─────────────────────────────────────────────────────────
-    def detail_row(label, text):
-        return [Paragraph(label, label_style), Paragraph(text or "—", value_style)]
-
-    work_data = [
-        detail_row("PROBLEM DESCRIPTION", report.problem_description),
-        detail_row("OBSERVATION",          report.observation),
-        detail_row("ACTION TAKEN",         report.action_taken),
-    ]
-    work_table = Table(work_data, colWidths=[40*mm, W - 40*mm])
-    work_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
-        ("BOX",        (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("INNERGRID",  (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
-        ("TOPPADDING",    (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-        ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+    addr_data = [[Paragraph(COMPANY_ADDRESS, ps("addr", 8, align=TA_CENTER))]]
+    addr_tbl = Table(addr_data, colWidths=[PAGE_W])
+    addr_tbl.setStyle(TableStyle([
+        ("TOPPADDING",(0,0),(-1,-1),3), ("BOTTOMPADDING",(0,0),(-1,-1),3),
     ]))
-    story.append(work_table)
-    story.append(Spacer(1, 3*mm))
+    story.append(addr_tbl)
 
-    # ── Plant readings ────────────────────────────────────────────────────────
-    story.append(Paragraph("PLANT READINGS", section_style))
-    readings = [
-        ["PARAMETER", "VALUE", "PARAMETER", "VALUE"],
-        ["TDS Input (ppm)",  f"{report.tds_input:.0f}"  if report.tds_input  is not None else "—",
-         "TDS Output (ppm)", f"{report.tds_output:.0f}" if report.tds_output is not None else "—"],
-        ["Voltage (V)",      f"{report.voltage:.1f}"    if report.voltage    is not None else "—",
-         "Flow Rate (LPH)",  f"{report.flow_rate:.1f}"  if report.flow_rate  is not None else "—"],
-    ]
-    readings_table = Table(readings, colWidths=[45*mm, 45*mm, 45*mm, 55*mm])
-    readings_table.setStyle(TableStyle([
-        ("BACKGROUND",  (0, 0), (-1, 0),  colors.HexColor("#1e40af")),
-        ("TEXTCOLOR",   (0, 0), (-1, 0),  colors.white),
-        ("FONTNAME",    (0, 0), (-1, 0),  "Helvetica-Bold"),
-        ("FONTSIZE",    (0, 0), (-1, 0),  8),
-        ("BACKGROUND",  (0, 1), (0, -1),  colors.HexColor("#f1f5f9")),
-        ("BACKGROUND",  (2, 1), (2, -1),  colors.HexColor("#f1f5f9")),
-        ("BOX",         (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("INNERGRID",   (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
-        ("TOPPADDING",  (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING",(0, 0),(-1, -1), 5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("ALIGN",       (0, 0), (-1, -1), "CENTER"),
+    title_data = [[Paragraph(
+        "WATER PURIFICATION UNIT: INSTALLATION / COMMISSIONING / SERVICE / VISIT REPORT",
+        ps("title", 9, bold=True, align=TA_CENTER)
+    )]]
+    title_tbl = Table(title_data, colWidths=[PAGE_W])
+    title_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER),
+        ("TOPPADDING",(0,0),(-1,-1),4), ("BOTTOMPADDING",(0,0),(-1,-1),4),
     ]))
-    story.append(readings_table)
-    story.append(Spacer(1, 6*mm))
+    story.append(title_tbl)
 
-    # ── Signatures + Stamp ────────────────────────────────────────────────────
-    col = W / 3
-
-    def sig_image(path, max_w=55*mm, max_h=18*mm):
-        if path and os.path.exists(os.path.join(UPLOADS_DIR, path)):
-            try:
-                img = RLImage(os.path.join(UPLOADS_DIR, path))
-                img_w, img_h = img.imageWidth, img.imageHeight
-                ratio = min(max_w / img_w, max_h / img_h)
-                img.drawWidth  = img_w * ratio
-                img.drawHeight = img_h * ratio
-                return img
-            except Exception:
-                pass
-        return Paragraph("(no signature)", ParagraphStyle("ns", fontSize=8, textColor=colors.grey))
-
-    # School stamp
-    stamp_path = None
-    if report.school_id:
-        for ext in ("png", "jpg", "jpeg"):
-            candidate = os.path.join(UPLOADS_DIR, "stamps", f"{report.school_id}.{ext}")
-            if os.path.exists(candidate):
-                stamp_path = candidate
-                break
-
-    def stamp_cell():
-        if stamp_path:
-            try:
-                img = RLImage(stamp_path)
-                ratio = min((col - 10*mm) / img.imageWidth, 22*mm / img.imageHeight)
-                img.drawWidth  = img.imageWidth  * ratio
-                img.drawHeight = img.imageHeight * ratio
-                return img
-            except Exception:
-                pass
-        return Paragraph("(no stamp on file)", ParagraphStyle("ns", fontSize=8, textColor=colors.grey))
-
-    sig_data = [
-        [sig_image(report.technician_signature), sig_image(report.principal_signature), stamp_cell()],
-        [Paragraph("Technician Signature", label_style),
-         Paragraph("Principal / In-charge Signature", label_style),
-         Paragraph("School Stamp", label_style)],
-    ]
-    sig_table = Table(sig_data, colWidths=[col, col, col])
-    sig_table.setStyle(TableStyle([
-        ("BOX",        (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("INNERGRID",  (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
-        ("TOPPADDING",    (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-        ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN",     (0, 0), (-1, 0),  "MIDDLE"),
-        ("BACKGROUND", (0, 1), (-1, 1),  colors.HexColor("#f8fafc")),
-        ("ROWBACKGROUNDS", (0, 0), (-1, 0), [colors.white]),
+    # ══════════════════════════════════════════════════════════════════════════
+    # 2. REPORT META ROW — Report No | Visit Date | Complaint No | Unit Type
+    # ══════════════════════════════════════════════════════════════════════════
+    meta_data = [[
+        Paragraph(f"<b>Report No:</b> {val(report.report_no)}", ps("m",9)),
+        Paragraph(f"<b>Visit Date:</b> {report.report_date}", ps("m",9)),
+        Paragraph(f"<b>Complaint No:</b> {val(report.complaint_no)}", ps("m",9)),
+        Paragraph(f"<b>Unit Type: {val(report.unit_type)}</b>", ps("m",9,bold=True)),
+    ]]
+    meta_tbl = Table(meta_data, colWidths=[PAGE_W*0.22, PAGE_W*0.25, PAGE_W*0.28, PAGE_W*0.25])
+    meta_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
+        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
     ]))
-    story.append(sig_table)
+    story.append(meta_tbl)
 
-    story.append(Spacer(1, 4*mm))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e2e8f0")))
-    story.append(Spacer(1, 2*mm))
-    story.append(Paragraph(
-        f"Generated on {datetime.utcnow().strftime('%d %b %Y %H:%M')} UTC · AMS Water Purifier Management System",
-        ParagraphStyle("footer", fontSize=7, textColor=colors.grey, alignment=TA_CENTER)
-    ))
+    # ══════════════════════════════════════════════════════════════════════════
+    # 3. CUSTOMER / PROBLEM / OBSERVATION block
+    # ══════════════════════════════════════════════════════════════════════════
+    obs_text = f"{val(report.observation)}"
+    if report.action_taken:
+        obs_text += f"\n{report.action_taken}"
+
+    headers_row = [
+        Paragraph("<b>CUSTOMER NAME &amp; ADDRESS:</b>", ps("ch",9,bold=True)),
+        Paragraph("<b>PROBLEM REPORTED:</b>",             ps("ch",9,bold=True)),
+        Paragraph("<b>OBSERVATION &amp; ACTION TAKEN:</b>", ps("ch",9,bold=True)),
+    ]
+    values_row = [
+        Paragraph(school_name, ps("cv",9)),
+        Paragraph(val(report.problem_description), ps("cv",9)),
+        Paragraph(obs_text, ps("cv",9)),
+    ]
+    spares_row = [
+        Paragraph("", ps("sp",9)),
+        Paragraph(f"<b>SPARES REQUIRED:</b> {val(report.spare_parts)}", ps("sp",9)),
+        Paragraph("", ps("sp",9)),
+    ]
+    cust_tbl = Table([headers_row, values_row, spares_row],
+                     colWidths=[PAGE_W*0.28, PAGE_W*0.36, PAGE_W*0.36])
+    cust_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
+        ("TOPPADDING",(0,0),(-1,-1),4), ("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+        ("SPAN",(1,2),(2,2)),
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+    ]))
+    story.append(cust_tbl)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 4. UNIT DETAILS / PLANT READINGS — blue header, 2-column table
+    # ══════════════════════════════════════════════════════════════════════════
+    def lbl(t): return Paragraph(f"<b>{t}</b>", ps("lbl",9,bold=True))
+    def v(t):   return Paragraph(str(t) if t else "—", ps("val",9))
+
+    tds_in  = f"{report.tds_input:.0f}"  if report.tds_input  is not None else "—"
+    tds_out = f"{report.tds_output:.0f}" if report.tds_output is not None else "—"
+    volt    = f"{report.voltage:.1f}"    if report.voltage    is not None else "—"
+    flow    = f"{report.flow_rate:.1f}"  if report.flow_rate  is not None else "—"
+
+    sec_header = [[
+        Paragraph("<b>UNIT DETAILS / SITE CONDITION</b>", ps("sh",9,bold=True,color=WHITE,align=TA_CENTER)),
+        Paragraph("", ps("sh2",9)),
+        Paragraph("<b>PLANT READINGS</b>", ps("ph",9,bold=True,color=WHITE,align=TA_CENTER)),
+        Paragraph("", ps("ph2",9)),
+    ]]
+    detail_rows = [
+        [lbl("Plant Location"),        v(school_name),                    lbl("Raw Water TDS"),              v(tds_in)],
+        [lbl("Plant Capacity"),        v(report.plant_capacity),          lbl("Product Water TDS"),          v(tds_out)],
+        [lbl("Design R/W TDS"),        v(report.design_rw_tds),           lbl("Product Water Flow in LPH"),  v(flow)],
+        [lbl("Free Chlorine in R/W"),  v(report.free_chlorine_rw),        lbl("Sensors Condition"),          v(report.sensors_condition or "OK")],
+        [lbl("No. of Hours Running"),  v(report.hours_running),           lbl("Pre-Filter Condition"),       v(report.prefilter_condition or "OK")],
+        [lbl("Membrane Condition"),    v(report.membrane_condition or "OK"), lbl("Voltage"),                 v(volt)],
+        [lbl("UV Lamp Condition"),     v(report.uv_lamp_condition or "OK"),  lbl("Current in Amps"),         v(report.current_amps)],
+    ]
+    col_w = [PAGE_W*0.22, PAGE_W*0.28, PAGE_W*0.28, PAGE_W*0.22]
+    unit_tbl = Table(sec_header + detail_rows, colWidths=col_w)
+    unit_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0),(1,0), BLUE),
+        ("BACKGROUND", (2,0),(3,0), BLUE),
+        ("TEXTCOLOR",  (0,0),(-1,0), WHITE),
+        ("SPAN",       (0,0),(1,0)),
+        ("SPAN",       (2,0),(3,0)),
+        ("BOX",        (0,0),(-1,-1), 0.5, BORDER),
+        ("INNERGRID",  (0,0),(-1,-1), 0.5, BORDER),
+        ("BACKGROUND", (0,1),(0,-1), LGREY),
+        ("BACKGROUND", (2,1),(2,-1), LGREY),
+        ("TOPPADDING",    (0,0),(-1,-1), 4),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+        ("LEFTPADDING",   (0,0),(-1,-1), 6),
+        ("ALIGN",      (0,0),(-1,0), "CENTER"),
+        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    story.append(unit_tbl)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 5. SPARES CONSUMED
+    # ══════════════════════════════════════════════════════════════════════════
+    spares_header = [[Paragraph("<b>SPARES CONSUMED</b>", ps("sc",9,bold=True,color=WHITE))]]
+    spares_h_tbl = Table(spares_header, colWidths=[PAGE_W])
+    spares_h_tbl.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1), BLUE),
+        ("TOPPADDING",(0,0),(-1,-1),4), ("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+        ("BOX",(0,0),(-1,-1),0.5,BORDER),
+    ]))
+    story.append(spares_h_tbl)
+
+    spares_body = [[Paragraph(val(report.spare_parts), ps("sb",9))]]
+    spares_b_tbl = Table(spares_body, colWidths=[PAGE_W])
+    spares_b_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER),
+        ("TOPPADDING",(0,0),(-1,-1),6), ("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+    ]))
+    story.append(spares_b_tbl)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 6. CUSTOMER NAME / SIGNATURE + STAMP
+    # ══════════════════════════════════════════════════════════════════════════
+    cust_lbl_row = [
+        Paragraph("<b>CUSTOMER NAME / MOBILE NUMBER</b>", ps("cl",9,bold=True)),
+        Paragraph("<b>CUSTOMER SIGNATURE &amp; DATE</b>", ps("cl",9,bold=True)),
+        Paragraph("<b>SCHOOL STAMP</b>", ps("cl",9,bold=True)),
+    ]
+    cust_val_row = [
+        Paragraph(f"{val(report.principal_name)}\n{val(report.customer_mobile)}", ps("cv2",9)),
+        sig_img(report.principal_signature, 55*mm, 20*mm),
+        stamp_img if stamp_img else Paragraph("(no stamp)", ps("ns",8,color=BORDER)),
+    ]
+    sig_tbl = Table([cust_lbl_row, cust_val_row],
+                    colWidths=[PAGE_W*0.33, PAGE_W*0.37, PAGE_W*0.30])
+    sig_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
+        ("BACKGROUND",(0,0),(-1,0), LGREY),
+        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+        ("ROWBACKGROUNDS",(0,1),(-1,1),[WHITE]),
+        ("VALIGN",(0,1),(-1,1),"MIDDLE"),
+        ("ALIGN",(1,1),(2,1),"CENTER"),
+        ("MINROWHEIGHT",(0,1),(-1,1), 28*mm),
+    ]))
+    story.append(sig_tbl)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 7. SERVICE ENGINEER / STATUS
+    # ══════════════════════════════════════════════════════════════════════════
+    status_text = (report.status or "PROBLEM RESOLVED").upper()
+    status_bg   = PINK if "UNRESOLVED" in status_text else colors.HexColor("#E8F5E9")
+    status_col  = RED  if "UNRESOLVED" in status_text else colors.HexColor("#2E7D32")
+
+    eng_row = [
+        [
+            Paragraph(f"<b>SERVICE ENGINEER: {tech_name}</b>", ps("se",9,bold=True)),
+            Paragraph(f"<b>STATUS: {status_text}</b>",
+                      ps("st",9,bold=True,color=status_col,align=TA_CENTER)),
+        ]
+    ]
+    eng_tbl = Table(eng_row, colWidths=[PAGE_W*0.45, PAGE_W*0.55])
+    eng_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
+        ("BACKGROUND",(1,0),(1,0), status_bg),
+        ("TOPPADDING",(0,0),(-1,-1),6), ("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+    ]))
+    story.append(eng_tbl)
+
+    # ── Technician signature row ───────────────────────────────────────────────
+    tech_sig_row = [[
+        Paragraph("<b>SERVICE ENGINEER SIGNATURE:</b>", ps("tes",9,bold=True)),
+        sig_img(report.technician_signature, 60*mm, 18*mm),
+    ]]
+    tech_sig_tbl = Table(tech_sig_row, colWidths=[PAGE_W*0.35, PAGE_W*0.65])
+    tech_sig_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
+        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("MINROWHEIGHT",(0,0),(-1,0), 22*mm),
+    ]))
+    story.append(tech_sig_tbl)
+
+    # ── Customer remarks ──────────────────────────────────────────────────────
+    rem_row = [[Paragraph(f"<b>Customer Remarks:</b> {val(report.customer_remarks)}", ps("rem",9))]]
+    rem_tbl = Table(rem_row, colWidths=[PAGE_W])
+    rem_tbl.setStyle(TableStyle([
+        ("BOX",(0,0),(-1,-1),0.5,BORDER),
+        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LEFTPADDING",(0,0),(-1,-1),6),
+    ]))
+    story.append(rem_tbl)
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    footer_data = [[Paragraph(
+        f"{COMPANY_EMAIL}&nbsp;&nbsp;&nbsp;&nbsp;{COMPANY_TEL}",
+        ps("ft",8,align=TA_CENTER)
+    )]]
+    footer_tbl = Table(footer_data, colWidths=[PAGE_W])
+    footer_tbl.setStyle(TableStyle([
+        ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),
+    ]))
+    story.append(footer_tbl)
 
     doc.build(story)
     return rel_path
@@ -233,53 +390,70 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
 def _fmt(r: ServiceReport):
     return {
         "id": r.id,
-        "field_report_id": r.field_report_id,
-        "task_id": r.task_id,
-        "employee_id": r.employee_id,
-        "school_id": r.school_id,
-        "school_name": r.school.name if r.school else None,
-        "employee_name": r.employee.name if r.employee else None,
-        "report_date": r.report_date.isoformat() if r.report_date else None,
-        "problem_description": r.problem_description,
-        "observation": r.observation,
-        "action_taken": r.action_taken,
-        "spare_parts": r.spare_parts,
-        "tds_input": r.tds_input,
-        "tds_output": r.tds_output,
-        "voltage": r.voltage,
-        "flow_rate": r.flow_rate,
-        "principal_name": r.principal_name,
-        "pdf_url": f"http://localhost:8000/uploads/{r.pdf_path}" if r.pdf_path else None,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "field_report_id":    r.field_report_id,
+        "task_id":            r.task_id,
+        "employee_id":        r.employee_id,
+        "school_id":          r.school_id,
+        "school_name":        r.school.name   if r.school   else None,
+        "employee_name":      r.employee.name if r.employee else None,
+        "report_date":        r.report_date.isoformat() if r.report_date else None,
+        "report_no":          r.report_no,
+        "complaint_no":       r.complaint_no,
+        "unit_type":          r.unit_type,
+        "problem_description":r.problem_description,
+        "observation":        r.observation,
+        "action_taken":       r.action_taken,
+        "spare_parts":        r.spare_parts,
+        "plant_capacity":     r.plant_capacity,
+        "design_rw_tds":      r.design_rw_tds,
+        "free_chlorine_rw":   r.free_chlorine_rw,
+        "hours_running":      r.hours_running,
+        "membrane_condition": r.membrane_condition,
+        "uv_lamp_condition":  r.uv_lamp_condition,
+        "sensors_condition":  r.sensors_condition,
+        "prefilter_condition":r.prefilter_condition,
+        "tds_input":          r.tds_input,
+        "tds_output":         r.tds_output,
+        "voltage":            r.voltage,
+        "flow_rate":          r.flow_rate,
+        "current_amps":       r.current_amps,
+        "principal_name":     r.principal_name,
+        "customer_mobile":    r.customer_mobile,
+        "customer_remarks":   r.customer_remarks,
+        "status":             r.status,
+        "pdf_url":            f"http://localhost:8000/uploads/{r.pdf_path}" if r.pdf_path else None,
+        "created_at":         r.created_at.isoformat() if r.created_at else None,
     }
 
 
 @router.post("/")
 def create_service_report(req: CreateServiceReport, db: Session = Depends(get_db), user=Depends(get_current_user)):
     today = date.today()
+
+    report = ServiceReport(
+        field_report_id=req.field_report_id, task_id=req.task_id,
+        employee_id=user.id, school_id=req.school_id, report_date=today,
+        report_no=req.report_no, complaint_no=req.complaint_no, unit_type=req.unit_type,
+        problem_description=req.problem_description, observation=req.observation,
+        action_taken=req.action_taken, spare_parts=req.spare_parts,
+        plant_capacity=req.plant_capacity, design_rw_tds=req.design_rw_tds,
+        free_chlorine_rw=req.free_chlorine_rw, hours_running=req.hours_running,
+        membrane_condition=req.membrane_condition or "OK",
+        uv_lamp_condition=req.uv_lamp_condition or "OK",
+        sensors_condition=req.sensors_condition or "OK",
+        prefilter_condition=req.prefilter_condition or "OK",
+        tds_input=req.tds_input, tds_output=req.tds_output,
+        voltage=req.voltage, flow_rate=req.flow_rate,
+        current_amps=req.current_amps,
+        principal_name=req.principal_name, customer_mobile=req.customer_mobile,
+        customer_remarks=req.customer_remarks, status=req.status or "PROBLEM RESOLVED",
+    )
+    db.add(report)
+    db.flush()
+
     sig_dir = os.path.join(UPLOADS_DIR, "signatures", str(today.year), str(today.month))
     os.makedirs(sig_dir, exist_ok=True)
 
-    report = ServiceReport(
-        field_report_id=req.field_report_id,
-        task_id=req.task_id,
-        employee_id=user.id,
-        school_id=req.school_id,
-        report_date=today,
-        problem_description=req.problem_description,
-        observation=req.observation,
-        action_taken=req.action_taken,
-        spare_parts=req.spare_parts,
-        tds_input=req.tds_input,
-        tds_output=req.tds_output,
-        voltage=req.voltage,
-        flow_rate=req.flow_rate,
-        principal_name=req.principal_name,
-    )
-    db.add(report)
-    db.flush()  # get id
-
-    # Save signature images
     if req.technician_signature_b64:
         rel = f"signatures/{today.year}/{today.month}/tech_{report.id}.png"
         _save_b64_image(req.technician_signature_b64, os.path.join(UPLOADS_DIR, rel))
@@ -292,13 +466,12 @@ def create_service_report(req: CreateServiceReport, db: Session = Depends(get_db
 
     db.flush()
 
-    # Generate PDF
     try:
         pdf_rel = _generate_pdf(report, db)
         if pdf_rel:
             report.pdf_path = pdf_rel
     except Exception as e:
-        print(f"PDF generation failed: {e}")
+        print(f"PDF generation error: {e}")
 
     db.commit()
     db.refresh(report)
@@ -310,8 +483,7 @@ def list_reports(db: Session = Depends(get_db), user=Depends(get_current_user)):
     q = db.query(ServiceReport)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(ServiceReport.employee_id == user.id)
-    reports = q.order_by(ServiceReport.created_at.desc()).limit(200).all()
-    return [_fmt(r) for r in reports]
+    return [_fmt(r) for r in q.order_by(ServiceReport.created_at.desc()).limit(200).all()]
 
 
 @router.get("/{report_id}/pdf")
@@ -322,23 +494,15 @@ def download_pdf(report_id: int, db: Session = Depends(get_db), user=Depends(get
     if user.role not in ("admin", "deskwork") and r.employee_id != user.id:
         raise HTTPException(403, "Access denied")
 
-    if not r.pdf_path:
-        # Re-generate if missing
+    if not r.pdf_path or not os.path.exists(os.path.join(UPLOADS_DIR, r.pdf_path)):
         pdf_rel = _generate_pdf(r, db)
         if pdf_rel:
             r.pdf_path = pdf_rel
             db.commit()
 
     if not r.pdf_path:
-        raise HTTPException(500, "PDF generation failed — install reportlab on server")
+        raise HTTPException(500, "PDF generation failed — install reportlab")
 
     abs_path = os.path.join(UPLOADS_DIR, r.pdf_path)
-    if not os.path.exists(abs_path):
-        pdf_rel = _generate_pdf(r, db)
-        if pdf_rel:
-            r.pdf_path = pdf_rel
-            db.commit()
-            abs_path = os.path.join(UPLOADS_DIR, r.pdf_path)
-
     return FileResponse(abs_path, media_type="application/pdf",
                         filename=f"service_report_{r.id}_{r.report_date}.pdf")

@@ -14,6 +14,8 @@ export default function Tasks() {
   const [form, setForm]           = useState({ title: '', description: '', assigned_to_id: '', priority: 'medium', due_date: '' })
   const [toast, setToast]         = useState('')
   const [generating, setGenerating] = useState(false)
+  const [resetStep, setResetStep]   = useState(0)   // 0=idle, 1=confirm modal, 2=resetting
+  const [resetConfirmText, setResetConfirmText] = useState('')
   const [filterDate, setFilterDate] = useState('')
   const [activeTech, setActiveTech] = useState(null)
   const [techSearch, setTechSearch] = useState('')    // technician tab search
@@ -62,6 +64,17 @@ export default function Tasks() {
   async function updateStatus(id, status) {
     await api.patch(`/api/tasks/${id}/status?status=${status}`)
     load()
+  }
+
+  async function resetAllTasks() {
+    setResetStep(2)
+    try {
+      const r = await api.delete('/api/tasks/reset-all')
+      showToast(`🗑️ ${r.data.deleted} tasks deleted. Click "Generate Daily Tasks" to assign fresh tasks.`)
+      load()
+    } catch { showToast('Failed to reset tasks') }
+    setResetStep(0)
+    setResetConfirmText('')
   }
 
   async function del(id) {
@@ -123,6 +136,11 @@ export default function Tasks() {
           <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
             onClick={generateDaily} disabled={generating}>
             {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks'}
+          </button>
+          <button className="btn btn-danger" style={{ fontSize: 12 }}
+            onClick={() => { setResetStep(1); setResetConfirmText('') }}
+            disabled={resetStep === 2}>
+            🗑️ Reset All Tasks
           </button>
           <button className="btn btn-primary" onClick={() => setModal(true)}>+ Create Task</button>
         </div>
@@ -316,6 +334,51 @@ export default function Tasks() {
                 <button type="button" className="btn btn-outline" onClick={() => setModal(false)}>Cancel</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset All Tasks confirmation modal */}
+      {resetStep === 1 && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: 440 }}>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 48, marginBottom: 8 }}>⚠️</div>
+              <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--red)', marginBottom: 8 }}>Reset ALL Tasks?</h3>
+              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+                This will <b style={{ color: 'var(--text)' }}>permanently delete every task</b> across all technicians.
+                All pending, in-progress, and submitted tasks will be gone.<br /><br />
+                After reset, click <b style={{ color: 'var(--green)' }}>Generate Daily Tasks</b> to assign fresh tasks.
+              </p>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 13, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>
+                Type <b style={{ color: 'var(--red)' }}>RESET</b> to confirm:
+              </label>
+              <input
+                autoFocus
+                value={resetConfirmText}
+                onChange={e => setResetConfirmText(e.target.value)}
+                placeholder="Type RESET here"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', fontSize: 15,
+                  background: 'var(--surface2)', border: `2px solid ${resetConfirmText === 'RESET' ? 'var(--red)' : 'var(--border)'}`,
+                  borderRadius: 8, color: 'var(--text)', fontWeight: 700, letterSpacing: 1 }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                className="btn btn-danger"
+                style={{ flex: 1, opacity: resetConfirmText === 'RESET' ? 1 : 0.4 }}
+                disabled={resetConfirmText !== 'RESET'}
+                onClick={resetAllTasks}
+              >
+                🗑️ Yes, Delete All Tasks
+              </button>
+              <button className="btn btn-outline" style={{ flex: 1 }}
+                onClick={() => { setResetStep(0); setResetConfirmText('') }}>
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

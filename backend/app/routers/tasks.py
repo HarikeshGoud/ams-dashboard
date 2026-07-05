@@ -83,7 +83,9 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
     Rotation across ALL schools directly assigned to a technician (technician_id).
     Fallback: schools in their assigned mandals via employee_mandals junction table.
 
-    Rule: visited schools blocked until ALL assigned schools visited once (one full round).
+    Rule: a school is only eligible once all other schools have been visited in this cycle.
+    A school counts as "visited in this cycle" if it has last_visit_date set (proof submitted)
+    OR if it has a pending/in_progress task assigned to this technician (already in rotation).
     Returns (eligible_schools, all_schools, new_round, visited_count).
     """
     from ..models.school import School
@@ -111,17 +113,30 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
     if not all_schools:
         return [], [], True, 0
 
+    # Schools that have a pending or in_progress task for this technician count as
+    # "in rotation this cycle" — they should not be re-assigned until the cycle resets.
+    pending_school_ids = {
+        t.school_id for t in db.query(Task).filter(
+            Task.assigned_to_id == employee_id,
+            Task.status.in_(["pending", "in_progress"]),
+            Task.school_id.isnot(None)
+        ).all()
+    }
+
     exclude_ids = exclude_school_ids or set()
-    unvisited = [s for s in all_schools if s.last_visit_date is None]
+
+    # A school is unvisited this cycle if it has no last_visit_date AND no pending task
+    unvisited = [s for s in all_schools if s.last_visit_date is None and s.id not in pending_school_ids]
     visited_count = len(all_schools) - len(unvisited)
     new_round = len(unvisited) == 0
 
     if new_round:
-        eligible = sorted(all_schools, key=lambda s: s.last_visit_date)
+        # All schools visited — start fresh, prioritise least-recently visited
+        eligible = sorted(all_schools, key=lambda s: s.last_visit_date or date.min)
     else:
         eligible = sorted(unvisited, key=lambda s: s.name)
 
-    eligible = [s for s in eligible if s.id not in exclude_ids]
+    eligible = [s for s in eligible if s.id not in exclude_ids and s.id not in pending_school_ids]
     return eligible, all_schools, new_round, visited_count
 
 
@@ -247,6 +262,17 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
         })
 
     return {"date": str(d), "processed": len(results), "results": results}
+
+
+@router.delete("/reset-all")
+def reset_all_tasks(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Delete ALL tasks for all technicians. Admin only. Irreversible."""
+    if user.role != "admin":
+        raise HTTPException(403, "Admin only")
+    deleted = db.query(Task).delete()
+    db.commit()
+    return {"deleted": deleted, "message": f"All {deleted} tasks deleted. Ready for fresh generation."}
+
 
 @router.get("/")
 def list_tasks(employee_id: int = None, task_date: str = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
