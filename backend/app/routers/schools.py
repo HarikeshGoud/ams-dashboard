@@ -44,7 +44,7 @@ def _fmt(s: School):
 @router.get("/")
 def list_schools(
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=2000),
     search: Optional[str] = None,
     mandal_id: Optional[int] = None,
     client_id: Optional[int] = None,
