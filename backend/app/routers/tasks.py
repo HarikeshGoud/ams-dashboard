@@ -263,6 +263,17 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
 
     return {"date": str(d), "processed": len(results), "results": results}
 
+
+@router.delete("/reset-all")
+def reset_all_tasks(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Delete ALL tasks for all technicians. Admin only. Irreversible."""
+    if user.role != "admin":
+        raise HTTPException(403, "Admin only")
+    deleted = db.query(Task).delete()
+    db.commit()
+    return {"deleted": deleted, "message": f"All {deleted} tasks deleted. Ready for fresh generation."}
+
+
 @router.get("/")
 def list_tasks(employee_id: int = None, task_date: str = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
     q = db.query(Task)
