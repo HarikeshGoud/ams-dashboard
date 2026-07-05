@@ -10,6 +10,7 @@ const NAV = [
   { path: '/deskwork/stock',      icon: '📦', label: 'Stock'      },
   { path: '/deskwork/travel',          icon: '🚗', label: 'Travel'          },
   { path: '/deskwork/service-reports', icon: '📄', label: 'Service Reports' },
+  { path: '/deskwork/schools',         icon: '🏫', label: 'Schools'         },
 ]
 
 export default function DeskworkLayout() {

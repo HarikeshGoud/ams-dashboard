@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../api/axios'
 
 export default function Schools() {
@@ -15,6 +15,11 @@ export default function Schools() {
   const [editId, setEditId] = useState(null)
   const [form, setForm] = useState({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc' })
   const [toast, setToast] = useState('')
+  const [stampFile, setStampFile] = useState(null)
+  const [stampPreview, setStampPreview] = useState(null)
+  const [existingStamp, setExistingStamp] = useState(null)
+  const [stampSaving, setStampSaving] = useState(false)
+  const stampInputRef = useRef(null)
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
@@ -39,14 +44,51 @@ export default function Schools() {
   useEffect(() => { load() }, [page, search, mandalFilter, techFilter])
 
 
-  function openAdd() { setForm({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc' }); setEditId(null); setModal(true) }
-  function openEdit(s) { setForm({ name: s.name, client_id: s.client_id || '', model: s.model || 'school', mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '', unit_number: s.unit_number || '', amc_status: s.amc_status || 'amc' }); setEditId(s.id); setModal(true) }
+  function openAdd() {
+    setForm({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc' })
+    setEditId(null); setStampFile(null); setStampPreview(null); setExistingStamp(null); setModal(true)
+  }
+  function openEdit(s) {
+    setForm({ name: s.name, client_id: s.client_id || '', model: s.model || 'school', mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '', unit_number: s.unit_number || '', amc_status: s.amc_status || 'amc' })
+    setEditId(s.id); setStampFile(null); setStampPreview(null); setExistingStamp(null)
+    // Check if stamp already uploaded
+    api.get(`/api/schools/${s.id}/stamp`).then(r => {
+      if (r.data.ok) setExistingStamp(r.data.stamp_url)
+    }).catch(() => {})
+    setModal(true)
+  }
+
+  function onStampChange(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setStampFile(file)
+    setStampPreview(URL.createObjectURL(file))
+  }
 
   async function save(ev) {
     ev.preventDefault()
+    // For edit, stamp is mandatory if no existing stamp
+    if (editId && !existingStamp && !stampFile) {
+      showToast('⚠️ School stamp is required! Upload stamp image first.')
+      stampInputRef.current?.focus()
+      return
+    }
+    setStampSaving(true)
     const payload = { ...form, client_id: form.client_id ? parseInt(form.client_id) : null }
-    if (editId) await api.put(`/api/schools/${editId}`, payload)
-    else await api.post('/api/schools/', payload)
+    let savedId = editId
+    if (editId) {
+      await api.put(`/api/schools/${editId}`, payload)
+    } else {
+      const res = await api.post('/api/schools/', payload)
+      savedId = res.data.id
+    }
+    // Upload stamp if selected
+    if (stampFile && savedId) {
+      const fd = new FormData()
+      fd.append('file', stampFile)
+      await api.post(`/api/schools/${savedId}/stamp`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    }
+    setStampSaving(false)
     load(); setModal(false); showToast(editId ? 'Updated!' : 'School added!')
   }
 
@@ -161,8 +203,37 @@ export default function Schools() {
                 <div className="form-group"><label>Capacity</label><input value={form.capacity} onChange={f('capacity')} placeholder="e.g. 1000 LPH" /></div>
                 <div className="form-group form-full"><label>Plant Model</label><input value={form.plant_model} onChange={f('plant_model')} /></div>
               </div>
+
+              {/* Stamp upload — mandatory on edit */}
+              {editId && (
+                <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: `2px solid ${existingStamp || stampPreview ? 'var(--green)' : 'var(--red)'}`, background: existingStamp || stampPreview ? 'rgba(52,211,153,.05)' : 'rgba(248,113,113,.05)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>🔏 School Stamp <span style={{ color: 'var(--red)', fontSize: 11 }}>* Required</span></span>
+                    {(existingStamp || stampPreview) && <span style={{ color: 'var(--green)', fontSize: 11 }}>✅ Stamp on file</span>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {(stampPreview || existingStamp) && (
+                      <img src={stampPreview || existingStamp} alt="stamp"
+                        style={{ width: 80, height: 80, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', padding: 4 }} />
+                    )}
+                    <div>
+                      <input ref={stampInputRef} type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} onChange={onStampChange} />
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => stampInputRef.current?.click()}>
+                        {existingStamp || stampPreview ? '🔄 Replace Stamp' : '📤 Upload Stamp'}
+                      </button>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 5 }}>PNG or JPG · Will appear on service report PDFs</div>
+                    </div>
+                  </div>
+                  {!existingStamp && !stampPreview && (
+                    <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 8 }}>⚠️ Upload the school's official stamp — required before saving</div>
+                  )}
+                </div>
+              )}
+
               <div className="mt-16 flex gap-8">
-                <button type="submit" className="btn btn-primary">Save Site</button>
+                <button type="submit" className="btn btn-primary" disabled={stampSaving}>
+                  {stampSaving ? 'Saving…' : 'Save Site'}
+                </button>
                 <button type="button" className="btn btn-outline" onClick={() => setModal(false)}>Cancel</button>
               </div>
             </form>

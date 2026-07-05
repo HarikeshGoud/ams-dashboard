@@ -98,6 +98,8 @@ export default function App() {
         <Route path="stock"      element={<DeskStock />} />
         <Route path="travel"          element={<DeskTravel />} />
         <Route path="service-reports" element={<ServiceReports />} />
+        <Route path="schools"         element={<Schools />} />
+        <Route path="unit/:unit"      element={<UnitPage />} />
       </Route>
 
       {/* ADMIN ROUTES */}
