@@ -118,7 +118,7 @@ export default function EmployeeDashboard() {
 
       {tasks.map(task => {
         const done = submittedTaskIds.has(task.id)
-        const overdue = task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
+        const overdue = !done && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
         return (
           <div key={task.id} style={{
             background: 'var(--surface)', border: `1px solid ${done ? 'var(--green)' : overdue ? 'var(--red)' : 'var(--border)'}`,
@@ -128,9 +128,12 @@ export default function EmployeeDashboard() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{task.title}</div>
+                {task.school_mandal && (
+                  <div style={{ fontSize: 12, color: 'var(--accent2)', marginBottom: 4 }}>📍 {task.school_mandal}</div>
+                )}
                 {task.description && <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{task.description}</div>}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
-                  {task.due_date && (
+                  {!done && task.due_date && (
                     <span style={{ color: overdue ? 'var(--red)' : 'var(--muted)' }}>
                       {overdue ? '⚠️ Due: ' : '📅 Due: '}{task.due_date}
                     </span>
