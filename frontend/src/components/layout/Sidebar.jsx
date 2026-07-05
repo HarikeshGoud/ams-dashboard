@@ -23,7 +23,8 @@ const BOTTOM_NAV = [
   { to: '/attendance', icon: '🗓️', label: 'Attendance'      },
   { to: '/tasks',      icon: '✅', label: 'Tasks'           },
   { to: '/travel',     icon: '🚗', label: 'Travel'          },
-  { to: '/proof-review', icon: '🔍', label: 'Proof Review'  },
+  { to: '/proof-review',    icon: '🔍', label: 'Proof Review'    },
+  { to: '/service-reports', icon: '📄', label: 'Service Reports' },
 ]
 
 const linkStyle = ({ isActive }) => ({

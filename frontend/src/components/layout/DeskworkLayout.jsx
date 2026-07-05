@@ -8,7 +8,8 @@ const NAV = [
   { path: '/deskwork/tasks',      icon: '📋', label: 'Tasks'      },
   { path: '/deskwork/attendance', icon: '📅', label: 'Attendance' },
   { path: '/deskwork/stock',      icon: '📦', label: 'Stock'      },
-  { path: '/deskwork/travel',     icon: '🚗', label: 'Travel'     },
+  { path: '/deskwork/travel',          icon: '🚗', label: 'Travel'          },
+  { path: '/deskwork/service-reports', icon: '📄', label: 'Service Reports' },
 ]
 
 export default function DeskworkLayout() {

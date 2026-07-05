@@ -33,6 +33,7 @@ import DeskTasks from './pages/deskwork/DeskTasks'
 import DeskAttendance from './pages/deskwork/DeskAttendance'
 import DeskStock from './pages/deskwork/DeskStock'
 import DeskTravel from './pages/deskwork/DeskTravel'
+import ServiceReports from './pages/ServiceReports'
 
 function Guard({ children }) {
   const { token } = useAuthStore()
@@ -95,7 +96,8 @@ export default function App() {
         <Route path="tasks"      element={<DeskTasks />} />
         <Route path="attendance" element={<DeskAttendance />} />
         <Route path="stock"      element={<DeskStock />} />
-        <Route path="travel"     element={<DeskTravel />} />
+        <Route path="travel"          element={<DeskTravel />} />
+        <Route path="service-reports" element={<ServiceReports />} />
       </Route>
 
       {/* ADMIN ROUTES */}
@@ -112,8 +114,9 @@ export default function App() {
         <Route path="attendance"   element={<Attendance />} />
         <Route path="tasks"        element={<Tasks />} />
         <Route path="travel"       element={<Travel />} />
-        <Route path="proof-review" element={<ProofReview />} />
-        <Route path="reports"      element={<Reports />} />
+        <Route path="proof-review"     element={<ProofReview />} />
+        <Route path="reports"          element={<Reports />} />
+        <Route path="service-reports"  element={<ServiceReports />} />
         <Route path="unit/:unit"   element={<UnitPage />} />
       </Route>
 
