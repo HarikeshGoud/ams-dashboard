@@ -228,6 +228,13 @@ export default function UnitPage() {
   const [loading, setLoading] = useState(true)
   const [selectedSite, setSelectedSite] = useState(null)
 
+  // Reset contract tab when segment changes
+  function selectSegment(seg) {
+    setSegment(seg)
+    setContract('all')
+    setSearch('')
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -276,7 +283,7 @@ export default function UnitPage() {
         <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.05em' }}>SEGMENT</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {SEGMENTS.map(seg => (
-            <button key={seg.key} onClick={() => setSegment(seg.key)} style={{
+            <button key={seg.key} onClick={() => selectSegment(seg.key)} style={{
               padding: '7px 16px', border: `1.5px solid ${segment === seg.key ? meta.color : 'var(--border)'}`,
               borderRadius: 20, cursor: 'pointer', fontWeight: segment === seg.key ? 700 : 400, fontSize: 13,
               background: segment === seg.key ? meta.color : 'var(--surface)',
@@ -289,23 +296,28 @@ export default function UnitPage() {
         </div>
       </div>
 
-      {/* Contract type tabs */}
-      <div style={{ marginTop: 14, marginBottom: 18 }}>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.05em' }}>CONTRACT TYPE</div>
-        <div style={{ display: 'flex', gap: 0, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
-          {CONTRACT_OPTS.map(ct => (
-            <button key={ct.key} onClick={() => setContract(ct.key)} style={{
-              padding: '8px 20px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
-              background: contract === ct.key ? 'rgba(59,158,255,0.15)' : 'transparent',
-              color: contract === ct.key ? 'var(--accent)' : 'var(--muted)',
-              borderBottom: contract === ct.key ? '2px solid var(--accent)' : '2px solid transparent',
-              transition: 'all .15s',
-            }}>
-              {ct.label}
-            </button>
-          ))}
+      {/* Contract tabs — only shown when a specific segment is selected */}
+      {segment !== 'all' && (
+        <div style={{ marginTop: 12, marginBottom: 18, paddingLeft: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.05em' }}>
+            CONTRACT TYPE — {SEGMENTS.find(s => s.key === segment)?.label.toUpperCase()}
+          </div>
+          <div style={{ display: 'flex', gap: 0, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
+            {CONTRACT_OPTS.map(ct => (
+              <button key={ct.key} onClick={() => setContract(ct.key)} style={{
+                padding: '9px 24px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
+                background: contract === ct.key ? 'rgba(59,158,255,0.15)' : 'transparent',
+                color: contract === ct.key ? 'var(--accent)' : 'var(--muted)',
+                borderBottom: contract === ct.key ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'all .15s',
+              }}>
+                {ct.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+      {segment === 'all' && <div style={{ marginBottom: 18 }} />}
 
       {/* Stat cards */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
