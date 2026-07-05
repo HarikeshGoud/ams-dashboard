@@ -45,6 +45,8 @@ export default function EmployeeDashboard() {
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const overdueCount = tasks.filter(t => t.due_date && t.due_date < todayIso).length
   const todayReports = submittedToday.filter(r => r.report_date === todayIso)
+  // accepted = verified by school/admin; submitted = proof uploaded but not yet verified
+  const acceptedTaskIds = new Set(submittedToday.filter(r => r.verification_status === 'verified').map(r => r.task_id))
   const submittedTaskIds = new Set(submittedToday.map(r => r.task_id))
 
   if (loading) return <div className="spinner" />
@@ -117,13 +119,15 @@ export default function EmployeeDashboard() {
       )}
 
       {tasks.map(task => {
-        const done = submittedTaskIds.has(task.id)
-        const overdue = !done && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
+        const accepted  = acceptedTaskIds.has(task.id)
+        const submitted = !accepted && submittedTaskIds.has(task.id)
+        const overdue   = !accepted && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
+        const borderColor = accepted ? 'var(--green)' : submitted ? 'var(--yellow)' : overdue ? 'var(--red)' : 'var(--border)'
         return (
           <div key={task.id} style={{
-            background: 'var(--surface)', border: `1px solid ${done ? 'var(--green)' : overdue ? 'var(--red)' : 'var(--border)'}`,
+            background: 'var(--surface)', border: `1px solid ${borderColor}`,
             borderRadius: 12, padding: 16, marginBottom: 12,
-            opacity: done ? 0.7 : 1
+            opacity: accepted ? 0.7 : 1
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
@@ -133,7 +137,7 @@ export default function EmployeeDashboard() {
                 )}
                 {task.description && <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{task.description}</div>}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
-                  {!done && task.due_date && (
+                  {!accepted && task.due_date && (
                     <span style={{ color: overdue ? 'var(--red)' : 'var(--muted)' }}>
                       {overdue ? '⚠️ Due: ' : '📅 Due: '}{task.due_date}
                     </span>
@@ -143,9 +147,13 @@ export default function EmployeeDashboard() {
                   </span>
                 </div>
               </div>
-              {done ? (
+              {accepted ? (
                 <span style={{ background: 'rgba(52,211,153,.15)', color: 'var(--green)', borderRadius: 8, padding: '6px 12px', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
-                  ✅ Done
+                  ✅ Accepted
+                </span>
+              ) : submitted ? (
+                <span style={{ background: 'rgba(251,191,36,.12)', color: 'var(--yellow)', borderRadius: 8, padding: '6px 12px', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                  ⏳ Under Review
                 </span>
               ) : (
                 <button
