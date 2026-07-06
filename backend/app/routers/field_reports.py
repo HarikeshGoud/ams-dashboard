@@ -53,19 +53,21 @@ def _fmt_photo(p: WorkProof, base_url: str = "http://localhost:8000"):
     }
 
 @router.get("/")
-def list_reports(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
     q = db.query(FieldReport)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(FieldReport.employee_id == user.id)
     reports = q.order_by(FieldReport.created_at.desc()).limit(100).all()
-    return [_fmt_report(r) for r in reports]
+    return [_fmt_report(r, base_url=base_url) for r in reports]
 
 @router.get("/employee/{emp_id}")
-def reports_by_employee(emp_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def reports_by_employee(emp_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if user.role != "admin" and user.id != emp_id:
         raise HTTPException(403, "Access denied")
+    base_url = str(request.base_url).rstrip("/")
     reports = db.query(FieldReport).filter(FieldReport.employee_id == emp_id).order_by(FieldReport.created_at.desc()).all()
-    return [_fmt_report(r) for r in reports]
+    return [_fmt_report(r, base_url=base_url) for r in reports]
 
 
 def _auto_mark_attendance(employee_id: int, today: date, db: Session):
@@ -243,16 +245,17 @@ async def submit_field_report(
         raise HTTPException(500, f"Submission failed: {str(e)}")
 
 @router.get("/{report_id}")
-def get_report(report_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def get_report(report_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     r = db.query(FieldReport).filter(FieldReport.id == report_id).first()
     if not r:
         raise HTTPException(404, "Not found")
     if user.role != "admin" and r.employee_id != user.id:
         raise HTTPException(403, "Access denied")
-    return _fmt_report(r)
+    base_url = str(request.base_url).rstrip("/")
+    return _fmt_report(r, base_url=base_url)
 
 @router.patch("/{report_id}/verify")
-def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
+def verify_report(report_id: int, req: VerifyRequest, request: Request, db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
     r = db.query(FieldReport).filter(FieldReport.id == report_id).first()
     if not r:
         raise HTTPException(404, "Not found")
@@ -313,7 +316,8 @@ def verify_report(report_id: int, req: VerifyRequest, db: Session = Depends(get_
 
     db.commit()
     db.refresh(r)
-    return _fmt_report(r)
+    base_url = str(request.base_url).rstrip("/")
+    return _fmt_report(r, base_url=base_url)
 
 @router.patch("/{report_id}/whatsapp-sent")
 def mark_whatsapp_sent(report_id: int, db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
