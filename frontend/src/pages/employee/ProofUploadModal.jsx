@@ -215,8 +215,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     )
     if (missing) { setError(`Complete all 3 photos for: ${missing}`); return }
 
-    setSubmitting(true); setError('')
+    setSubmitting(true); setError('Waking up server… please wait up to 30s')
     try {
+      // Ping the backend first — Render free tier sleeps after 15 min inactivity
+      // This wakes it up before we send the heavy multipart upload
+      try { await api.get('/api/tasks/my-tasks', { timeout: 30000 }) } catch (_) {}
+
+      setError('')
       const fd = new FormData()
       fd.append('task_id', task.id)
       fd.append('item_installed', selectedItems.join(', '))
@@ -234,13 +239,21 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         if (ep.file) fd.append(`extra_photo_${i}`, ep.file)
       })
 
-      const res = await api.post('/api/field-reports/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      // 90 second timeout — large photo upload on mobile needs time
+      const res = await api.post('/api/field-reports/submit', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 90000
+      })
       setLastReportId(res.data?.id || null)
       setStep(3)
     } catch (e) {
       const status = e.response?.status
       const detail = e.response?.data?.detail || e.response?.data?.message || e.message
-      setError(`Submission failed (${status || 'network error'}): ${detail || 'Check your connection and try again.'}`)
+      if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+        setError('Upload timed out — your connection may be slow. Please try again.')
+      } else {
+        setError(`Submission failed (${status || 'network error'}): ${detail || 'Check your connection and try again.'}`)
+      }
     }
     setSubmitting(false)
   }
@@ -549,7 +562,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 <button className="btn btn-outline" onClick={() => { setStep(1); setError('') }} disabled={submitting}>← Back</button>
                 <button className="btn btn-primary" style={{ flex: 1, padding: 12, fontSize: 13, opacity: allPhotosDone ? 1 : 0.6 }}
                   onClick={handleSubmit} disabled={submitting}>
-                  {submitting ? '⏳ Submitting…' : '✅ Submit Proof & Mark Done'}
+                  {submitting ? '⏳ Uploading… please wait' : '✅ Submit Proof & Mark Done'}
                 </button>
               </div>
               {!allPhotosDone && (
