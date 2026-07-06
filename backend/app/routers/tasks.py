@@ -274,7 +274,6 @@ def reset_all_tasks(db: Session = Depends(get_db), user=Depends(get_current_user
     db.execute(text("UPDATE field_reports SET task_id = NULL WHERE task_id IS NOT NULL"))
     db.execute(text("UPDATE work_proofs SET task_id = NULL WHERE task_id IS NOT NULL"))
     db.execute(text("UPDATE service_reports SET task_id = NULL WHERE task_id IS NOT NULL"))
-    db.execute(text("UPDATE allowance_requests SET task_id = NULL WHERE task_id IS NOT NULL"))
     deleted = db.query(Task).delete(synchronize_session=False)
     db.commit()
     return {"deleted": deleted, "message": f"All {deleted} tasks deleted. Ready for fresh generation."}
