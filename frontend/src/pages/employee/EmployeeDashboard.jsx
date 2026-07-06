@@ -33,7 +33,11 @@ export default function EmployeeDashboard() {
     }).catch(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 30000)
+    return () => clearInterval(t)
+  }, [])
 
   function handleProofSubmitted() {
     setSelectedTask(null)

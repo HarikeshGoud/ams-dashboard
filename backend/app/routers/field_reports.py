@@ -1,5 +1,5 @@
-import os, shutil
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+import os, aiofiles
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from datetime import date, datetime
 from typing import Optional
@@ -126,6 +126,7 @@ def _auto_mark_attendance(employee_id: int, today: date, db: Session):
 
 @router.post("/submit")
 async def submit_field_report(
+    request: Request,
     task_id: int = Form(...),
     item_installed: str = Form(""),
     remarks: str = Form(""),
@@ -154,6 +155,11 @@ async def submit_field_report(
     before_photo_5: Optional[UploadFile] = File(None),
     after_photo_5:  Optional[UploadFile] = File(None),
     item_photo_5:   Optional[UploadFile] = File(None),
+    extra_photo_0:  Optional[UploadFile] = File(None),
+    extra_photo_1:  Optional[UploadFile] = File(None),
+    extra_photo_2:  Optional[UploadFile] = File(None),
+    extra_photo_3:  Optional[UploadFile] = File(None),
+    extra_photo_4:  Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -189,8 +195,12 @@ async def submit_field_report(
         ext = upload.filename.rsplit(".", 1)[-1] if "." in upload.filename else "jpg"
         fname = f"{today.year}/{today.month}/emp{user.id}_task{task_id}_{photo_type}_{report.id}.{ext}"
         fpath = os.path.join(UPLOADS_DIR, fname)
-        with open(fpath, "wb") as f:
-            shutil.copyfileobj(upload.file, f)
+        try:
+            contents = await upload.read()
+            async with aiofiles.open(fpath, "wb") as f:
+                await f.write(contents)
+        except Exception as e:
+            raise HTTPException(500, f"Photo save failed ({photo_type}): {e}")
         db.add(WorkProof(
             field_report_id=report.id,
             employee_id=user.id,
@@ -220,6 +230,10 @@ async def submit_field_report(
         await save_photo(ap, f"after_{idx}",  latitude, longitude)
         await save_photo(ip, f"item_{idx}",   latitude, longitude)
 
+    # Extra photos (optional, up to 5)
+    for idx, ep in enumerate([extra_photo_0, extra_photo_1, extra_photo_2, extra_photo_3, extra_photo_4]):
+        await save_photo(ep, f"extra_{idx}", latitude, longitude)
+
     # Mark task as submitted (under review) — NOT completed yet
     # It becomes "completed" only after admin/deskwork verifies the proof
     task.status = "submitted"
@@ -240,7 +254,8 @@ async def submit_field_report(
             pass  # never block proof submission
 
     db.refresh(report)
-    return _fmt_report(report)
+    base_url = str(request.base_url).rstrip("/")
+    return _fmt_report(report, base_url=base_url)
 
 @router.get("/{report_id}")
 def get_report(report_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):

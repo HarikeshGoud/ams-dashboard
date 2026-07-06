@@ -247,6 +247,7 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
                 assigned_by_id=user.id,
                 school_id=school.id,
                 priority="medium",
+                status="pending",
                 due_date=d
             ))
             generated += 1
@@ -269,7 +270,17 @@ def reset_all_tasks(db: Session = Depends(get_db), user=Depends(get_current_user
     """Delete ALL tasks for all technicians. Admin only. Irreversible."""
     if user.role != "admin":
         raise HTTPException(403, "Admin only")
-    deleted = db.query(Task).delete()
+    from sqlalchemy import text
+    # Count before delete so we can report it
+    deleted = db.query(Task).count()
+    # Null out task_id in every table that references tasks (PostgreSQL FK constraint)
+    for tbl in ("field_reports", "work_proofs", "service_reports"):
+        try:
+            db.execute(text(f"UPDATE {tbl} SET task_id = NULL WHERE task_id IS NOT NULL"))
+        except Exception:
+            db.rollback()
+    # Now delete all tasks
+    db.execute(text("DELETE FROM tasks"))
     db.commit()
     return {"deleted": deleted, "message": f"All {deleted} tasks deleted. Ready for fresh generation."}
 

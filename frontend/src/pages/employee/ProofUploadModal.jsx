@@ -23,9 +23,12 @@ function CameraCapture({ onCapture, onClose, gps }) {
 
   function capture() {
     const video = videoRef.current, canvas = canvasRef.current
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight
+    const MAX_W = 1280
+    const scale = video.videoWidth > MAX_W ? MAX_W / video.videoWidth : 1
+    canvas.width = Math.round(video.videoWidth * scale)
+    canvas.height = Math.round(video.videoHeight * scale)
     const ctx = canvas.getContext('2d')
-    ctx.drawImage(video, 0, 0)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     const now = new Date(), W = canvas.width, H = canvas.height
     const lines = [
@@ -52,7 +55,7 @@ function CameraCapture({ onCapture, onClose, gps }) {
       const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' })
       streamRef.current?.getTracks().forEach(t => t.stop())
       onCapture(file, URL.createObjectURL(blob))
-    }, 'image/jpeg', 0.92)
+    }, 'image/jpeg', 0.82)
   }
 
   return (
@@ -126,6 +129,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [remarks, setRemarks] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [extraPhotos, setExtraPhotos]   = useState([])    // [{file, preview, label}]
+  const [extraLabels, setExtraLabels]   = useState([])    // editable label per extra photo
 
   // Step 3 — service report fields
   const [lastReportId,      setLastReportId]      = useState(null)
@@ -186,8 +191,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   }
 
   function handleCaptured(key, file, previewUrl) {
-    setPhotos(p => ({ ...p, [key]: file }))
-    setPreviews(p => ({ ...p, [key]: previewUrl }))
+    if (key.startsWith('extra_')) {
+      const idx = parseInt(key.split('_')[1])
+      setExtraPhotos(p => p.map((ep, i) => i === idx ? { ...ep, file, preview: previewUrl } : ep))
+    } else {
+      setPhotos(p => ({ ...p, [key]: file }))
+      setPreviews(p => ({ ...p, [key]: previewUrl }))
+    }
     setActiveCamera(null)
   }
 
@@ -208,26 +218,55 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     )
     if (missing) { setError(`Complete all 3 photos for: ${missing}`); return }
 
-    setSubmitting(true); setError('')
-    try {
+    setSubmitting(true)
+
+    const buildFormData = () => {
       const fd = new FormData()
       fd.append('task_id', task.id)
       fd.append('item_installed', selectedItems.join(', '))
       fd.append('remarks', remarks)
       if (gps) { fd.append('latitude', gps.lat); fd.append('longitude', gps.lng) }
-
-      // Send as before_0/after_0/item_0 … before_N/after_N/item_N
       selectedItems.forEach((_, i) => {
         if (photos[`before_${i}`]) fd.append(`before_photo_${i}`, photos[`before_${i}`])
         if (photos[`after_${i}`])  fd.append(`after_photo_${i}`,  photos[`after_${i}`])
         if (photos[`photo_${i}`])  fd.append(`item_photo_${i}`,   photos[`photo_${i}`])
       })
+      extraPhotos.slice(0, 5).forEach((ep, i) => {
+        if (ep.file) fd.append(`extra_photo_${i}`, ep.file)
+      })
+      return fd
+    }
 
-      const res = await api.post('/api/field-reports/submit', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-      setLastReportId(res.data?.id || null)
-      setStep(3)
-    } catch (e) {
-      setError(e.response?.data?.detail || 'Submission failed. Try again.')
+    let lastErr = null
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        setError(attempt === 1 ? 'Uploading… please wait' : `Retrying (attempt ${attempt}/3)…`)
+        // Wake-up ping on first attempt only
+        if (attempt === 1) {
+          try { await api.get('/api/tasks/my-tasks', { timeout: 35000 }) } catch (_) {}
+        }
+        const res = await api.post('/api/field-reports/submit', buildFormData(), {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120000
+        })
+        setLastReportId(res.data?.id || null)
+        setError('')
+        setStep(3)
+        setSubmitting(false)
+        return
+      } catch (e) {
+        lastErr = e
+        if (e.response?.status) break  // server error — no point retrying
+        if (attempt < 3) await new Promise(r => setTimeout(r, 3000))
+      }
+    }
+
+    const status = lastErr?.response?.status
+    const detail = lastErr?.response?.data?.detail || lastErr?.response?.data?.message || lastErr?.message
+    if (lastErr?.code === 'ECONNABORTED' || lastErr?.message?.includes('timeout')) {
+      setError('Upload timed out — connection too slow. Please try on WiFi.')
+    } else {
+      setError(`Submission failed (${status || 'network error'}): ${detail || 'Check your connection and try again.'}`)
     }
     setSubmitting(false)
   }
@@ -461,6 +500,70 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 )
               })}
 
+              {/* Extra photos */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                    📎 Extra Photos <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span>
+                  </div>
+                  {extraPhotos.length < 5 && (
+                    <button
+                      onClick={() => {
+                        setExtraPhotos(p => [...p, { file: null, preview: null }])
+                        setExtraLabels(l => [...l, ''])
+                      }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8,
+                        fontSize: 12, fontWeight: 700, background: 'rgba(56,189,248,.15)', color: 'var(--accent)',
+                        border: '1.5px dashed var(--accent)', cursor: 'pointer' }}>
+                      + Add Extra Photo
+                    </button>
+                  )}
+                </div>
+                {extraPhotos.map((ep, i) => (
+                  <div key={i} style={{
+                    border: `2px dashed ${ep.preview ? 'var(--green)' : 'var(--border)'}`,
+                    borderRadius: 10, padding: 10, marginBottom: 8,
+                    background: ep.preview ? 'rgba(52,211,153,.05)' : 'var(--surface2)',
+                    display: 'flex', alignItems: 'center', gap: 10
+                  }}>
+                    {ep.preview ? (
+                      <img src={ep.preview} alt={`extra_${i}`}
+                        style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 60, height: 60, background: 'var(--surface)', borderRadius: 8,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
+                        📷
+                      </div>
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <input
+                        value={extraLabels[i] || ''}
+                        onChange={e => setExtraLabels(l => l.map((v, j) => j === i ? e.target.value : v))}
+                        placeholder={`Label (e.g. Water quality meter)`}
+                        style={{ width: '100%', boxSizing: 'border-box', marginBottom: 5, fontSize: 11,
+                          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6,
+                          padding: '4px 8px', color: 'var(--text)' }}
+                      />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setActiveCamera(`extra_${i}`)} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6,
+                          fontSize: 11, fontWeight: 600, background: ep.preview ? 'var(--green)' : 'var(--accent)',
+                          color: '#fff', border: 'none', cursor: 'pointer' }}>
+                          📷 {ep.preview ? 'Retake' : 'Open Camera'}
+                        </button>
+                        <button onClick={() => {
+                          setExtraPhotos(p => p.filter((_, j) => j !== i))
+                          setExtraLabels(l => l.filter((_, j) => j !== i))
+                        }} style={{ padding: '4px 8px', borderRadius: 6, fontSize: 11,
+                          background: 'rgba(248,113,113,.15)', color: 'var(--red)', border: '1px solid var(--red)', cursor: 'pointer' }}>
+                          ✕ Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <div className="form-group" style={{ marginBottom: 14 }}>
                 <label>Remarks (optional)</label>
                 <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={2} placeholder="Any notes…" />
@@ -472,7 +575,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 <button className="btn btn-outline" onClick={() => { setStep(1); setError('') }} disabled={submitting}>← Back</button>
                 <button className="btn btn-primary" style={{ flex: 1, padding: 12, fontSize: 13, opacity: allPhotosDone ? 1 : 0.6 }}
                   onClick={handleSubmit} disabled={submitting}>
-                  {submitting ? '⏳ Submitting…' : '✅ Submit Proof & Mark Done'}
+                  {submitting ? '⏳ Uploading… please wait' : '✅ Submit Proof & Mark Done'}
                 </button>
               </div>
               {!allPhotosDone && (

@@ -59,6 +59,7 @@ def _auto_generate_daily_tasks():
                     assigned_by_id=None,
                     school_id=school.id,
                     priority="medium",
+                    status="pending",
                     due_date=today
                 ))
 
