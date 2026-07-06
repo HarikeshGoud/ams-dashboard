@@ -72,7 +72,10 @@ export default function Tasks() {
       const r = await api.delete('/api/tasks/reset-all')
       showToast(`🗑️ ${r.data.deleted} tasks deleted. Click "Generate Daily Tasks" to assign fresh tasks.`)
       load()
-    } catch { showToast('Failed to reset tasks') }
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.message || 'unknown error'
+      showToast(`Failed to reset tasks: ${msg}`)
+    }
     setResetStep(0)
     setResetConfirmText('')
   }
