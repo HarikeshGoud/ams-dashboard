@@ -125,6 +125,7 @@ function SiteModal({ site, onClose }) {
   const [reports, setReports]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [activeYear, setYear]   = useState('all')
+  const [selected, setSelected] = useState(new Set())
 
   useEffect(() => {
     setLoading(true)
@@ -147,7 +148,15 @@ function SiteModal({ site, onClose }) {
 
   const thisMonthCount = reports.filter(r => r.date?.startsWith(`${thisYearStr}-${thisMonthStr}`)).length
 
-  function downloadPDF() {
+  function toggleSelect(key) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  function buildPDF(list, label) {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const W = 210
     doc.setFillColor(13, 110, 253); doc.rect(0, 0, W, 26, 'F')
@@ -158,17 +167,15 @@ function SiteModal({ site, onClose }) {
     doc.text('SITE REPORT HISTORY', W / 2, 18, { align: 'center' })
     doc.setTextColor(0); doc.setFontSize(10)
     doc.text(`Site: ${site.name}`, 12, 33)
-    doc.text(`Mandal: ${site.mandal_name || '-'}  |  Contract: ${(site.amc_status || '').toUpperCase()}  |  Total Reports: ${reports.length}`, 12, 40)
-
-    const rows = filtered.map(r => {
+    doc.text(`Mandal: ${site.mandal_name || '-'}  |  Contract: ${(site.amc_status || '').toUpperCase()}  |  Reports: ${list.length}`, 12, 40)
+    const rows = list.map(r => {
       const m = reportTypeMeta(r.type)
       if (r.type === 'visit')
-        return [r.date || '-', m.label, r.technician || '-', condLabel(r.plant_condition), `${r.mcf_used ?? 0}`, r.remarks || '-']
+        return [r.date || '-', m.label, r.technician || '-', condLabel(r.plant_condition), `MCF:${r.mcf_used ?? 0}`, r.remarks || '-']
       if (r.type === 'field_report')
         return [r.date || '-', m.label, r.technician || '-', r.site_condition || '-', r.item_installed || '-', r.remarks || '-']
-      return [r.date || '-', m.label, r.technician || '-', r.action_taken || '-', `TDS ${r.tds_input ?? '-'}→${r.tds_output ?? '-'}`, r.status || '-']
+      return [r.date || '-', m.label, r.technician || '-', r.action_taken || '-', `TDS ${r.tds_input ?? '-'}->${r.tds_output ?? '-'}`, r.status || '-']
     })
-
     autoTable(doc, {
       startY: 46,
       head: [['Date', 'Type', 'Technician', 'Condition/Action', 'Details', 'Remarks']],
@@ -179,8 +186,18 @@ function SiteModal({ site, onClose }) {
       margin: { left: 10, right: 10 },
       columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 24 }, 5: { cellWidth: 38 } },
     })
+    doc.save(`${site.name.replace(/[^a-z0-9]/gi, '_')}_${label}.pdf`)
+  }
+
+  function downloadAll() {
     const period = activeYear === 'month' ? `${MONTH_NAMES[now.getMonth()]}_${thisYearStr}` : (activeYear === 'all' ? 'all' : activeYear)
-    doc.save(`${site.name.replace(/[^a-z0-9]/gi, '_')}_reports_${period}.pdf`)
+    buildPDF(filtered, `reports_${period}`)
+  }
+
+  function downloadSelected() {
+    const list = filtered.filter(r => selected.has(`${r.type}-${r.id}`))
+    buildPDF(list, `selected_${list.length}`)
+    setSelected(new Set())
   }
 
   return (
@@ -196,9 +213,16 @@ function SiteModal({ site, onClose }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={downloadPDF} style={{ background: '#198754', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-              ⬇ Download PDF
-            </button>
+            {selected.size > 0 && (
+              <button onClick={downloadSelected} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+                ⬇ Download Selected ({selected.size})
+              </button>
+            )}
+            {filtered.length > 0 && selected.size === 0 && (
+              <button onClick={downloadAll} style={{ background: '#198754', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+                ⬇ Download All
+              </button>
+            )}
             <button onClick={onClose} style={{ background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>✕</button>
           </div>
         </div>
@@ -258,11 +282,19 @@ function SiteModal({ site, onClose }) {
 
                 {items.map(r => {
                   const meta = reportTypeMeta(r.type)
+                  const rKey = `${r.type}-${r.id}`
+                  const isChecked = selected.has(rKey)
                   return (
-                    <div key={`${r.type}-${r.id}`} style={{ background: 'var(--surface2)', border: `1px solid ${meta.color}30`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
+                    <div key={rKey} style={{ background: isChecked ? `${meta.color}12` : 'var(--surface2)', border: `1px solid ${isChecked ? meta.color : meta.color+'30'}`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 16px', marginBottom: 10, transition: 'background .15s' }}>
                       {/* Report header row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSelect(rKey)}
+                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: meta.color, flexShrink: 0 }}
+                          />
                           <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 5, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{meta.icon} {meta.label}</span>
                           <span style={{ fontSize: 12, fontWeight: 600 }}>{r.date}</span>
                           {r.technician && <span style={{ fontSize: 12, color: 'var(--muted)' }}>· {r.technician}</span>}
