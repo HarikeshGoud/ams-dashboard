@@ -150,22 +150,40 @@ async def submit_field_report(
         if not task:
             raise HTTPException(404, "Task not found")
 
-        report = FieldReport(
-            task_id=task_id,
-            employee_id=user.id,
-            school_id=task.school_id,
-            report_date=today,
-            item_installed=item_installed,
-            remarks=remarks,
-            latitude=latitude,
-            longitude=longitude,
-            submitted_at=datetime.utcnow(),
-            status="submitted"
-        )
-        db.add(report)
+        # Reuse existing report for this task today to prevent duplicates on retry
+        report = db.query(FieldReport).filter(
+            FieldReport.task_id == task_id,
+            FieldReport.employee_id == user.id,
+            FieldReport.report_date == today,
+        ).first()
+
+        if report:
+            report.item_installed = item_installed
+            report.remarks = remarks
+            report.latitude = latitude
+            report.longitude = longitude
+            report.submitted_at = datetime.utcnow()
+        else:
+            report = FieldReport(
+                task_id=task_id,
+                employee_id=user.id,
+                school_id=task.school_id,
+                report_date=today,
+                item_installed=item_installed,
+                remarks=remarks,
+                latitude=latitude,
+                longitude=longitude,
+                submitted_at=datetime.utcnow(),
+                status="submitted"
+            )
+            db.add(report)
         db.flush()
 
         os.makedirs(os.path.join(UPLOADS_DIR, str(today.year), str(today.month)), exist_ok=True)
+
+        # On retry, remove old photos so we don't accumulate duplicates
+        db.query(WorkProof).filter(WorkProof.field_report_id == report.id).delete()
+        db.flush()
 
         for key, value in form.multi_items():
             if not hasattr(value, "filename") or not value.filename:
@@ -195,8 +213,16 @@ async def submit_field_report(
 
         task.status = "submitted"
         db.commit()
+        db.refresh(report)  # refresh immediately after commit while session is clean
+        base_url = str(request.base_url).rstrip("/")
+        result = _fmt_report(report, base_url=base_url)
 
-        _auto_mark_attendance(user.id, today, db)
+        # These are non-critical — never let them fail the submission
+        try:
+            _auto_mark_attendance(user.id, today, db)
+        except Exception:
+            try: db.rollback()
+            except Exception: pass
 
         if latitude and longitude:
             try:
@@ -205,11 +231,10 @@ async def submit_field_report(
                     trip_date=str(today), employee_id=user.id, db=db, user=user
                 )
             except Exception:
-                pass
+                try: db.rollback()
+                except Exception: pass
 
-        db.refresh(report)
-        base_url = str(request.base_url).rstrip("/")
-        return _fmt_report(report, base_url=base_url)
+        return result
 
     except HTTPException:
         raise

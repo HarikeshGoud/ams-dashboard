@@ -1,5 +1,5 @@
 import os, base64, io
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from datetime import date, datetime
@@ -73,7 +73,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
                                         Paragraph, Spacer, Image as RLImage, HRFlowable)
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-    except ImportError:
+    except Exception:
         return None
 
     rel_dir  = f"service_reports/{report.report_date.year}/{report.report_date.month}"
@@ -387,7 +387,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     return rel_path
 
 
-def _fmt(r: ServiceReport):
+def _fmt(r: ServiceReport, base_url: str = ""):
     return {
         "id": r.id,
         "field_report_id":    r.field_report_id,
@@ -421,69 +421,79 @@ def _fmt(r: ServiceReport):
         "customer_mobile":    r.customer_mobile,
         "customer_remarks":   r.customer_remarks,
         "status":             r.status,
-        "pdf_url":            f"http://localhost:8000/uploads/{r.pdf_path}" if r.pdf_path else None,
+        "pdf_url":            f"{base_url}/uploads/{r.pdf_path}" if r.pdf_path else None,
         "created_at":         r.created_at.isoformat() if r.created_at else None,
     }
 
 
 @router.post("/")
-def create_service_report(req: CreateServiceReport, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    today = date.today()
-
-    report = ServiceReport(
-        field_report_id=req.field_report_id, task_id=req.task_id,
-        employee_id=user.id, school_id=req.school_id, report_date=today,
-        report_no=req.report_no, complaint_no=req.complaint_no, unit_type=req.unit_type,
-        problem_description=req.problem_description, observation=req.observation,
-        action_taken=req.action_taken, spare_parts=req.spare_parts,
-        plant_capacity=req.plant_capacity, design_rw_tds=req.design_rw_tds,
-        free_chlorine_rw=req.free_chlorine_rw, hours_running=req.hours_running,
-        membrane_condition=req.membrane_condition or "OK",
-        uv_lamp_condition=req.uv_lamp_condition or "OK",
-        sensors_condition=req.sensors_condition or "OK",
-        prefilter_condition=req.prefilter_condition or "OK",
-        tds_input=req.tds_input, tds_output=req.tds_output,
-        voltage=req.voltage, flow_rate=req.flow_rate,
-        current_amps=req.current_amps,
-        principal_name=req.principal_name, customer_mobile=req.customer_mobile,
-        customer_remarks=req.customer_remarks, status=req.status or "PROBLEM RESOLVED",
-    )
-    db.add(report)
-    db.flush()
-
-    sig_dir = os.path.join(UPLOADS_DIR, "signatures", str(today.year), str(today.month))
-    os.makedirs(sig_dir, exist_ok=True)
-
-    if req.technician_signature_b64:
-        rel = f"signatures/{today.year}/{today.month}/tech_{report.id}.png"
-        _save_b64_image(req.technician_signature_b64, os.path.join(UPLOADS_DIR, rel))
-        report.technician_signature = rel
-
-    if req.principal_signature_b64:
-        rel = f"signatures/{today.year}/{today.month}/principal_{report.id}.png"
-        _save_b64_image(req.principal_signature_b64, os.path.join(UPLOADS_DIR, rel))
-        report.principal_signature = rel
-
-    db.flush()
-
+def create_service_report(request: Request, req: CreateServiceReport, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
-        pdf_rel = _generate_pdf(report, db)
-        if pdf_rel:
-            report.pdf_path = pdf_rel
-    except Exception as e:
-        print(f"PDF generation error: {e}")
+        today = date.today()
+        base_url = str(request.base_url).rstrip("/")
 
-    db.commit()
-    db.refresh(report)
-    return _fmt(report)
+        report = ServiceReport(
+            field_report_id=req.field_report_id, task_id=req.task_id,
+            employee_id=user.id, school_id=req.school_id, report_date=today,
+            report_no=req.report_no, complaint_no=req.complaint_no, unit_type=req.unit_type,
+            problem_description=req.problem_description, observation=req.observation,
+            action_taken=req.action_taken, spare_parts=req.spare_parts,
+            plant_capacity=req.plant_capacity, design_rw_tds=req.design_rw_tds,
+            free_chlorine_rw=req.free_chlorine_rw, hours_running=req.hours_running,
+            membrane_condition=req.membrane_condition or "OK",
+            uv_lamp_condition=req.uv_lamp_condition or "OK",
+            sensors_condition=req.sensors_condition or "OK",
+            prefilter_condition=req.prefilter_condition or "OK",
+            tds_input=req.tds_input, tds_output=req.tds_output,
+            voltage=req.voltage, flow_rate=req.flow_rate,
+            current_amps=req.current_amps,
+            principal_name=req.principal_name, customer_mobile=req.customer_mobile,
+            customer_remarks=req.customer_remarks, status=req.status or "PROBLEM RESOLVED",
+        )
+        db.add(report)
+        db.flush()
+
+        sig_dir = os.path.join(UPLOADS_DIR, "signatures", str(today.year), str(today.month))
+        os.makedirs(sig_dir, exist_ok=True)
+
+        if req.technician_signature_b64:
+            rel = f"signatures/{today.year}/{today.month}/tech_{report.id}.png"
+            _save_b64_image(req.technician_signature_b64, os.path.join(UPLOADS_DIR, rel))
+            report.technician_signature = rel
+
+        if req.principal_signature_b64:
+            rel = f"signatures/{today.year}/{today.month}/principal_{report.id}.png"
+            _save_b64_image(req.principal_signature_b64, os.path.join(UPLOADS_DIR, rel))
+            report.principal_signature = rel
+
+        db.flush()
+
+        try:
+            pdf_rel = _generate_pdf(report, db)
+            if pdf_rel:
+                report.pdf_path = pdf_rel
+        except Exception as pdf_err:
+            print(f"PDF generation error (non-fatal): {pdf_err}")
+
+        db.commit()
+        db.refresh(report)
+        return _fmt(report, base_url=base_url)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        try: db.rollback()
+        except Exception: pass
+        raise HTTPException(500, f"Service report failed: {str(e)}")
 
 
 @router.get("/")
-def list_reports(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
     q = db.query(ServiceReport)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(ServiceReport.employee_id == user.id)
-    return [_fmt(r) for r in q.order_by(ServiceReport.created_at.desc()).limit(200).all()]
+    return [_fmt(r, base_url=base_url) for r in q.order_by(ServiceReport.created_at.desc()).limit(200).all()]
 
 
 @router.get("/{report_id}/pdf")
