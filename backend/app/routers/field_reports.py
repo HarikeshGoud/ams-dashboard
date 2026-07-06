@@ -127,135 +127,95 @@ def _auto_mark_attendance(employee_id: int, today: date, db: Session):
 @router.post("/submit")
 async def submit_field_report(
     request: Request,
-    task_id: int = Form(...),
-    item_installed: str = Form(""),
-    remarks: str = Form(""),
-    latitude: Optional[float] = Form(None),
-    longitude: Optional[float] = Form(None),
-    # Legacy single-pair fields
-    before_photo: Optional[UploadFile] = File(None),
-    after_photo: Optional[UploadFile] = File(None),
-    item_photo: Optional[UploadFile] = File(None),
-    # Per-item sets: before_photo_0/after_photo_0/item_photo_0 ... _5
-    before_photo_0: Optional[UploadFile] = File(None),
-    after_photo_0:  Optional[UploadFile] = File(None),
-    item_photo_0:   Optional[UploadFile] = File(None),
-    before_photo_1: Optional[UploadFile] = File(None),
-    after_photo_1:  Optional[UploadFile] = File(None),
-    item_photo_1:   Optional[UploadFile] = File(None),
-    before_photo_2: Optional[UploadFile] = File(None),
-    after_photo_2:  Optional[UploadFile] = File(None),
-    item_photo_2:   Optional[UploadFile] = File(None),
-    before_photo_3: Optional[UploadFile] = File(None),
-    after_photo_3:  Optional[UploadFile] = File(None),
-    item_photo_3:   Optional[UploadFile] = File(None),
-    before_photo_4: Optional[UploadFile] = File(None),
-    after_photo_4:  Optional[UploadFile] = File(None),
-    item_photo_4:   Optional[UploadFile] = File(None),
-    before_photo_5: Optional[UploadFile] = File(None),
-    after_photo_5:  Optional[UploadFile] = File(None),
-    item_photo_5:   Optional[UploadFile] = File(None),
-    extra_photo_0:  Optional[UploadFile] = File(None),
-    extra_photo_1:  Optional[UploadFile] = File(None),
-    extra_photo_2:  Optional[UploadFile] = File(None),
-    extra_photo_3:  Optional[UploadFile] = File(None),
-    extra_photo_4:  Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    today = date.today()
+    try:
+        form = await request.form()
 
-    # Get task info
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(404, "Task not found")
+        task_id_raw = form.get("task_id")
+        if not task_id_raw:
+            raise HTTPException(400, "task_id is required")
+        task_id = int(task_id_raw)
+        item_installed = form.get("item_installed", "")
+        remarks = form.get("remarks", "")
+        lat_raw = form.get("latitude")
+        lng_raw = form.get("longitude")
+        latitude  = float(lat_raw)  if lat_raw  else None
+        longitude = float(lng_raw) if lng_raw else None
 
-    # Create the field report
-    report = FieldReport(
-        task_id=task_id,
-        employee_id=user.id,
-        school_id=task.school_id,
-        report_date=today,
-        item_installed=item_installed,
-        remarks=remarks,
-        latitude=latitude,
-        longitude=longitude,
-        submitted_at=datetime.utcnow(),
-        status="submitted"
-    )
-    db.add(report)
-    db.flush()  # get report.id
+        today = date.today()
 
-    # Save photos
-    os.makedirs(os.path.join(UPLOADS_DIR, str(today.year), str(today.month)), exist_ok=True)
+        task = db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            raise HTTPException(404, "Task not found")
 
-    async def save_photo(upload: UploadFile, photo_type: str, lat, lng):
-        if not upload:
-            return
-        ext = upload.filename.rsplit(".", 1)[-1] if "." in upload.filename else "jpg"
-        fname = f"{today.year}/{today.month}/emp{user.id}_task{task_id}_{photo_type}_{report.id}.{ext}"
-        fpath = os.path.join(UPLOADS_DIR, fname)
-        try:
-            contents = await upload.read()
-            async with aiofiles.open(fpath, "wb") as f:
-                await f.write(contents)
-        except Exception as e:
-            raise HTTPException(500, f"Photo save failed ({photo_type}): {e}")
-        db.add(WorkProof(
-            field_report_id=report.id,
-            employee_id=user.id,
+        report = FieldReport(
             task_id=task_id,
-            file_path=fname,
-            photo_type=photo_type,
-            latitude=lat,
-            longitude=lng
-        ))
+            employee_id=user.id,
+            school_id=task.school_id,
+            report_date=today,
+            item_installed=item_installed,
+            remarks=remarks,
+            latitude=latitude,
+            longitude=longitude,
+            submitted_at=datetime.utcnow(),
+            status="submitted"
+        )
+        db.add(report)
+        db.flush()
 
-    # Legacy single-pair (backward compat)
-    await save_photo(before_photo, "before", latitude, longitude)
-    await save_photo(after_photo,  "after",  latitude, longitude)
-    await save_photo(item_photo,   "item",   latitude, longitude)
+        os.makedirs(os.path.join(UPLOADS_DIR, str(today.year), str(today.month)), exist_ok=True)
 
-    # Per-item sets: before_photo_0/after_photo_0/item_photo_0 … _5
-    per_item_sets = [
-        (before_photo_0, after_photo_0, item_photo_0),
-        (before_photo_1, after_photo_1, item_photo_1),
-        (before_photo_2, after_photo_2, item_photo_2),
-        (before_photo_3, after_photo_3, item_photo_3),
-        (before_photo_4, after_photo_4, item_photo_4),
-        (before_photo_5, after_photo_5, item_photo_5),
-    ]
-    for idx, (bp, ap, ip) in enumerate(per_item_sets):
-        await save_photo(bp, f"before_{idx}", latitude, longitude)
-        await save_photo(ap, f"after_{idx}",  latitude, longitude)
-        await save_photo(ip, f"item_{idx}",   latitude, longitude)
+        for key, value in form.multi_items():
+            if not hasattr(value, "filename") or not value.filename:
+                continue
+            photo_type = key  # field name becomes photo_type (e.g. before_photo_0, extra_photo_0)
+            ext = value.filename.rsplit(".", 1)[-1] if value.filename and "." in value.filename else "jpg"
+            fname = f"{today.year}/{today.month}/emp{user.id}_task{task_id}_{photo_type}_{report.id}.{ext}"
+            fpath = os.path.join(UPLOADS_DIR, fname)
+            try:
+                contents = await value.read()
+                if contents:
+                    async with aiofiles.open(fpath, "wb") as f:
+                        await f.write(contents)
+                    db.add(WorkProof(
+                        field_report_id=report.id,
+                        employee_id=user.id,
+                        task_id=task_id,
+                        file_path=fname,
+                        photo_type=photo_type,
+                        latitude=latitude,
+                        longitude=longitude
+                    ))
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(500, f"Photo save failed ({photo_type}): {e}")
 
-    # Extra photos (optional, up to 5)
-    for idx, ep in enumerate([extra_photo_0, extra_photo_1, extra_photo_2, extra_photo_3, extra_photo_4]):
-        await save_photo(ep, f"extra_{idx}", latitude, longitude)
+        task.status = "submitted"
+        db.commit()
 
-    # Mark task as submitted (under review) — NOT completed yet
-    # It becomes "completed" only after admin/deskwork verifies the proof
-    task.status = "submitted"
+        _auto_mark_attendance(user.id, today, db)
 
-    db.commit()
+        if latitude and longitude:
+            try:
+                from .travel import auto_trip_from_reports
+                await auto_trip_from_reports(
+                    trip_date=str(today), employee_id=user.id, db=db, user=user
+                )
+            except Exception:
+                pass
 
-    # Auto-mark attendance based on task completion ratio for today
-    _auto_mark_attendance(user.id, today, db)
+        db.refresh(report)
+        base_url = str(request.base_url).rstrip("/")
+        return _fmt_report(report, base_url=base_url)
 
-    # Auto-calculate travel trip from all GPS submissions today
-    if latitude and longitude:
-        try:
-            from .travel import auto_trip_from_reports
-            await auto_trip_from_reports(
-                trip_date=str(today), employee_id=user.id, db=db, user=user
-            )
-        except Exception:
-            pass  # never block proof submission
-
-    db.refresh(report)
-    base_url = str(request.base_url).rstrip("/")
-    return _fmt_report(report, base_url=base_url)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Submission failed: {str(e)}")
 
 @router.get("/{report_id}")
 def get_report(report_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
