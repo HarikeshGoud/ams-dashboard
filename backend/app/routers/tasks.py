@@ -269,7 +269,13 @@ def reset_all_tasks(db: Session = Depends(get_db), user=Depends(get_current_user
     """Delete ALL tasks for all technicians. Admin only. Irreversible."""
     if user.role != "admin":
         raise HTTPException(403, "Admin only")
-    deleted = db.query(Task).delete()
+    # Null out task_id FK in related tables before deleting (PostgreSQL enforces FK constraints)
+    from sqlalchemy import text
+    db.execute(text("UPDATE field_reports SET task_id = NULL WHERE task_id IS NOT NULL"))
+    db.execute(text("UPDATE work_proofs SET task_id = NULL WHERE task_id IS NOT NULL"))
+    db.execute(text("UPDATE service_reports SET task_id = NULL WHERE task_id IS NOT NULL"))
+    db.execute(text("UPDATE allowance_requests SET task_id = NULL WHERE task_id IS NOT NULL"))
+    deleted = db.query(Task).delete(synchronize_session=False)
     db.commit()
     return {"deleted": deleted, "message": f"All {deleted} tasks deleted. Ready for fresh generation."}
 
