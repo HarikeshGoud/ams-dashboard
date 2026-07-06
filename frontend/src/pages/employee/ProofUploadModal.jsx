@@ -23,9 +23,12 @@ function CameraCapture({ onCapture, onClose, gps }) {
 
   function capture() {
     const video = videoRef.current, canvas = canvasRef.current
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight
+    const MAX_W = 1280
+    const scale = video.videoWidth > MAX_W ? MAX_W / video.videoWidth : 1
+    canvas.width = Math.round(video.videoWidth * scale)
+    canvas.height = Math.round(video.videoHeight * scale)
     const ctx = canvas.getContext('2d')
-    ctx.drawImage(video, 0, 0)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     const now = new Date(), W = canvas.width, H = canvas.height
     const lines = [
@@ -52,7 +55,7 @@ function CameraCapture({ onCapture, onClose, gps }) {
       const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' })
       streamRef.current?.getTracks().forEach(t => t.stop())
       onCapture(file, URL.createObjectURL(blob))
-    }, 'image/jpeg', 0.92)
+    }, 'image/jpeg', 0.82)
   }
 
   return (
@@ -215,45 +218,55 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     )
     if (missing) { setError(`Complete all 3 photos for: ${missing}`); return }
 
-    setSubmitting(true); setError('Waking up server… please wait up to 30s')
-    try {
-      // Ping the backend first — Render free tier sleeps after 15 min inactivity
-      // This wakes it up before we send the heavy multipart upload
-      try { await api.get('/api/tasks/my-tasks', { timeout: 30000 }) } catch (_) {}
+    setSubmitting(true)
 
-      setError('')
+    const buildFormData = () => {
       const fd = new FormData()
       fd.append('task_id', task.id)
       fd.append('item_installed', selectedItems.join(', '))
       fd.append('remarks', remarks)
       if (gps) { fd.append('latitude', gps.lat); fd.append('longitude', gps.lng) }
-
-      // Send as before_0/after_0/item_0 … before_N/after_N/item_N
       selectedItems.forEach((_, i) => {
         if (photos[`before_${i}`]) fd.append(`before_photo_${i}`, photos[`before_${i}`])
         if (photos[`after_${i}`])  fd.append(`after_photo_${i}`,  photos[`after_${i}`])
         if (photos[`photo_${i}`])  fd.append(`item_photo_${i}`,   photos[`photo_${i}`])
       })
-      // Extra photos (up to 5)
       extraPhotos.slice(0, 5).forEach((ep, i) => {
         if (ep.file) fd.append(`extra_photo_${i}`, ep.file)
       })
+      return fd
+    }
 
-      // 90 second timeout — large photo upload on mobile needs time
-      const res = await api.post('/api/field-reports/submit', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 90000
-      })
-      setLastReportId(res.data?.id || null)
-      setStep(3)
-    } catch (e) {
-      const status = e.response?.status
-      const detail = e.response?.data?.detail || e.response?.data?.message || e.message
-      if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
-        setError('Upload timed out — your connection may be slow. Please try again.')
-      } else {
-        setError(`Submission failed (${status || 'network error'}): ${detail || 'Check your connection and try again.'}`)
+    let lastErr = null
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        setError(attempt === 1 ? 'Uploading… please wait' : `Retrying (attempt ${attempt}/3)…`)
+        // Wake-up ping on first attempt only
+        if (attempt === 1) {
+          try { await api.get('/api/tasks/my-tasks', { timeout: 35000 }) } catch (_) {}
+        }
+        const res = await api.post('/api/field-reports/submit', buildFormData(), {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120000
+        })
+        setLastReportId(res.data?.id || null)
+        setError('')
+        setStep(3)
+        setSubmitting(false)
+        return
+      } catch (e) {
+        lastErr = e
+        if (e.response?.status) break  // server error — no point retrying
+        if (attempt < 3) await new Promise(r => setTimeout(r, 3000))
       }
+    }
+
+    const status = lastErr?.response?.status
+    const detail = lastErr?.response?.data?.detail || lastErr?.response?.data?.message || lastErr?.message
+    if (lastErr?.code === 'ECONNABORTED' || lastErr?.message?.includes('timeout')) {
+      setError('Upload timed out — connection too slow. Please try on WiFi.')
+    } else {
+      setError(`Submission failed (${status || 'network error'}): ${detail || 'Check your connection and try again.'}`)
     }
     setSubmitting(false)
   }
