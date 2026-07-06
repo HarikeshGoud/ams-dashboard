@@ -238,7 +238,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       setLastReportId(res.data?.id || null)
       setStep(3)
     } catch (e) {
-      setError(e.response?.data?.detail || 'Submission failed. Try again.')
+      const status = e.response?.status
+      const detail = e.response?.data?.detail || e.response?.data?.message || e.message
+      setError(`Submission failed (${status || 'network error'}): ${detail || 'Check your connection and try again.'}`)
     }
     setSubmitting(false)
   }
