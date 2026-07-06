@@ -247,6 +247,7 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
                 assigned_by_id=user.id,
                 school_id=school.id,
                 priority="medium",
+                status="pending",
                 due_date=d
             ))
             generated += 1
