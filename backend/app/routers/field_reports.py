@@ -195,8 +195,16 @@ async def submit_field_report(
 
         task.status = "submitted"
         db.commit()
+        db.refresh(report)  # refresh immediately after commit while session is clean
+        base_url = str(request.base_url).rstrip("/")
+        result = _fmt_report(report, base_url=base_url)
 
-        _auto_mark_attendance(user.id, today, db)
+        # These are non-critical — never let them fail the submission
+        try:
+            _auto_mark_attendance(user.id, today, db)
+        except Exception:
+            try: db.rollback()
+            except Exception: pass
 
         if latitude and longitude:
             try:
@@ -205,11 +213,10 @@ async def submit_field_report(
                     trip_date=str(today), employee_id=user.id, db=db, user=user
                 )
             except Exception:
-                pass
+                try: db.rollback()
+                except Exception: pass
 
-        db.refresh(report)
-        base_url = str(request.base_url).rstrip("/")
-        return _fmt_report(report, base_url=base_url)
+        return result
 
     except HTTPException:
         raise
