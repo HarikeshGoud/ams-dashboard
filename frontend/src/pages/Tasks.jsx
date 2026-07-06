@@ -22,7 +22,8 @@ export default function Tasks() {
   const [taskSearch, setTaskSearch] = useState('')    // task search within technician
   const [statusFilter, setStatusFilter] = useState('')  // status filter
   const [priorityFilter, setPriorityFilter] = useState('')  // priority filter
-  const today = new Date().toISOString().slice(0, 10)
+  const today     = new Date().toISOString().slice(0, 10)
+  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10)
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
@@ -113,9 +114,13 @@ export default function Tasks() {
     return true
   }) : []
 
-  // Group by status
-  const grouped = {}
-  STATUS_ORDER.forEach(s => { grouped[s] = techTasks.filter(t => t.status === s) })
+  // Group by status — pending shows yesterday+today, submitted shows today only
+  const grouped = {
+    pending:     techTasks.filter(t => t.status === 'pending'     && (t.due_date === today || t.due_date === yesterday)),
+    in_progress: techTasks.filter(t => t.status === 'in_progress'),
+    submitted:   techTasks.filter(t => t.status === 'submitted'   && t.due_date === today),
+    completed:   techTasks.filter(t => t.status === 'completed'),
+  }
 
   // Summary counts per technician (unfiltered — always show real totals on tabs)
   const techSummary = technicians.map(tech => {
@@ -266,11 +271,21 @@ export default function Tasks() {
         <div className="grid-3">
           {STATUS_ORDER.filter(s => s !== 'completed').concat(['completed']).map(status => (
             <div key={status} className="card">
-              <div className="card-title" style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="card-title" style={{ textTransform: 'capitalize', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span>{STATUS_LABEL[status]}</span>
                 <span style={{ background: 'var(--surface2)', borderRadius: 10, padding: '1px 8px', fontSize: 11 }}>
                   {grouped[status]?.length || 0}
                 </span>
+                {status === 'pending' && !filterDate && (
+                  <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginLeft: 2 }}>
+                    {yesterday} → {today}
+                  </span>
+                )}
+                {status === 'submitted' && !filterDate && (
+                  <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, marginLeft: 2 }}>
+                    Today only
+                  </span>
+                )}
               </div>
               {(grouped[status] || []).map(t => (
                 <div key={t.id} style={{
