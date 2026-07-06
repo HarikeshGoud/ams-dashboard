@@ -7,6 +7,9 @@ from ..database import get_db
 from ..models.school import School
 from ..models.mandal import Mandal
 from ..models.employee import Employee
+from ..models.visit import Visit
+from ..models.field_report import FieldReport
+from ..models.service_report import ServiceReport
 from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/api/schools", tags=["schools"])
@@ -180,4 +183,79 @@ def get_school_stamp(sid: int):
         if os.path.exists(path):
             return {"ok": True, "stamp_url": f"http://localhost:8000/uploads/stamps/{sid}.{ext}"}
     return {"ok": False, "stamp_url": None}
+
+
+@router.get("/{sid}/reports")
+def school_reports(sid: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    s = db.query(School).filter(School.id == sid).first()
+    if not s:
+        raise HTTPException(404, "School not found")
+
+    visits = db.query(Visit).filter(Visit.school_id == sid).order_by(Visit.visit_date.desc()).all()
+    field_reports = db.query(FieldReport).filter(FieldReport.school_id == sid).order_by(FieldReport.report_date.desc()).all()
+    service_reports = db.query(ServiceReport).filter(ServiceReport.school_id == sid).order_by(ServiceReport.report_date.desc()).all()
+
+    BASE = "http://localhost:8000"
+
+    def fmt_visit(v):
+        return {
+            "type": "visit", "id": v.id,
+            "date": v.visit_date.isoformat() if v.visit_date else None,
+            "technician": v.employee.name if v.employee else None,
+            "plant_condition": v.plant_condition,
+            "tds_reading": v.tds_reading, "ph_reading": v.ph_reading,
+            "mcf_used": v.mcf_used, "antiscalant_used": float(v.antiscalant_used or 0),
+            "filters_used": v.filters_used, "spares_used": v.spares_used,
+            "work_done": v.work_done, "remarks": v.remarks,
+            "visit_type": v.visit_type,
+        }
+
+    def fmt_field(r):
+        photos = []
+        if hasattr(r, 'work_photos'):
+            photos = [{"type": p.photo_type, "url": f"{BASE}/uploads/{p.file_path}"} for p in r.work_photos]
+        emp = r.employee if hasattr(r, 'employee') else None
+        return {
+            "type": "field_report", "id": r.id,
+            "date": r.report_date.isoformat() if r.report_date else None,
+            "technician": emp.name if emp else None,
+            "item_installed": r.item_installed,
+            "remarks": r.remarks,
+            "site_condition": r.site_condition if hasattr(r, 'site_condition') else None,
+            "machines_working": r.machines_working if hasattr(r, 'machines_working') else None,
+            "machines_total": r.machines_total if hasattr(r, 'machines_total') else None,
+            "filters_replaced": r.filters_replaced if hasattr(r, 'filters_replaced') else None,
+            "verification_status": r.verification_status,
+            "photos": photos,
+        }
+
+    def fmt_service(r):
+        emp = r.employee if hasattr(r, 'employee') else None
+        return {
+            "type": "service_report", "id": r.id,
+            "date": r.report_date.isoformat() if r.report_date else None,
+            "technician": emp.name if emp else None,
+            "problem_description": r.problem_description,
+            "observation": r.observation,
+            "action_taken": r.action_taken,
+            "spare_parts": r.spare_parts,
+            "tds_input": r.tds_input, "tds_output": r.tds_output,
+            "voltage": r.voltage, "flow_rate": r.flow_rate,
+            "status": r.status,
+            "unit_type": r.unit_type,
+        }
+
+    all_reports = (
+        [fmt_visit(v) for v in visits] +
+        [fmt_field(r) for r in field_reports] +
+        [fmt_service(r) for r in service_reports]
+    )
+    all_reports.sort(key=lambda x: x["date"] or "", reverse=True)
+
+    return {
+        "school_id": sid,
+        "school_name": s.name,
+        "total": len(all_reports),
+        "reports": all_reports,
+    }
 

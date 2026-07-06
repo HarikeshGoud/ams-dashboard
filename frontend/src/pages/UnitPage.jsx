@@ -98,124 +98,236 @@ function ContractEditor({ site, onSaved }) {
   )
 }
 
-// ── Site visits modal ──────────────────────────────────────────────────────
+// ── helpers ────────────────────────────────────────────────────────────────
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function reportTypeMeta(type) {
+  if (type === 'visit')          return { label: 'Visit',          color: '#2563eb', icon: '📋' }
+  if (type === 'field_report')   return { label: 'Field Report',   color: '#198754', icon: '🔧' }
+  if (type === 'service_report') return { label: 'Service Report', color: '#fd7e14', icon: '🛠' }
+  return { label: type, color: '#6c757d', icon: '📄' }
+}
+
+function groupByYearMonth(reports) {
+  const map = {}
+  reports.forEach(r => {
+    if (!r.date) return
+    const [yr, mo] = r.date.split('-')
+    const key = `${yr}-${mo}`
+    if (!map[key]) map[key] = { year: yr, month: mo, items: [] }
+    map[key].items.push(r)
+  })
+  return Object.values(map).sort((a, b) => `${b.year}-${b.month}`.localeCompare(`${a.year}-${a.month}`))
+}
+
+// ── Site Reports Modal ─────────────────────────────────────────────────────
 function SiteModal({ site, onClose }) {
-  const [visits, setVisits] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [reports, setReports]   = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [activeYear, setYear]   = useState('all')
 
   useEffect(() => {
-    api.get('/api/visits/?limit=500').then(r => {
-      const all = r.data?.items || r.data || []
-      setVisits(all.filter(v => v.school_id === site.id).slice(0, 15))
-      setLoading(false)
-    })
+    setLoading(true)
+    api.get(`/api/schools/${site.id}/reports`).then(r => {
+      setReports(r.data?.reports || [])
+    }).catch(() => setReports([])).finally(() => setLoading(false))
   }, [site.id])
+
+  // derive years present in data
+  const years = [...new Set(reports.map(r => r.date?.split('-')[0]).filter(Boolean))].sort((a,b) => b-a)
+  const now = new Date()
+  const thisYearStr  = String(now.getFullYear())
+  const thisMonthStr = String(now.getMonth() + 1).padStart(2, '0')
+
+  const filtered = activeYear === 'all'   ? reports
+    : activeYear === 'month' ? reports.filter(r => r.date?.startsWith(`${thisYearStr}-${thisMonthStr}`))
+    : reports.filter(r => r.date?.startsWith(activeYear))
+
+  const grouped = groupByYearMonth(filtered)
+
+  const thisMonthCount = reports.filter(r => r.date?.startsWith(`${thisYearStr}-${thisMonthStr}`)).length
 
   function downloadPDF() {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const W = 210
-    doc.setFillColor(13, 110, 253)
-    doc.rect(0, 0, W, 24, 'F')
+    doc.setFillColor(13, 110, 253); doc.rect(0, 0, W, 26, 'F')
     doc.setTextColor(255, 255, 255)
     doc.setFontSize(12); doc.setFont('helvetica', 'bold')
-    doc.text('SRI HAMSINI & CHANDRA ENTERPRISES', W / 2, 9, { align: 'center' })
+    doc.text('SRI HAMSINI & CHANDRA ENTERPRISES', W / 2, 10, { align: 'center' })
     doc.setFontSize(9); doc.setFont('helvetica', 'normal')
-    doc.text('SITE VISIT HISTORY REPORT', W / 2, 16, { align: 'center' })
-    doc.setTextColor(0)
-    doc.setFontSize(10)
-    doc.text(`Site: ${site.name}`, 12, 30)
-    doc.text(`Mandal: ${site.mandal_name || '-'}   Contract: ${(site.amc_status || '').toUpperCase()}   Segment: ${site.model || '-'}`, 12, 37)
+    doc.text('SITE REPORT HISTORY', W / 2, 18, { align: 'center' })
+    doc.setTextColor(0); doc.setFontSize(10)
+    doc.text(`Site: ${site.name}`, 12, 33)
+    doc.text(`Mandal: ${site.mandal_name || '-'}  |  Contract: ${(site.amc_status || '').toUpperCase()}  |  Total Reports: ${reports.length}`, 12, 40)
+
+    const rows = filtered.map(r => {
+      const m = reportTypeMeta(r.type)
+      if (r.type === 'visit')
+        return [r.date || '-', m.label, r.technician || '-', condLabel(r.plant_condition), `${r.mcf_used ?? 0}`, r.remarks || '-']
+      if (r.type === 'field_report')
+        return [r.date || '-', m.label, r.technician || '-', r.site_condition || '-', r.item_installed || '-', r.remarks || '-']
+      return [r.date || '-', m.label, r.technician || '-', r.action_taken || '-', `TDS ${r.tds_input ?? '-'}→${r.tds_output ?? '-'}`, r.status || '-']
+    })
 
     autoTable(doc, {
-      startY: 43,
-      head: [['Visit Date', 'Technician', 'Plant Condition', 'MCF Used', 'Antiscalant (L)', 'Remarks']],
-      body: visits.map(v => [
-        v.visit_date || '-',
-        v.employee_name || '-',
-        condLabel(v.plant_condition),
-        v.mcf_used ?? 0,
-        v.antiscalant_used ?? 0,
-        v.remarks || '-',
-      ]),
-      styles: { fontSize: 8.5, cellPadding: 2 },
+      startY: 46,
+      head: [['Date', 'Type', 'Technician', 'Condition/Action', 'Details', 'Remarks']],
+      body: rows,
+      styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [13, 110, 253], textColor: 255 },
       alternateRowStyles: { fillColor: [245, 248, 255] },
-      margin: { left: 12, right: 12 },
+      margin: { left: 10, right: 10 },
+      columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 24 }, 5: { cellWidth: 38 } },
     })
-    doc.save(`${site.name.replace(/[^a-z0-9]/gi, '_')}_visits.pdf`)
+    const period = activeYear === 'month' ? `${MONTH_NAMES[now.getMonth()]}_${thisYearStr}` : (activeYear === 'all' ? 'all' : activeYear)
+    doc.save(`${site.name.replace(/[^a-z0-9]/gi, '_')}_reports_${period}.pdf`)
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, width: '100%', maxWidth: 740, maxHeight: '90vh', overflow: 'auto' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, width: '100%', maxWidth: 820, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{site.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+            <div style={{ fontWeight: 700, fontSize: 17 }}>{site.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
               {site.mandal_name || 'No mandal'} · {contractLabel(site.amc_status)} · {site.model || 'site'}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button onClick={downloadPDF} style={{ background: '#198754', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-              ⬇ PDF Report
+              ⬇ Download PDF
             </button>
-            <button onClick={onClose} style={{ background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>
-              ✕
-            </button>
+            <button onClick={onClose} style={{ background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13 }}>✕</button>
           </div>
         </div>
 
-        {/* Site details */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+        {/* Summary strip */}
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           {[
-            ['Technician', site.technician_name || '—'],
-            ['Plant Condition', condLabel(site.plant_condition)],
-            ['Last Visit', site.last_visit_date || '—'],
-            ['Contract', contractLabel(site.amc_status)],
-            ['Capacity', site.capacity || '—'],
-          ].map(([label, val]) => (
-            <div key={label}>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div>
-              <div style={{ fontWeight: 600, fontSize: 14, marginTop: 2 }}>{val}</div>
+            ['Total Reports', reports.length, '#2563eb'],
+            ['This Month',    thisMonthCount,  '#198754'],
+            ['Last Report',   reports[0]?.date || '—', '#fd7e14'],
+            ['Technician',    site.technician_name || '—', '#7c3aed'],
+            ['Capacity',      site.capacity || '—', '#6c757d'],
+          ].map(([lbl, val, col]) => (
+            <div key={lbl} style={{ flex: 1, padding: '10px 14px', borderRight: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.04em' }}>{lbl.toUpperCase()}</div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: col, marginTop: 2 }}>{val}</div>
             </div>
           ))}
         </div>
 
-        {/* Visit history */}
-        <div style={{ padding: '14px 20px' }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: 'var(--accent)' }}>Recent Visits</div>
+        {/* Year / period tabs */}
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
+          {[
+            { key: 'month', label: `This Month (${MONTH_NAMES[now.getMonth()]} ${thisYearStr})` },
+            { key: 'all',   label: 'All Records' },
+            ...years.map(y => ({ key: y, label: y })),
+          ].map(tab => (
+            <button key={tab.key} onClick={() => setYear(tab.key)} style={{
+              padding: '10px 20px', border: 'none', borderBottom: activeYear === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
+              background: 'transparent', color: activeYear === tab.key ? 'var(--accent)' : 'var(--muted)',
+              fontWeight: activeYear === tab.key ? 700 : 400, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+              {tab.label}
+              {tab.key !== 'all' && tab.key !== 'month' && (
+                <span style={{ marginLeft: 6, fontSize: 11, background: 'var(--surface2)', borderRadius: 10, padding: '1px 6px' }}>
+                  {reports.filter(r => r.date?.startsWith(tab.key)).length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Report list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
           {loading ? (
-            <div style={{ color: 'var(--muted)', padding: 24, textAlign: 'center' }}>Loading...</div>
-          ) : visits.length === 0 ? (
-            <div style={{ color: 'var(--muted)', padding: 24, textAlign: 'center' }}>No visits recorded yet.</div>
+            <div style={{ color: 'var(--muted)', padding: 40, textAlign: 'center' }}>Loading reports...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ color: 'var(--muted)', padding: 40, textAlign: 'center' }}>No reports for this period.</div>
           ) : (
-            <div style={{ overflowX: 'auto', borderRadius: 8, border: '1px solid var(--border)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: 'var(--surface2)' }}>
-                    {['Date', 'Technician', 'Condition', 'MCF', 'Anti (L)', 'Remarks'].map(h => (
-                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visits.map((v, i) => (
-                    <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{v.visit_date}</td>
-                      <td style={{ padding: '8px 12px' }}>{v.employee_name || '—'}</td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <span style={{ background: condColor(v.plant_condition), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{condLabel(v.plant_condition)}</span>
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{v.mcf_used ?? 0}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{v.antiscalant_used ?? 0}</td>
-                      <td style={{ padding: '8px 12px', fontSize: 12, color: 'var(--muted)' }}>{v.remarks || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            grouped.map(({ year, month, items }) => (
+              <div key={`${year}-${month}`} style={{ marginBottom: 24 }}>
+                {/* Month heading */}
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: '0.06em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>{MONTH_NAMES[parseInt(month,10)-1].toUpperCase()} {year}</span>
+                  <span style={{ background: 'var(--surface2)', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 500 }}>{items.length} report{items.length > 1 ? 's' : ''}</span>
+                </div>
+
+                {items.map(r => {
+                  const meta = reportTypeMeta(r.type)
+                  return (
+                    <div key={`${r.type}-${r.id}`} style={{ background: 'var(--surface2)', border: `1px solid ${meta.color}30`, borderLeft: `3px solid ${meta.color}`, borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
+                      {/* Report header row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span style={{ background: `${meta.color}22`, color: meta.color, borderRadius: 5, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{meta.icon} {meta.label}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{r.date}</span>
+                          {r.technician && <span style={{ fontSize: 12, color: 'var(--muted)' }}>· {r.technician}</span>}
+                        </div>
+                        {r.verification_status && (
+                          <span style={{ fontSize: 11, color: r.verification_status === 'verified' ? '#198754' : '#fd7e14', fontWeight: 600 }}>
+                            {r.verification_status === 'verified' ? '✓ Verified' : '⏳ Pending'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Report body — varies by type */}
+                      {r.type === 'visit' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, fontSize: 12 }}>
+                          <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Condition</span><br /><span style={{ fontWeight: 600 }}>{condLabel(r.plant_condition)}</span></div>
+                          <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>TDS</span><br /><span style={{ fontWeight: 600 }}>{r.tds_reading ?? '—'}</span></div>
+                          <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>pH</span><br /><span style={{ fontWeight: 600 }}>{r.ph_reading ?? '—'}</span></div>
+                          <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>MCF Used</span><br /><span style={{ fontWeight: 600 }}>{r.mcf_used ?? 0}</span></div>
+                          <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Antiscalant (L)</span><br /><span style={{ fontWeight: 600 }}>{r.antiscalant_used ?? 0}</span></div>
+                          {r.spares_used && <div style={{ gridColumn: '1/-1' }}><span style={{ color: 'var(--muted)', fontSize: 11 }}>Spares Used</span><br />{r.spares_used}</div>}
+                          {r.work_done   && <div style={{ gridColumn: '1/-1' }}><span style={{ color: 'var(--muted)', fontSize: 11 }}>Work Done</span><br />{r.work_done}</div>}
+                          {r.remarks     && <div style={{ gridColumn: '1/-1' }}><span style={{ color: 'var(--muted)', fontSize: 11 }}>Remarks</span><br />{r.remarks}</div>}
+                        </div>
+                      )}
+
+                      {r.type === 'field_report' && (
+                        <div style={{ fontSize: 12 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8, marginBottom: r.item_installed || r.remarks ? 8 : 0 }}>
+                            {r.site_condition && <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Site Condition</span><br /><span style={{ fontWeight: 600 }}>{r.site_condition}</span></div>}
+                            {(r.machines_working != null) && <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Machines</span><br /><span style={{ fontWeight: 600 }}>{r.machines_working}/{r.machines_total} working</span></div>}
+                            {r.filters_replaced && <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Filters Replaced</span><br /><span style={{ fontWeight: 600 }}>{r.filters_replaced}</span></div>}
+                          </div>
+                          {r.item_installed && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)', fontSize: 11 }}>Items Installed: </span>{r.item_installed}</div>}
+                          {r.remarks       && <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Remarks: </span>{r.remarks}</div>}
+                          {r.photos?.length > 0 && (
+                            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {r.photos.map((p, i) => (
+                                <a key={i} href={p.url} target="_blank" rel="noreferrer">
+                                  <img src={p.url} alt={p.type} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {r.type === 'service_report' && (
+                        <div style={{ fontSize: 12 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 8 }}>
+                            <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>TDS In → Out</span><br /><span style={{ fontWeight: 600 }}>{r.tds_input ?? '—'} → {r.tds_output ?? '—'}</span></div>
+                            <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Voltage</span><br /><span style={{ fontWeight: 600 }}>{r.voltage ?? '—'} V</span></div>
+                            <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Flow Rate</span><br /><span style={{ fontWeight: 600 }}>{r.flow_rate ?? '—'}</span></div>
+                            <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Status</span><br /><span style={{ fontWeight: 600, color: '#198754' }}>{r.status}</span></div>
+                          </div>
+                          {r.problem_description && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)', fontSize: 11 }}>Problem: </span>{r.problem_description}</div>}
+                          {r.observation        && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)', fontSize: 11 }}>Observation: </span>{r.observation}</div>}
+                          {r.action_taken       && <div style={{ marginBottom: 4 }}><span style={{ color: 'var(--muted)', fontSize: 11 }}>Action Taken: </span>{r.action_taken}</div>}
+                          {r.spare_parts        && <div><span style={{ color: 'var(--muted)', fontSize: 11 }}>Spare Parts: </span>{r.spare_parts}</div>}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ))
           )}
         </div>
       </div>

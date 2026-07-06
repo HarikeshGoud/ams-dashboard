@@ -17,7 +17,7 @@ export default function Dashboard() {
   if (!stats) return <div className="spinner" />
 
   const kpis = [
-    { label: 'Total Schools',     value: stats.total_schools,       color: 'green',  sub: 'Active sites' },
+    { label: 'Total Sites',        value: stats.total_schools,       color: 'green',  sub: 'Active sites' },
     { label: 'Employees',         value: stats.total_employees,     color: 'cyan',   sub: '5 teams' },
     { label: 'Open Complaints',   value: stats.open_complaints,     color: 'red',    sub: 'Needs attention' },
     { label: 'Visits This Month', value: stats.visits_this_month,   color: '',       sub: 'Field visits' },

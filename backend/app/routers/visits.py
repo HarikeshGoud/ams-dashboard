@@ -52,6 +52,7 @@ def _fmt(v: Visit):
 def list_visits(
     page: int = Query(1, ge=1), limit: int = Query(50),
     employee_id: Optional[int] = None,
+    school_id: Optional[int] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db), user=Depends(get_current_user)
@@ -61,6 +62,8 @@ def list_visits(
         q = q.filter(Visit.employee_id == user.id)
     elif employee_id:
         q = q.filter(Visit.employee_id == employee_id)
+    if school_id:
+        q = q.filter(Visit.school_id == school_id)
     if date_from:
         q = q.filter(Visit.visit_date >= date.fromisoformat(date_from))
     if date_to:
