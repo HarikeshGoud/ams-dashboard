@@ -1,4 +1,4 @@
-import os, shutil
+import os, aiofiles
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from datetime import date, datetime
@@ -196,8 +196,9 @@ async def submit_field_report(
         fname = f"{today.year}/{today.month}/emp{user.id}_task{task_id}_{photo_type}_{report.id}.{ext}"
         fpath = os.path.join(UPLOADS_DIR, fname)
         try:
-            with open(fpath, "wb") as f:
-                shutil.copyfileobj(upload.file, f)
+            contents = await upload.read()
+            async with aiofiles.open(fpath, "wb") as f:
+                await f.write(contents)
         except Exception as e:
             raise HTTPException(500, f"Photo save failed ({photo_type}): {e}")
         db.add(WorkProof(
