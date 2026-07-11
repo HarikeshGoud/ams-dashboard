@@ -189,8 +189,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     )
   }
 
+  // selectedItems stores {id, name} objects — matched by exact item.id
   function toggleItem(item) {
-    setSelectedItems(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item])
+    setSelectedItems(prev =>
+      prev.some(i => i.id === item.id)
+        ? prev.filter(i => i.id !== item.id)
+        : [...prev, { id: item.id, name: item.name }]
+    )
   }
 
   function handleCaptured(key, file, previewUrl) {
@@ -209,6 +214,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     setError(''); setStep(2)
   }
 
+  const selectedNames = selectedItems.map(i => i.name)
+
   // For each item i, we need: before_i, after_i, photo_i
   const allPhotosDone = selectedItems.length > 0 && selectedItems.every((_, i) =>
     photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
@@ -219,14 +226,14 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     const missing = selectedItems.find((item, i) =>
       !photos[`before_${i}`] || !photos[`after_${i}`] || !photos[`photo_${i}`]
     )
-    if (missing) { setError(`Complete all 3 photos for: ${missing}`); return }
+    if (missing) { setError(`Complete all 3 photos for: ${missing.name}`); return }
 
     setSubmitting(true)
 
     const buildFormData = () => {
       const fd = new FormData()
       fd.append('task_id', task.id)
-      fd.append('item_installed', selectedItems.join(', '))
+      fd.append('item_installed', selectedNames.join(', '))
       fd.append('remarks', remarks)
       if (gps) { fd.append('latitude', gps.lat); fd.append('longitude', gps.lng) }
       selectedItems.forEach((_, i) => {
@@ -255,18 +262,10 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         setLastReportId(res.data?.id || null)
         setError('')
 
-        // Auto-deduct stock: for each selected item that the technician has in hand, call /install
+        // Auto-deduct stock: match by exact item_id to avoid cross-category confusion
         const deducted = []
-        for (const itemName of selectedItems) {
-          const nameLower = itemName.toLowerCase()
-          const inHand = myStock.find(s => {
-            const stockName = (s.item_name || '').toLowerCase()
-            return stockName === nameLower ||
-                   stockName.startsWith(nameLower) ||
-                   nameLower.startsWith(stockName) ||
-                   stockName.includes(nameLower) ||
-                   nameLower.includes(stockName)
-          })
+        for (const selItem of selectedItems) {
+          const inHand = myStock.find(s => s.item_id === selItem.id)
           if (inHand && inHand.qty_in_hand > 0) {
             try {
               await api.post('/api/stock/install', {
@@ -275,7 +274,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 school_dest: task.school_name || null,
                 note: `Auto-deducted on proof submission for ${task.title}`
               })
-              deducted.push(`${itemName} (1 ${inHand.unit})`)
+              deducted.push(`${selItem.name} (1 ${inHand.unit})`)
             } catch (_) {}
           }
         }
@@ -313,7 +312,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         problem_description:      problemDesc,
         observation,
         action_taken:             actionTaken,
-        spare_parts:              sparesRequired || selectedItems.join(', '),
+        spare_parts:              sparesRequired || selectedNames.join(', '),
         plant_capacity:           plantCapacity,
         design_rw_tds:            designRwTds,
         free_chlorine_rw:         freeChlorine,
@@ -432,22 +431,18 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   {stockItems
                     .filter(s => s.category === activeCat)
                     .sort((a, b) => {
-                      // Sort: in-hand items first
-                      const aInHand = myStock.some(m => m.item_name?.toLowerCase() === a.name.toLowerCase())
-                      const bInHand = myStock.some(m => m.item_name?.toLowerCase() === b.name.toLowerCase())
+                      // Sort: in-hand items first (exact item_id match)
+                      const aInHand = myStock.some(m => m.item_id === a.id)
+                      const bInHand = myStock.some(m => m.item_id === b.id)
                       if (aInHand && !bInHand) return -1
                       if (!aInHand && bInHand) return 1
                       return a.name.localeCompare(b.name)
                     })
                     .map(item => {
-                      const sel = selectedItems.includes(item.name)
-                      const n = item.name.toLowerCase()
-                      const inHandEntry = myStock.find(m => {
-                        const sn = (m.item_name || '').toLowerCase()
-                        return sn === n || sn.startsWith(n) || n.startsWith(sn) || sn.includes(n) || n.includes(sn)
-                      })
+                      const sel = selectedItems.some(i => i.id === item.id)
+                      const inHandEntry = myStock.find(m => m.item_id === item.id)
                       return (
-                        <button key={item.id} onClick={() => toggleItem(item.name)} style={{
+                        <button key={item.id} onClick={() => toggleItem(item)} style={{
                           padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
                           border: `1.5px solid ${sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : inHandEntry ? 'var(--yellow)' : 'var(--border)'}`,
                           background: sel ? (activeCat === CAT_A ? 'rgba(56,189,248,.15)' : 'rgba(52,211,153,.15)') : inHandEntry ? 'rgba(251,191,36,.1)' : 'var(--surface2)',
@@ -470,7 +465,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
               {selectedItems.length > 0 && (
                 <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(56,189,248,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 12 }}>
                   <b style={{ color: 'var(--accent)' }}>Selected ({selectedItems.length}):</b>{' '}
-                  {selectedItems.join(' · ')}
+                  {selectedNames.join(' · ')}
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
                     📷 Each item needs: Before + After + Item photo → <b>{totalPhotos} photos total</b>
                   </div>
@@ -519,26 +514,26 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                       }}>
                         {itemDone ? '✅' : `#${i + 1}`}
                       </span>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{item}</span>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</span>
                     </div>
 
                     <PhotoSlot
                       label="Before"
-                      desc={`Before installing/replacing ${item}`}
+                      desc={`Before installing/replacing ${item.name}`}
                       icon="📷"
                       preview={previews[`before_${i}`]}
                       onOpen={() => setActiveCamera(`before_${i}`)}
                     />
                     <PhotoSlot
                       label="After"
-                      desc={`After installing/replacing ${item}`}
+                      desc={`After installing/replacing ${item.name}`}
                       icon="✅"
                       preview={previews[`after_${i}`]}
                       onOpen={() => setActiveCamera(`after_${i}`)}
                     />
                     <PhotoSlot
-                      label={`${item} — Close-up`}
-                      desc={`Show the ${item} installed`}
+                      label={`${item.name} — Close-up`}
+                      desc={`Show the ${item.name} installed`}
                       icon="📦"
                       preview={previews[`photo_${i}`]}
                       onOpen={() => setActiveCamera(`photo_${i}`)}
@@ -700,7 +695,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   <div className="form-group" style={{ marginBottom: 8 }}>
                     <label style={{ fontSize: 10 }}>Spares Required / Consumed</label>
                     <input value={sparesRequired} onChange={e => setSparesRequired(e.target.value)}
-                      placeholder={selectedItems.join(', ') || 'e.g. Filter, Membrane'} style={{ fontSize: 12 }} />
+                      placeholder={selectedNames.join(', ') || 'e.g. Filter, Membrane'} style={{ fontSize: 12 }} />
                   </div>
 
                   {/* Unit Details / Site Condition */}
