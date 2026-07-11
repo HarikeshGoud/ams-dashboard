@@ -300,6 +300,30 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   }
 
   async function handleServiceReport() {
+    // Validate all required fields
+    const missing = []
+    if (!reportNo.trim())        missing.push('Report No')
+    if (!complaintNo.trim())     missing.push('Complaint No')
+    if (!problemDesc.trim())     missing.push('Problem Reported')
+    if (!observation.trim())     missing.push('Observation & Action Taken')
+    if (!sparesRequired.trim() && selectedNames.length === 0) missing.push('Spares Required / Consumed')
+    if (!plantCapacity.trim())   missing.push('Plant Capacity')
+    if (!designRwTds.trim())     missing.push('Design R/W TDS')
+    if (!freeChlorine.trim())    missing.push('Free Chlorine R/W')
+    if (!hoursRunning.trim())    missing.push('No. of Hours Running')
+    if (!tdsInput)               missing.push('Raw Water TDS')
+    if (!tdsOutput)              missing.push('Product Water TDS')
+    if (!flowRate)               missing.push('Flow Rate')
+    if (!voltage)                missing.push('Voltage')
+    if (!currentAmps.trim())     missing.push('Current (Amps)')
+    if (!principalName.trim())   missing.push('Principal / In-charge Name')
+    if (!customerMobile.trim())  missing.push('Mobile Number')
+    if (!techSig)                missing.push('Your Signature')
+    if (!principalSig)           missing.push('Customer Signature')
+    if (missing.length > 0) {
+      setError(`Please fill all required fields: ${missing.join(', ')}`)
+      return
+    }
     setSrSubmitting(true)
     try {
       const res = await api.post('/api/service-reports/', {
@@ -798,15 +822,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                       Skip — Close
                     </button>
                     <button className="btn btn-primary" style={{ flex: 1, fontSize: 13 }}
-                      onClick={handleServiceReport} disabled={srSubmitting || !techSig || !principalSig}>
+                      onClick={handleServiceReport} disabled={srSubmitting}>
                       {srSubmitting ? '⏳ Generating PDF…' : '✅ Generate Service Report PDF'}
                     </button>
                   </div>
-                  {(!techSig || !principalSig) && (
-                    <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', textAlign: 'center' }}>
-                      ⚠️ Both signatures required before generating PDF
-                    </div>
-                  )}
+                  <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', textAlign: 'center' }}>
+                    ⚠️ All fields + both signatures required before generating PDF
+                  </div>
                 </>
               )}
             </>
