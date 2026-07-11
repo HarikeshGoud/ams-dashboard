@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone, datetime
+
+IST = timezone(timedelta(hours=5, minutes=30))
+def today_ist(): return datetime.now(IST).date()
 from ..database import get_db
 from ..models.school import School
 from ..models.employee import Employee
@@ -18,13 +21,13 @@ def get_stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
     total_schools   = db.query(School).filter(School.is_active == True).count()
     total_employees = db.query(Employee).filter(Employee.is_active == True).count()
     open_complaints = db.query(Complaint).filter(Complaint.status == "open").count()
-    today = date.today()
+    today = today_ist()
     visits_month    = db.query(Visit).filter(Visit.visit_date >= date(today.year, today.month, 1)).count()
     low_stock       = db.query(StockItem).filter(StockItem.office_qty <= StockItem.min_qty, StockItem.is_active == True).count()
     pending_invoices= db.query(Invoice).filter(Invoice.status.in_(["draft", "sent"])).count()
     overdue_schools = db.query(School).filter(
         School.is_active == True,
-        School.last_visit_date <= date.today() - timedelta(days=90)
+        School.last_visit_date <= today_ist() - timedelta(days=90)
     ).count()
     return {
         "total_schools": total_schools,

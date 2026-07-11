@@ -1,8 +1,12 @@
 import os, aiofiles
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from typing import Optional
+
+IST = timezone(timedelta(hours=5, minutes=30))
+def now_ist(): return datetime.now(IST)
+def today_ist(): return now_ist().date()
 from pydantic import BaseModel
 from ..database import get_db
 from ..models.field_report import FieldReport, WorkProof
@@ -135,7 +139,7 @@ def _auto_mark_attendance(employee_id: int, today: date, db: Session):
             employee_id=employee_id,
             date=today,
             status=status,
-            check_in=datetime.utcnow().strftime("%H:%M"),
+            check_in=now_ist().strftime("%H:%M"),
             notes=note,
         ))
     db.commit()
@@ -160,7 +164,7 @@ async def submit_field_report(
         latitude  = float(lat_raw)  if lat_raw  else None
         longitude = float(lng_raw) if lng_raw else None
 
-        today = date.today()
+        today = today_ist()
 
         task = db.query(Task).filter(Task.id == task_id).first()
         if not task:
@@ -178,7 +182,7 @@ async def submit_field_report(
             report.remarks = remarks
             report.latitude = latitude
             report.longitude = longitude
-            report.submitted_at = datetime.utcnow()
+            report.submitted_at = now_ist()
         else:
             report = FieldReport(
                 task_id=task_id,
@@ -189,7 +193,7 @@ async def submit_field_report(
                 remarks=remarks,
                 latitude=latitude,
                 longitude=longitude,
-                submitted_at=datetime.utcnow(),
+                submitted_at=now_ist(),
                 status="submitted"
             )
             db.add(report)
@@ -277,7 +281,7 @@ def verify_report(report_id: int, req: VerifyRequest, request: Request, db: Sess
         raise HTTPException(400, "Status must be verified / rejected / pending")
     r.verification_status = req.status
     r.verification_note = req.note
-    r.verified_at = datetime.utcnow() if req.status in ("verified", "rejected") else None
+    r.verified_at = now_ist() if req.status in ("verified", "rejected") else None
 
     # Sync task status and attendance based on verification result
     if r.task_id:
@@ -286,13 +290,13 @@ def verify_report(report_id: int, req: VerifyRequest, request: Request, db: Sess
         if task:
             if req.status == "verified":
                 task.status = "completed"
-                task.completed_at = datetime.utcnow()
+                task.completed_at = now_ist()
                 # Stamp school.last_visit_date on verification
                 if task.school_id:
                     from ..models.school import School
                     school = db.query(School).filter(School.id == task.school_id).first()
                     if school:
-                        visit_date = task.due_date if task.due_date else datetime.utcnow().date()
+                        visit_date = task.due_date if task.due_date else now_ist().date()
                         if not school.last_visit_date or visit_date >= school.last_visit_date:
                             school.last_visit_date = visit_date
             elif req.status == "rejected":
@@ -338,6 +342,6 @@ def mark_whatsapp_sent(report_id: int, db: Session = Depends(get_db), _=Depends(
     r = db.query(FieldReport).filter(FieldReport.id == report_id).first()
     if not r:
         raise HTTPException(404, "Not found")
-    r.whatsapp_sent_at = datetime.utcnow()
+    r.whatsapp_sent_at = now_ist()
     db.commit()
     return {"ok": True, "sent_at": r.whatsapp_sent_at.isoformat()}

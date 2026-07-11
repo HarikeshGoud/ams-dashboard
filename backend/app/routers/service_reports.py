@@ -2,8 +2,11 @@ import os, base64, io
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from typing import Optional
+
+IST = timezone(timedelta(hours=5, minutes=30))
+def today_ist(): return datetime.now(IST).date()
 from pydantic import BaseModel
 from ..database import get_db
 from ..models.service_report import ServiceReport
@@ -429,7 +432,7 @@ def _fmt(r: ServiceReport, base_url: str = ""):
 @router.post("/")
 def create_service_report(request: Request, req: CreateServiceReport, db: Session = Depends(get_db), user=Depends(get_current_user)):
     try:
-        today = date.today()
+        today = today_ist()
         base_url = str(request.base_url).rstrip("/")
 
         report = ServiceReport(
