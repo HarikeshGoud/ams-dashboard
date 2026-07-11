@@ -15,6 +15,8 @@ export default function Stock() {
   const [loading, setLoading]         = useState(true)
   const [tab, setTab]                 = useState('inventory')   // inventory | ledger | distribute | emp-stock
   const [expandedTech, setExpandedTech] = useState(null)
+  const [techProofs, setTechProofs]     = useState({})   // { [emp_id]: reports[] }
+  const [lightbox, setLightbox]         = useState(null) // url string
   const [modal, setModal]             = useState(null)
   const [editItem, setEditItem]       = useState(null)
   const [itemForm, setItemForm]       = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
@@ -92,6 +94,17 @@ export default function Stock() {
     if (!confirm('Delete entry? This will reverse the qty change.')) return
     await api.delete(`/api/stock/ledger/${id}`)
     load(); showToast('Deleted')
+  }
+
+  async function toggleTech(techId) {
+    if (expandedTech === techId) { setExpandedTech(null); return }
+    setExpandedTech(techId)
+    if (!techProofs[techId]) {
+      try {
+        const res = await api.get(`/api/field-reports/employee/${techId}`)
+        setTechProofs(prev => ({ ...prev, [techId]: res.data || [] }))
+      } catch { setTechProofs(prev => ({ ...prev, [techId]: [] })) }
+    }
   }
 
   if (loading) return <div className="spinner" />
@@ -243,7 +256,7 @@ export default function Stock() {
               <div key={tech.id} className="card" style={{ marginBottom: 16 }}>
                 {/* Technician summary row */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                  onClick={() => setExpandedTech(isExpanded ? null : tech.id)}>
+                  onClick={() => toggleTech(tech.id)}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 20 }}>👷</span>
                     <div>
@@ -328,7 +341,7 @@ export default function Stock() {
                       const techLedger = ledger.filter(e => e.employee_id === tech.id && ['install','return'].includes(e.transaction_type))
                       if (!techLedger.length) return null
                       return (
-                        <div>
+                        <div style={{ marginBottom: 14 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)', marginBottom: 6 }}>🔧 Install & Return Activity</div>
                           <div className="table-wrap">
                             <table>
@@ -348,6 +361,45 @@ export default function Stock() {
                               </tbody>
                             </table>
                           </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Field report proofs */}
+                    {(() => {
+                      const reports = techProofs[tech.id]
+                      if (!reports) return <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>⏳ Loading site proofs...</div>
+                      const withPhotos = reports.filter(r => r.photos?.length > 0)
+                      if (!withPhotos.length) return (
+                        <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>📷 No site proof photos submitted yet</div>
+                      )
+                      return (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 10 }}>📷 Site Proof Photos</div>
+                          {withPhotos.map(r => (
+                            <div key={r.id} style={{ marginBottom: 14 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span>{r.report_date}</span>
+                                {r.school_name && <span style={{ color: 'var(--accent2)' }}>📍 {r.school_name}</span>}
+                                {r.item_installed && <span style={{ fontSize: 11, color: 'var(--muted)' }}>🔧 {r.item_installed}</span>}
+                                <span className={`pill ${r.verification_status === 'verified' ? 'pill-green' : r.verification_status === 'rejected' ? 'pill-red' : 'pill-yellow'}`} style={{ fontSize: 10 }}>
+                                  {r.verification_status === 'verified' ? '✓ Verified' : r.verification_status === 'rejected' ? '✗ Rejected' : '⏳ Pending'}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {r.photos.map(p => (
+                                  <div key={p.id} style={{ position: 'relative' }}>
+                                    <img src={p.url} alt={p.photo_type}
+                                      onClick={() => setLightbox(p.url)}
+                                      style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: '2px solid var(--border)' }}
+                                      onError={e => { e.target.style.display='none' }}
+                                    />
+                                    <div style={{ fontSize: 9, textAlign: 'center', color: 'var(--muted)', marginTop: 2 }}>{p.photo_type}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )
                     })()}
@@ -513,6 +565,17 @@ export default function Stock() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{
+          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.88)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out'
+        }}>
+          <img src={lightbox} alt="proof" style={{ maxWidth: '92vw', maxHeight: '88vh', borderRadius: 10, boxShadow: '0 8px 40px rgba(0,0,0,.6)' }} />
+          <button onClick={() => setLightbox(null)} style={{ position: 'absolute', top: 18, right: 22, background: 'none', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer' }}>✕</button>
         </div>
       )}
 

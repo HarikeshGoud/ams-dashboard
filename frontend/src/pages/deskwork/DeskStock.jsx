@@ -19,6 +19,8 @@ export default function DeskStock() {
   const [distForm, setDistForm]     = useState({ item_id: '', employee_id: '', quantity: 1, note: '' })
   const [ledger, setLedger]         = useState([])
   const [expandedTech, setExpandedTech] = useState(null)
+  const [techProofs, setTechProofs]     = useState({})
+  const [lightbox, setLightbox]         = useState(null)
   const [toast, setToast]           = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -53,6 +55,17 @@ export default function DeskStock() {
       showToast('✅ Stock distributed to technician!')
       setDistModal(false); load()
     } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function toggleTech(techId) {
+    if (expandedTech === techId) { setExpandedTech(null); return }
+    setExpandedTech(techId)
+    if (!techProofs[techId]) {
+      try {
+        const res = await api.get(`/api/field-reports/employee/${techId}`)
+        setTechProofs(prev => ({ ...prev, [techId]: res.data || [] }))
+      } catch { setTechProofs(prev => ({ ...prev, [techId]: [] })) }
+    }
   }
 
   const filtered = items.filter(i => {
@@ -185,7 +198,7 @@ export default function DeskStock() {
             return (
               <div key={tech.id} className="card" style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                  onClick={() => setExpandedTech(isExpanded ? null : tech.id)}>
+                  onClick={() => toggleTech(tech.id)}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 18 }}>👷</span>
                     <div>
@@ -283,6 +296,47 @@ export default function DeskStock() {
                               ))}
                             </tbody>
                           </table>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Field report proofs */}
+                    {(() => {
+                      const reports = techProofs[tech.id]
+                      if (!reports) return <div style={{ fontSize: 11, color: 'var(--muted)', padding: '8px 0' }}>⏳ Loading site proofs...</div>
+                      const withPhotos = reports.filter(r => r.photos?.length > 0)
+                      if (!withPhotos.length) return (
+                        <div style={{ fontSize: 11, color: 'var(--muted)', padding: '8px 0' }}>📷 No site proof photos submitted yet</div>
+                      )
+                      return (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>📷 Site Proof Photos</div>
+                          {withPhotos.map(r => (
+                            <div key={r.id} style={{ marginBottom: 12 }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span>{r.report_date}</span>
+                                {r.school_name && <span style={{ color: 'var(--accent2)' }}>📍 {r.school_name}</span>}
+                                {r.item_installed && <span style={{ fontSize: 10, color: 'var(--muted)' }}>🔧 {r.item_installed}</span>}
+                                <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, fontWeight: 700,
+                                  background: r.verification_status === 'verified' ? 'rgba(52,211,153,.15)' : r.verification_status === 'rejected' ? 'rgba(248,113,113,.15)' : 'rgba(250,204,21,.15)',
+                                  color: r.verification_status === 'verified' ? 'var(--green)' : r.verification_status === 'rejected' ? 'var(--red)' : 'var(--yellow)' }}>
+                                  {r.verification_status === 'verified' ? '✓ Verified' : r.verification_status === 'rejected' ? '✗ Rejected' : '⏳ Pending'}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {r.photos.map(p => (
+                                  <div key={p.id}>
+                                    <img src={p.url} alt={p.photo_type}
+                                      onClick={() => setLightbox(p.url)}
+                                      style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: '2px solid var(--border)' }}
+                                      onError={e => { e.target.style.display='none' }}
+                                    />
+                                    <div style={{ fontSize: 9, textAlign: 'center', color: 'var(--muted)', marginTop: 2 }}>{p.photo_type}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )
                     })()}
@@ -422,6 +476,17 @@ export default function DeskStock() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{
+          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.88)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out'
+        }}>
+          <img src={lightbox} alt="proof" style={{ maxWidth: '92vw', maxHeight: '88vh', borderRadius: 10, boxShadow: '0 8px 40px rgba(0,0,0,.6)' }} />
+          <button onClick={() => setLightbox(null)} style={{ position: 'absolute', top: 18, right: 22, background: 'none', border: 'none', color: '#fff', fontSize: 28, cursor: 'pointer' }}>✕</button>
         </div>
       )}
 
