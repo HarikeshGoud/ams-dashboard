@@ -17,6 +17,8 @@ export default function DeskStock() {
   const [adjusting, setAdjusting]   = useState(null)
   const [distModal, setDistModal]   = useState(false)
   const [distForm, setDistForm]     = useState({ item_id: '', employee_id: '', quantity: 1, note: '' })
+  const [ledger, setLedger]         = useState([])
+  const [expandedTech, setExpandedTech] = useState(null)
   const [toast, setToast]           = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -27,11 +29,13 @@ export default function DeskStock() {
       api.get('/api/employees/'),
       api.get('/api/stock/distributions'),
       api.get('/api/stock/employee-stock'),
-    ]).then(([it, emp, dist, es]) => {
+      api.get('/api/stock/ledger'),
+    ]).then(([it, emp, dist, es, lg]) => {
       setItems(it.data || [])
       setEmployees(emp.data || [])
       setDist(dist.data || [])
       setEmpStock(es.data || [])
+      setLedger(lg.data || [])
       setLoading(false)
     }).catch(() => setLoading(false))
   }
@@ -49,13 +53,6 @@ export default function DeskStock() {
       showToast('✅ Stock distributed to technician!')
       setDistModal(false); load()
     } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
-  }
-
-  async function inspect(ledgerId) {
-    try {
-      await api.post(`/api/stock/inspect/${ledgerId}`)
-      load(); showToast('✅ Marked as inspected')
-    } catch (e) { showToast('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
   const filtered = items.filter(i => {
@@ -87,8 +84,31 @@ export default function DeskStock() {
     Other: items.filter(i => i.category !== CAT_A && i.category !== CAT_B).length,
   }
 
-  const pendingInspect = distributions.filter(d => !d.inspected)
   const selectedItem = items.find(i => i.id === parseInt(distForm.item_id))
+
+  // Build per-technician usage summary
+  const techMap = {}
+  empStock.forEach(emp => {
+    techMap[emp.employee_id] = {
+      id: emp.employee_id, name: emp.employee_name,
+      stockItems: emp.items,
+      totalInHand: emp.items.reduce((s, i) => s + (i.qty_in_hand || 0), 0),
+      totalDistributed: 0, totalInstalled: 0, totalReturned: 0, distHistory: [],
+    }
+  })
+  distributions.forEach(d => {
+    if (!techMap[d.employee_id]) {
+      techMap[d.employee_id] = { id: d.employee_id, name: d.employee_name || d.person, stockItems: [], totalInHand: 0, totalDistributed: 0, totalInstalled: 0, totalReturned: 0, distHistory: [] }
+    }
+    techMap[d.employee_id].totalDistributed += (d.quantity || 0)
+    techMap[d.employee_id].distHistory.push(d)
+  })
+  ledger.forEach(e => {
+    if (!e.employee_id || !techMap[e.employee_id]) return
+    if (e.transaction_type === 'install') techMap[e.employee_id].totalInstalled += (e.quantity || 0)
+    if (e.transaction_type === 'return')  techMap[e.employee_id].totalReturned  += (e.quantity || 0)
+  })
+  const techList = Object.values(techMap)
 
   return (
     <div>
@@ -104,8 +124,8 @@ export default function DeskStock() {
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap' }}>
         {[
           { key: 'inventory',  label: '📦 Inventory' },
-          { key: 'distribute', label: `📤 Distribute${pendingInspect.length ? ` (${pendingInspect.length} pending)` : ''}` },
-          { key: 'emp-stock',  label: '👷 Tech Stock' },
+          { key: 'distribute', label: '📤 Distribute' },
+          { key: 'emp-stock',  label: `👁 Usage Monitor${techList.length ? ` (${techList.length})` : ''}` },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', fontWeight: 600, fontSize: 12,
@@ -133,8 +153,6 @@ export default function DeskStock() {
                     <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty</th>
                     <th style={{ padding: '7px 10px', textAlign: 'left' }}>Technician</th>
                     <th style={{ padding: '7px 10px', textAlign: 'left' }}>Note</th>
-                    <th style={{ padding: '7px 10px', textAlign: 'left' }}>Inspected</th>
-                    <th style={{ padding: '7px 10px', textAlign: 'left' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -145,16 +163,6 @@ export default function DeskStock() {
                       <td style={{ padding: '8px 10px' }}><b>{d.quantity}</b> {d.item_unit}</td>
                       <td style={{ padding: '8px 10px' }}>{d.employee_name || d.person || '—'}</td>
                       <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--muted)' }}>{d.note || '—'}</td>
-                      <td style={{ padding: '8px 10px' }}>
-                        {d.inspected
-                          ? <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, background: 'rgba(52,211,153,.15)', color: 'var(--green)', fontWeight: 700 }}>✓ Done</span>
-                          : <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, background: 'rgba(248,113,113,.15)', color: 'var(--red)', fontWeight: 700 }}>Pending</span>}
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        {!d.inspected && (
-                          <button onClick={() => inspect(d.id)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', background: 'rgba(52,211,153,.15)', border: '1px solid var(--green)', color: 'var(--green)', fontWeight: 700 }}>✓ Inspect</button>
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -164,34 +172,125 @@ export default function DeskStock() {
         </div>
       )}
 
-      {/* ── TECH STOCK TAB ── */}
+      {/* ── USAGE MONITOR TAB ── */}
       {tab === 'emp-stock' && (
         <div>
-          {empStock.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>No technicians currently holding stock</div>
-          ) : empStock.map(emp => (
-            <div key={emp.employee_id} className="card" style={{ marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, marginBottom: 10 }}>👷 {emp.employee_name}</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
-                    <th style={{ padding: '5px 8px', textAlign: 'left' }}>Item</th>
-                    <th style={{ padding: '5px 8px', textAlign: 'left' }}>Category</th>
-                    <th style={{ padding: '5px 8px', textAlign: 'left' }}>Qty in Hand</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {emp.items.map(it => (
-                    <tr key={it.item_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '7px 8px', fontWeight: 600 }}>{it.item_name}</td>
-                      <td style={{ padding: '7px 8px', fontSize: 11, color: 'var(--muted)' }}>{it.category || '—'}</td>
-                      <td style={{ padding: '7px 8px', fontWeight: 700, color: 'var(--accent2)' }}>{it.qty_in_hand} {it.unit}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12, padding: '8px 12px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            👁 Per-technician stock usage — what was distributed, what they hold, what they installed, what they returned.
+          </div>
+          {techList.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>No stock distributed to technicians yet</div>
+          ) : techList.map(tech => {
+            const isExpanded = expandedTech === tech.id
+            return (
+              <div key={tech.id} className="card" style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  onClick={() => setExpandedTech(isExpanded ? null : tech.id)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>👷</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{tech.name}</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>{tech.stockItems.length} item type{tech.stockItems.length !== 1 ? 's' : ''} in hand</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {[
+                      { label: 'Distributed', value: tech.totalDistributed, color: 'var(--accent2)' },
+                      { label: 'In Hand', value: tech.totalInHand, color: 'var(--yellow)' },
+                      { label: 'Installed', value: tech.totalInstalled, color: 'var(--green)' },
+                      { label: 'Returned', value: tech.totalReturned, color: 'var(--blue, #60a5fa)' },
+                    ].map(s => (
+                      <div key={s.label} style={{ textAlign: 'center', minWidth: 52 }}>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+                        <div style={{ fontSize: 9, color: 'var(--muted)' }}>{s.label}</div>
+                      </div>
+                    ))}
+                    <span style={{ fontSize: 14, color: 'var(--muted)' }}>{isExpanded ? '▲' : '▼'}</span>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                    {tech.stockItems.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', marginBottom: 6 }}>🎒 Currently In Hand</div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead><tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: 10 }}>
+                            <th style={{ padding: '4px 8px', textAlign: 'left' }}>Item</th>
+                            <th style={{ padding: '4px 8px', textAlign: 'left' }}>Qty</th>
+                          </tr></thead>
+                          <tbody>
+                            {tech.stockItems.map(it => (
+                              <tr key={it.item_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '6px 8px', fontWeight: 600 }}>{it.item_name}</td>
+                                <td style={{ padding: '6px 8px', fontWeight: 700, color: 'var(--accent2)' }}>{it.qty_in_hand} {it.unit}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {tech.distHistory.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent2)', marginBottom: 6 }}>📦 Distributions Received</div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead><tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: 10 }}>
+                            <th style={{ padding: '4px 8px', textAlign: 'left' }}>Date</th>
+                            <th style={{ padding: '4px 8px', textAlign: 'left' }}>Item</th>
+                            <th style={{ padding: '4px 8px', textAlign: 'left' }}>Qty</th>
+                          </tr></thead>
+                          <tbody>
+                            {tech.distHistory.map(d => (
+                              <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '6px 8px', fontSize: 11 }}>{d.created_at?.slice(0, 10)}</td>
+                                <td style={{ padding: '6px 8px', fontWeight: 600 }}>{d.item_name}</td>
+                                <td style={{ padding: '6px 8px' }}><b>{d.quantity}</b> {d.item_unit}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {(() => {
+                      const techLedger = ledger.filter(e => e.employee_id === tech.id && ['install','return'].includes(e.transaction_type))
+                      if (!techLedger.length) return null
+                      return (
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', marginBottom: 6 }}>🔧 Install & Return Activity</div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                            <thead><tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: 10 }}>
+                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>Date</th>
+                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>Action</th>
+                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>Item</th>
+                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>Qty</th>
+                              <th style={{ padding: '4px 8px', textAlign: 'left' }}>School / Note</th>
+                            </tr></thead>
+                            <tbody>
+                              {techLedger.map(e => (
+                                <tr key={e.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                  <td style={{ padding: '6px 8px', fontSize: 11 }}>{e.created_at?.slice(0, 10)}</td>
+                                  <td style={{ padding: '6px 8px' }}>
+                                    <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
+                                      background: e.transaction_type === 'install' ? 'rgba(52,211,153,.15)' : 'rgba(96,165,250,.15)',
+                                      color: e.transaction_type === 'install' ? 'var(--green)' : 'var(--blue, #60a5fa)' }}>
+                                      {e.transaction_type === 'install' ? '🔧 Installed' : '↩ Returned'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '6px 8px', fontWeight: 600 }}>{e.item_name}</td>
+                                  <td style={{ padding: '6px 8px' }}><b>{e.quantity}</b></td>
+                                  <td style={{ padding: '6px 8px', fontSize: 11, color: 'var(--muted)' }}>{e.school_dest || e.note || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

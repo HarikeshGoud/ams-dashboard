@@ -13,7 +13,8 @@ export default function Stock() {
   const [employees, setEmployees]     = useState([])
   const [schools, setSchools]         = useState([])
   const [loading, setLoading]         = useState(true)
-  const [tab, setTab]                 = useState('inventory')   // inventory | ledger | distribute | inspect | emp-stock
+  const [tab, setTab]                 = useState('inventory')   // inventory | ledger | distribute | emp-stock
+  const [expandedTech, setExpandedTech] = useState(null)
   const [modal, setModal]             = useState(null)
   const [editItem, setEditItem]       = useState(null)
   const [itemForm, setItemForm]       = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
@@ -87,13 +88,6 @@ export default function Stock() {
     } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
   }
 
-  async function inspect(ledgerId) {
-    try {
-      await api.post(`/api/stock/inspect/${ledgerId}`)
-      load(); showToast('✅ Marked as inspected')
-    } catch (e) { showToast('Error: ' + (e.response?.data?.detail || e.message)) }
-  }
-
   async function delLedger(id) {
     if (!confirm('Delete entry? This will reverse the qty change.')) return
     await api.delete(`/api/stock/ledger/${id}`)
@@ -103,13 +97,40 @@ export default function Stock() {
   if (loading) return <div className="spinner" />
 
   const lowStock = items.filter(i => i.office_qty <= i.min_qty)
-  const pendingInspect = distributions.filter(d => !d.inspected)
   const selectedItem = items.find(i => i.id === parseInt(distForm.item_id))
+
+  // Build per-technician usage summary
+  const techMap = {}
+  empStock.forEach(emp => {
+    techMap[emp.employee_id] = {
+      id: emp.employee_id,
+      name: emp.employee_name,
+      stockItems: emp.items,
+      totalInHand: emp.items.reduce((s, i) => s + (i.qty_in_hand || 0), 0),
+      totalDistributed: 0,
+      totalInstalled: 0,
+      totalReturned: 0,
+      distHistory: [],
+    }
+  })
+  distributions.forEach(d => {
+    if (!techMap[d.employee_id]) {
+      techMap[d.employee_id] = { id: d.employee_id, name: d.employee_name || d.person, stockItems: [], totalInHand: 0, totalDistributed: 0, totalInstalled: 0, totalReturned: 0, distHistory: [] }
+    }
+    techMap[d.employee_id].totalDistributed += (d.quantity || 0)
+    techMap[d.employee_id].distHistory.push(d)
+  })
+  ledger.forEach(e => {
+    if (!e.employee_id || !techMap[e.employee_id]) return
+    if (e.transaction_type === 'install') techMap[e.employee_id].totalInstalled += (e.quantity || 0)
+    if (e.transaction_type === 'return')  techMap[e.employee_id].totalReturned  += (e.quantity || 0)
+  })
+  const techList = Object.values(techMap)
 
   const TABS = [
     { key: 'inventory',  label: '📦 Inventory' },
-    { key: 'distribute', label: `📤 Distribute${pendingInspect.length ? ` (${pendingInspect.length} pending)` : ''}` },
-    { key: 'emp-stock',  label: '👷 Tech Stock' },
+    { key: 'distribute', label: '📤 Distribute' },
+    { key: 'emp-stock',  label: `👁 Usage Monitor${techList.length ? ` (${techList.length})` : ''}` },
     { key: 'ledger',     label: '📋 Ledger' },
   ]
 
@@ -129,8 +150,8 @@ export default function Stock() {
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <div className="kpi-card red"><div className="kpi-label">Low Stock</div><div className="kpi-value">{lowStock.length}</div><div className="kpi-sub">Items below threshold</div></div>
         <div className="kpi-card yellow"><div className="kpi-label">Items Tracked</div><div className="kpi-value">{items.length}</div></div>
-        <div className="kpi-card blue"><div className="kpi-label">Pending Inspect</div><div className="kpi-value">{pendingInspect.length}</div><div className="kpi-sub">Distributions not yet inspected</div></div>
-        <div className="kpi-card green"><div className="kpi-label">Techs with Stock</div><div className="kpi-value">{empStock.length}</div></div>
+        <div className="kpi-card blue"><div className="kpi-label">Total Distributed</div><div className="kpi-value">{distributions.length}</div><div className="kpi-sub">Distribution events</div></div>
+        <div className="kpi-card green"><div className="kpi-label">Techs with Stock</div><div className="kpi-value">{techList.length}</div></div>
       </div>
 
       {/* Tabs */}
@@ -186,7 +207,7 @@ export default function Stock() {
               <div className="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>Date</th><th>Item</th><th>Qty</th><th>Technician</th><th>Note</th><th>Inspected</th><th>Action</th></tr>
+                    <tr><th>Date</th><th>Item</th><th>Qty</th><th>Technician</th><th>Note</th></tr>
                   </thead>
                   <tbody>
                     {distributions.map(d => (
@@ -196,16 +217,6 @@ export default function Stock() {
                         <td><b>{d.quantity}</b> {d.item_unit}</td>
                         <td>{d.employee_name || d.person || '—'}</td>
                         <td>{d.note || '—'}</td>
-                        <td>
-                          {d.inspected
-                            ? <span className="pill pill-green">✓ Inspected by {d.inspector_name || 'admin'}<br/><span style={{ fontSize: 10 }}>{d.inspected_at?.slice(0,10)}</span></span>
-                            : <span className="pill pill-red">Pending</span>}
-                        </td>
-                        <td>
-                          {!d.inspected && (
-                            <button className="btn btn-green btn-sm" onClick={() => inspect(d.id)}>✓ Inspect</button>
-                          )}
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -216,35 +227,135 @@ export default function Stock() {
         </div>
       )}
 
-      {/* ── TECHNICIAN STOCK TAB ──────────────────────────────────── */}
+      {/* ── USAGE MONITOR TAB ────────────────────────────────────── */}
       {tab === 'emp-stock' && (
         <div>
-          {empStock.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12, padding: '8px 12px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            👁 Showing how each technician is using their stock — what was distributed, what they still hold, what they installed, and what they returned.
+          </div>
+          {techList.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
-              No technicians currently holding stock
+              No stock has been distributed to technicians yet
             </div>
-          ) : empStock.map(emp => (
-            <div key={emp.employee_id} className="card" style={{ marginBottom: 16 }}>
-              <div className="card-title">👷 {emp.employee_name}</div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>Item</th><th>Category</th><th>Unit</th><th>Qty in Hand</th></tr>
-                  </thead>
-                  <tbody>
-                    {emp.items.map(it => (
-                      <tr key={it.item_id}>
-                        <td style={{ fontWeight: 500 }}>{it.item_name}</td>
-                        <td><span style={{ fontSize: 11, color: 'var(--muted)' }}>{it.category || '—'}</span></td>
-                        <td>{it.unit}</td>
-                        <td><b style={{ color: 'var(--accent2)' }}>{it.qty_in_hand}</b></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          ) : techList.map(tech => {
+            const isExpanded = expandedTech === tech.id
+            return (
+              <div key={tech.id} className="card" style={{ marginBottom: 16 }}>
+                {/* Technician summary row */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                  onClick={() => setExpandedTech(isExpanded ? null : tech.id)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>👷</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{tech.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{tech.stockItems.length} item type{tech.stockItems.length !== 1 ? 's' : ''} in hand</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'center', minWidth: 60 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent2)' }}>{tech.totalDistributed}</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>Distributed</div>
+                    </div>
+                    <div style={{ textAlign: 'center', minWidth: 60 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--yellow)' }}>{tech.totalInHand}</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>In Hand</div>
+                    </div>
+                    <div style={{ textAlign: 'center', minWidth: 60 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)' }}>{tech.totalInstalled}</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>Installed</div>
+                    </div>
+                    <div style={{ textAlign: 'center', minWidth: 60 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--blue, #60a5fa)' }}>{tech.totalReturned}</div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)' }}>Returned</div>
+                    </div>
+                    <span style={{ fontSize: 16, color: 'var(--muted)', marginLeft: 4 }}>{isExpanded ? '▲' : '▼'}</span>
+                  </div>
+                </div>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                    {/* Current stock in hand */}
+                    {tech.stockItems.length > 0 && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--yellow)', marginBottom: 6 }}>🎒 Currently In Hand</div>
+                        <div className="table-wrap">
+                          <table>
+                            <thead>
+                              <tr><th>Item</th><th>Category</th><th>Unit</th><th>Qty in Hand</th></tr>
+                            </thead>
+                            <tbody>
+                              {tech.stockItems.map(it => (
+                                <tr key={it.item_id}>
+                                  <td style={{ fontWeight: 500 }}>{it.item_name}</td>
+                                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{it.category || '—'}</td>
+                                  <td>{it.unit}</td>
+                                  <td><b style={{ color: 'var(--accent2)' }}>{it.qty_in_hand}</b></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Distribution history for this tech */}
+                    {tech.distHistory.length > 0 && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent2)', marginBottom: 6 }}>📦 Distributions Received</div>
+                        <div className="table-wrap">
+                          <table>
+                            <thead>
+                              <tr><th>Date</th><th>Item</th><th>Qty</th><th>Note</th></tr>
+                            </thead>
+                            <tbody>
+                              {tech.distHistory.map(d => (
+                                <tr key={d.id}>
+                                  <td style={{ fontSize: 11 }}>{d.created_at?.slice(0, 10)}</td>
+                                  <td style={{ fontWeight: 500 }}>{d.item_name}</td>
+                                  <td><b>{d.quantity}</b> {d.item_unit}</td>
+                                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{d.note || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Install/Return events from ledger */}
+                    {(() => {
+                      const techLedger = ledger.filter(e => e.employee_id === tech.id && ['install','return'].includes(e.transaction_type))
+                      if (!techLedger.length) return null
+                      return (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)', marginBottom: 6 }}>🔧 Install & Return Activity</div>
+                          <div className="table-wrap">
+                            <table>
+                              <thead>
+                                <tr><th>Date</th><th>Action</th><th>Item</th><th>Qty</th><th>School / Note</th></tr>
+                              </thead>
+                              <tbody>
+                                {techLedger.map(e => (
+                                  <tr key={e.id}>
+                                    <td style={{ fontSize: 11 }}>{e.created_at?.slice(0, 10)}</td>
+                                    <td><span className={`pill ${e.transaction_type === 'install' ? 'pill-green' : 'pill-blue'}`}>{e.transaction_type === 'install' ? '🔧 Installed' : '↩ Returned'}</span></td>
+                                    <td style={{ fontWeight: 500 }}>{e.item_name}</td>
+                                    <td><b>{e.quantity}</b></td>
+                                    <td style={{ fontSize: 11, color: 'var(--muted)' }}>{e.school_dest || e.note || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
