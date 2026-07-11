@@ -818,9 +818,6 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
 
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-outline" style={{ fontSize: 12 }} onClick={onSubmitted} disabled={srSubmitting}>
-                      Skip — Close
-                    </button>
                     <button className="btn btn-primary" style={{ flex: 1, fontSize: 13 }}
                       onClick={handleServiceReport} disabled={srSubmitting}>
                       {srSubmitting ? '⏳ Generating PDF…' : '✅ Generate Service Report PDF'}
