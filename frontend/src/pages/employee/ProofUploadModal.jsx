@@ -462,6 +462,39 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 </div>
               )}
 
+              {/* ── Consumables in hand (items not in the active RO category) ── */}
+              {activeCat && (() => {
+                const catItemIds = new Set(stockItems.filter(s => s.category === activeCat).map(s => s.id))
+                const consumables = myStock.filter(m => !catItemIds.has(m.item_id) && m.qty_in_hand > 0)
+                if (consumables.length === 0) return null
+                return (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--yellow)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>
+                      🎒 Your Stock (Consumables &amp; Other Items)
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                      {consumables.map(m => {
+                        const item = { id: m.item_id, name: m.item_name }
+                        const sel = selectedItems.some(i => i.id === m.item_id)
+                        return (
+                          <button key={m.item_id} onClick={() => toggleItem(item)} style={{
+                            padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                            border: `1.5px solid ${sel ? 'var(--green)' : 'var(--yellow)'}`,
+                            background: sel ? 'rgba(52,211,153,.15)' : 'rgba(251,191,36,.1)',
+                            color: sel ? 'var(--green)' : 'var(--yellow)',
+                          }}>
+                            {sel ? '✓ ' : ''}{m.item_name}
+                            <span style={{ marginLeft: 5, fontSize: 9, background: 'var(--yellow)', color: '#000', borderRadius: 8, padding: '1px 5px', fontWeight: 800 }}>
+                              🎒{m.qty_in_hand}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
               {selectedItems.length > 0 && (
                 <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(56,189,248,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 12 }}>
                   <b style={{ color: 'var(--accent)' }}>Selected ({selectedItems.length}):</b>{' '}
