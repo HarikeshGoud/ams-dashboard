@@ -182,12 +182,15 @@ export default function MyStock() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Date</th><th>Item</th><th>Qty</th><th>School / Site</th><th>Note</th></tr>
+                  <tr><th>Date &amp; Time</th><th>Item</th><th>Qty</th><th>School / Site</th><th>Note</th></tr>
                 </thead>
                 <tbody>
                   {installed.map(e => (
                     <tr key={e.id}>
-                      <td>{e.created_at?.slice(0,10)}</td>
+                      <td>
+                        <div style={{ fontSize: 12 }}>{e.created_at?.slice(0,10)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{e.created_at ? new Date(e.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}</div>
+                      </td>
                       <td style={{ fontWeight: 500 }}>{e.item_name}</td>
                       <td><b style={{ color: 'var(--accent2)' }}>{e.quantity}</b> {e.item_unit}</td>
                       <td style={{ fontSize: 12 }}>{e.school_dest || '—'}</td>

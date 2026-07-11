@@ -4,7 +4,7 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timedelta
 from ..database import get_db
 from ..models.stock import StockItem, StockLedger, EmployeeStock
 from ..models.employee import Employee
@@ -243,6 +243,19 @@ def install_stock(data: InstallStock, db: Session = Depends(get_db), user=Depend
     in_hand = es.qty_in_hand if es else 0
     if in_hand < data.quantity:
         raise HTTPException(400, f"You only have {in_hand} in hand")
+
+    # Duplicate check: same item + school + qty by same employee within last 3 minutes
+    cutoff = datetime.utcnow() - timedelta(minutes=3)
+    duplicate = db.query(StockLedger).filter(
+        StockLedger.employee_id == user.id,
+        StockLedger.item_id == data.item_id,
+        StockLedger.transaction_type == "install",
+        StockLedger.school_dest == data.school_dest,
+        StockLedger.quantity == data.quantity,
+        StockLedger.created_at >= cutoff,
+    ).first()
+    if duplicate:
+        raise HTTPException(400, "Duplicate install detected — same item, school and quantity were already recorded within the last 3 minutes. Please wait before submitting again.")
 
     _upsert_employee_stock(db, user.id, data.item_id, -data.quantity)
     db.add(StockLedger(
