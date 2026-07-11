@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 from ..database import get_db
 from ..models.employee import Employee
-from ..dependencies import get_current_user, require_admin
+from ..dependencies import get_current_user, require_admin, require_admin_or_deskwork
 
 router = APIRouter(prefix="/api/employees", tags=["employees"])
 
@@ -20,7 +20,7 @@ class EmployeeUpdate(EmployeeCreate):
     pass
 
 @router.get("/")
-def list_employees(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_employees(db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
     emps = db.query(Employee).filter(Employee.is_active == True).order_by(Employee.employee_code).all()
     return [{"id": e.id, "employee_code": e.employee_code, "name": e.name,
              "phone": e.phone, "role": e.role,
