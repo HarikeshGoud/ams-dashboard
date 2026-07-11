@@ -119,7 +119,6 @@ export default function Stock() {
         <h3>📦 Stock & Materials</h3>
         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
           <button className="btn btn-green"   onClick={() => setModal('receive')}>⬇ Receive</button>
-          <button className="btn btn-primary" onClick={() => setModal('transfer')}>↔ Transfer</button>
           <button className="btn btn-outline" onClick={() => setModal('issue')}>↑ Issue</button>
           <button className="btn btn-purple"  onClick={() => { setModal('distribute'); setDistForm({ item_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
           <button className="btn btn-outline" onClick={() => setModal('add-item')}>+ New Item</button>
@@ -313,7 +312,7 @@ export default function Stock() {
       )}
 
       {/* Receive / Transfer / Issue */}
-      {['receive','transfer','issue'].includes(modal) && (
+      {['receive','issue'].includes(modal) && (
         <div className="modal-backdrop">
           <div className="modal-box">
             <button className="modal-close" onClick={() => setModal(null)}>✕</button>
@@ -384,7 +383,7 @@ export default function Stock() {
                 <div className="form-group form-full"><label>Technician *</label>
                   <select required value={distForm.employee_id} onChange={e => setDistForm({...distForm, employee_id: e.target.value})}>
                     <option value="">Select technician...</option>
-                    {employees.filter(e => e.role === 'employee').map(e => (
+                    {employees.filter(e => e.role === 'technician').map(e => (
                       <option key={e.id} value={e.id}>{e.name} ({e.employee_code})</option>
                     ))}
                   </select>
