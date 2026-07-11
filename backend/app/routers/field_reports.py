@@ -39,6 +39,7 @@ def _fmt_report(r: FieldReport, base_url: str = "http://localhost:8000"):
         "school_name": r.school.name if r.school_id and hasattr(r, 'school') and r.school else None,
         "school_phone": r.school.phone if r.school_id and hasattr(r, 'school') and r.school else None,
         "school_contact": r.school.contact_person if r.school_id and hasattr(r, 'school') and r.school else None,
+        "has_service_report": False,  # populated by caller
         "photos": [_fmt_photo(p, base_url) for p in r.work_photos]
     }
 
@@ -54,12 +55,25 @@ def _fmt_photo(p: WorkProof, base_url: str = "http://localhost:8000"):
 
 @router.get("/")
 def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from ..models.service_report import ServiceReport
     base_url = str(request.base_url).rstrip("/")
     q = db.query(FieldReport)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(FieldReport.employee_id == user.id)
     reports = q.order_by(FieldReport.created_at.desc()).limit(100).all()
-    return [_fmt_report(r, base_url=base_url) for r in reports]
+    # Build set of field_report_ids that have a service report
+    report_ids = [r.id for r in reports]
+    sr_ids = set(
+        row[0] for row in db.query(ServiceReport.field_report_id)
+        .filter(ServiceReport.field_report_id.in_(report_ids)).all()
+        if row[0] is not None
+    )
+    results = []
+    for r in reports:
+        d = _fmt_report(r, base_url=base_url)
+        d["has_service_report"] = r.id in sr_ids
+        results.append(d)
+    return results
 
 @router.get("/employee/{emp_id}")
 def reports_by_employee(emp_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):

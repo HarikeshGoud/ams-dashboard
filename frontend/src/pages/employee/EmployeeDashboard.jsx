@@ -187,19 +187,34 @@ export default function EmployeeDashboard() {
               rejected: { label: '❌ Rejected by school',           color: 'var(--red)',     bg: 'rgba(248,113,113,.12)' },
             }[vs]
             return (
-            <div key={r.id} style={{ background: 'var(--surface2)', border: `1px solid ${vsConfig.color}`, borderRadius: 10, padding: 14, marginBottom: 10 }}>
+            <div key={r.id} style={{ background: 'var(--surface2)', border: `1px solid ${r.has_service_report ? vsConfig.color : 'var(--red)'}`, borderRadius: 10, padding: 14, marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>
                   {r.item_installed || 'Field Report'} — {r.report_date}
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span className="pill pill-green">Submitted</span>
+                  {!r.has_service_report && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8, background: 'rgba(239,68,68,.15)', color: 'var(--red)', border: '1px solid var(--red)' }}>
+                      ⚠️ Service Report Pending
+                    </span>
+                  )}
                   <span style={{
                     fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
                     background: vsConfig.bg, color: vsConfig.color, border: `1px solid ${vsConfig.color}`
                   }}>{vsConfig.label}</span>
                 </div>
               </div>
+              {!r.has_service_report && r.task_id && (
+                <div style={{ marginBottom: 8 }}>
+                  <button onClick={() => {
+                    const task = tasks.find(t => t.id === r.task_id)
+                    if (task) setSelectedTask({ ...task, _resumeStep3: true, _fieldReportId: r.id })
+                  }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8, background: 'rgba(239,68,68,.15)', color: 'var(--red)', border: '1px solid var(--red)', cursor: 'pointer' }}>
+                    📋 Complete Service Report
+                  </button>
+                </div>
+              )}
               {r.verification_note && (
                 <div style={{ fontSize: 11, padding: '5px 10px', borderRadius: 6, marginBottom: 8, background: vsConfig.bg, color: vsConfig.color }}>
                   📝 {r.verification_note}

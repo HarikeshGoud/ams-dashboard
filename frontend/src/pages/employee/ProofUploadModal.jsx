@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import api from '../../api/axios'
 import SignaturePad from '../../components/SignaturePad'
 
@@ -114,7 +114,8 @@ function PhotoSlot({ label, desc, icon, preview, onOpen }) {
 
 // ── Main modal ────────────────────────────────────────────────────────────────
 export default function ProofUploadModal({ task, onClose, onSubmitted }) {
-  const [step, setStep] = useState(1)
+  const resumeStep3 = task?._resumeStep3 === true
+  const [step, setStep] = useState(resumeStep3 ? 3 : 1)
   const [selectedItems, setSelectedItems] = useState([])
   const [stockItems, setStockItems] = useState([])
   const [myStock, setMyStock]       = useState([])  // technician's in-hand items
@@ -135,7 +136,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [extraLabels, setExtraLabels]   = useState([])    // editable label per extra photo
 
   // Step 3 — service report fields
-  const [lastReportId,      setLastReportId]      = useState(null)
+  const [lastReportId,      setLastReportId]      = useState(resumeStep3 ? (task?._fieldReportId ?? null) : null)
   const [reportNo,          setReportNo]          = useState('')
   const [complaintNo,       setComplaintNo]       = useState('')
   const [unitType,          setUnitType]          = useState('AMC')
@@ -167,6 +168,28 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
   const CAT_A = '50/100 LPH RO Units'
   const CAT_B = '1000/1500/2000 LPH RO Units'
+
+  // Block browser back/refresh when on Step 3 and PDF not yet generated
+  useEffect(() => {
+    if (step !== 3 || pdfUrl) return
+    // Push a dummy history state so back button hits it first
+    window.history.pushState({ srLock: true }, '')
+    const onPop = (e) => {
+      // Re-push so back button always gets intercepted
+      window.history.pushState({ srLock: true }, '')
+    }
+    const onBeforeUnload = (e) => {
+      e.preventDefault()
+      e.returnValue = 'Service report not completed! Your proof is saved but the service report PDF is required.'
+      return e.returnValue
+    }
+    window.addEventListener('popstate', onPop)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+      window.removeEventListener('beforeunload', onBeforeUnload)
+    }
+  }, [step, pdfUrl])
 
   useEffect(() => {
     captureGPS()
