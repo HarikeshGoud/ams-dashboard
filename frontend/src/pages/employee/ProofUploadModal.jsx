@@ -258,7 +258,15 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         // Auto-deduct stock: for each selected item that the technician has in hand, call /install
         const deducted = []
         for (const itemName of selectedItems) {
-          const inHand = myStock.find(s => s.item_name?.toLowerCase() === itemName.toLowerCase())
+          const nameLower = itemName.toLowerCase()
+          const inHand = myStock.find(s => {
+            const stockName = (s.item_name || '').toLowerCase()
+            return stockName === nameLower ||
+                   stockName.startsWith(nameLower) ||
+                   nameLower.startsWith(stockName) ||
+                   stockName.includes(nameLower) ||
+                   nameLower.includes(stockName)
+          })
           if (inHand && inHand.qty_in_hand > 0) {
             try {
               await api.post('/api/stock/install', {
@@ -433,7 +441,11 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                     })
                     .map(item => {
                       const sel = selectedItems.includes(item.name)
-                      const inHandEntry = myStock.find(m => m.item_name?.toLowerCase() === item.name.toLowerCase())
+                      const n = item.name.toLowerCase()
+                      const inHandEntry = myStock.find(m => {
+                        const sn = (m.item_name || '').toLowerCase()
+                        return sn === n || sn.startsWith(n) || n.startsWith(sn) || sn.includes(n) || n.includes(sn)
+                      })
                       return (
                         <button key={item.id} onClick={() => toggleItem(item.name)} style={{
                           padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
