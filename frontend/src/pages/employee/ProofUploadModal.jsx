@@ -117,6 +117,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [step, setStep] = useState(1)
   const [selectedItems, setSelectedItems] = useState([])
   const [stockItems, setStockItems] = useState([])
+  const [myStock, setMyStock]       = useState([])  // technician's in-hand items
+  const [stockDeducted, setStockDeducted] = useState([]) // items auto-deducted on submit
   const [activeCat, setActiveCat] = useState(null) // null = not chosen yet
   const [gps, setGps] = useState(null)
   const [gpsError, setGpsError] = useState('')
@@ -168,12 +170,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
   useEffect(() => {
     captureGPS()
-    api.get('/api/stock/').then(r => {
-      // Store full objects so we can filter by category
-      setStockItems(r.data || [])
-    }).catch(() => {
-      setStockItems([])
-    })
+    Promise.all([
+      api.get('/api/stock/'),
+      api.get('/api/stock/my-stock'),
+    ]).then(([catalog, ms]) => {
+      setStockItems(catalog.data || [])
+      setMyStock(ms.data?.in_hand || [])
+    }).catch(() => { setStockItems([]); setMyStock([]) })
   }, [])
 
   function captureGPS() {
@@ -251,6 +254,24 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         })
         setLastReportId(res.data?.id || null)
         setError('')
+
+        // Auto-deduct stock: for each selected item that the technician has in hand, call /install
+        const deducted = []
+        for (const itemName of selectedItems) {
+          const inHand = myStock.find(s => s.item_name?.toLowerCase() === itemName.toLowerCase())
+          if (inHand && inHand.qty_in_hand > 0) {
+            try {
+              await api.post('/api/stock/install', {
+                item_id: inHand.item_id,
+                quantity: 1,
+                school_dest: task.school_name || null,
+                note: `Auto-deducted on proof submission for ${task.title}`
+              })
+              deducted.push(`${itemName} (1 ${inHand.unit})`)
+            } catch (_) {}
+          }
+        }
+        setStockDeducted(deducted)
         setStep(3)
         setSubmitting(false)
         return
@@ -402,17 +423,31 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14, maxHeight: 220, overflowY: 'auto', padding: '2px 0' }}>
                   {stockItems
                     .filter(s => s.category === activeCat)
-                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .sort((a, b) => {
+                      // Sort: in-hand items first
+                      const aInHand = myStock.some(m => m.item_name?.toLowerCase() === a.name.toLowerCase())
+                      const bInHand = myStock.some(m => m.item_name?.toLowerCase() === b.name.toLowerCase())
+                      if (aInHand && !bInHand) return -1
+                      if (!aInHand && bInHand) return 1
+                      return a.name.localeCompare(b.name)
+                    })
                     .map(item => {
                       const sel = selectedItems.includes(item.name)
+                      const inHandEntry = myStock.find(m => m.item_name?.toLowerCase() === item.name.toLowerCase())
                       return (
                         <button key={item.id} onClick={() => toggleItem(item.name)} style={{
                           padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                          border: `1.5px solid ${sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--border)'}`,
-                          background: sel ? (activeCat === CAT_A ? 'rgba(56,189,248,.15)' : 'rgba(52,211,153,.15)') : 'var(--surface2)',
-                          color: sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--text)',
+                          border: `1.5px solid ${sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : inHandEntry ? 'var(--yellow)' : 'var(--border)'}`,
+                          background: sel ? (activeCat === CAT_A ? 'rgba(56,189,248,.15)' : 'rgba(52,211,153,.15)') : inHandEntry ? 'rgba(251,191,36,.1)' : 'var(--surface2)',
+                          color: sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : inHandEntry ? 'var(--yellow)' : 'var(--text)',
+                          position: 'relative'
                         }}>
                           {sel ? '✓ ' : ''}{item.name}
+                          {inHandEntry && (
+                            <span style={{ marginLeft: 5, fontSize: 9, background: 'var(--yellow)', color: '#000', borderRadius: 8, padding: '1px 5px', fontWeight: 800 }}>
+                              🎒{inHandEntry.qty_in_hand}
+                            </span>
+                          )}
                         </button>
                       )
                     })
@@ -592,6 +627,15 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           {/* ── STEP 3: Service report + signatures ── */}
           {step === 3 && (
             <>
+              {/* Stock auto-deduction notice */}
+              {stockDeducted.length > 0 && (
+                <div style={{ background: 'rgba(52,211,153,.1)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--green)', marginBottom: 4 }}>🎒 Stock Updated Automatically</div>
+                  <div style={{ color: 'var(--text)' }}>The following items were deducted from your stock:</div>
+                  {stockDeducted.map((s, i) => <div key={i} style={{ color: 'var(--green)', fontWeight: 600, fontSize: 11, marginTop: 2 }}>✓ {s}</div>)}
+                </div>
+              )}
+
               {pdfUrl ? (
                 /* ── Success: PDF ready ── */
                 <div style={{ textAlign: 'center', padding: '16px 0' }}>
