@@ -378,9 +378,12 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         />
       )}
 
-      <div className="modal-backdrop" onClick={e => e.target.className === 'modal-backdrop' && onClose()}>
+      <div className="modal-backdrop">
         <div className="modal-box" style={{ maxWidth: 500 }}>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          {/* Hide close button on Step 3 until PDF is generated — service report is mandatory */}
+          {(step !== 3 || pdfUrl) && (
+            <button className="modal-close" onClick={onClose}>✕</button>
+          )}
           <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>📸 Submit Work Proof</h3>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>{task.title}</div>
 
@@ -658,6 +661,12 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           {/* ── STEP 3: Service report + signatures ── */}
           {step === 3 && (
             <>
+              {/* Mandatory notice */}
+              {!pdfUrl && (
+                <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid var(--red)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>
+                  🔒 Service report is mandatory — fill all fields and get signatures to complete this task.
+                </div>
+              )}
               {/* Stock auto-deduction notice */}
               {stockDeducted.length > 0 && (
                 <div style={{ background: 'rgba(52,211,153,.1)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12 }}>
