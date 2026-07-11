@@ -1,35 +1,45 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 
+const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
+const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red' }
+const TYPE_LABEL = { receive: '⬇ Receive', transfer: '↔ Transfer', issue: '↑ Issue', distribute: '📦 Distribute', return: '↩ Return', install: '🔧 Install' }
+
 export default function Stock() {
-  const [items, setItems] = useState([])
-  const [ledger, setLedger] = useState([])
-  const [employees, setEmployees] = useState([])
-  const [schools, setSchools] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(null) // 'add-item' | 'edit-item' | 'receive' | 'transfer' | 'issue'
-  const [editItem, setEditItem] = useState(null)
-  const [itemForm, setItemForm] = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
-  const [ledgerForm, setLedgerForm] = useState({ item_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', school_dest: '', note: '' })
-  const [toast, setToast] = useState('')
+  const [items, setItems]             = useState([])
+  const [ledger, setLedger]           = useState([])
+  const [distributions, setDist]      = useState([])
+  const [empStock, setEmpStock]       = useState([])
+  const [employees, setEmployees]     = useState([])
+  const [schools, setSchools]         = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [tab, setTab]                 = useState('inventory')   // inventory | ledger | distribute | inspect | emp-stock
+  const [modal, setModal]             = useState(null)
+  const [editItem, setEditItem]       = useState(null)
+  const [itemForm, setItemForm]       = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
+  const [ledgerForm, setLedgerForm]   = useState({ item_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', school_dest: '', note: '' })
+  const [distForm, setDistForm]       = useState({ item_id: '', employee_id: '', quantity: 1, note: '' })
+  const [toast, setToast]             = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
-  const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
 
   function load() {
     Promise.all([
       api.get('/api/stock/items'),
       api.get('/api/stock/ledger'),
+      api.get('/api/stock/distributions'),
+      api.get('/api/stock/employee-stock'),
       api.get('/api/employees/'),
       api.get('/api/schools/?limit=200'),
-    ]).then(([it, lg, emp, sch]) => {
+    ]).then(([it, lg, dist, es, emp, sch]) => {
       setItems(it.data)
       setLedger(lg.data)
+      setDist(dist.data)
+      setEmpStock(es.data)
       setEmployees(emp.data || [])
       setSchools(sch.data?.items || sch.data || [])
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
@@ -37,14 +47,11 @@ export default function Stock() {
   async function saveItem(ev) {
     ev.preventDefault()
     const payload = { ...itemForm, min_qty: parseInt(itemForm.min_qty), unit_cost: parseFloat(itemForm.unit_cost) || 0 }
-    if (editItem) {
-      await api.put(`/api/stock/items/${editItem.id}`, payload)
-      showToast('Item updated!')
-    } else {
-      await api.post('/api/stock/items', payload)
-      showToast('Item added!')
-    }
-    load(); setModal(null); setEditItem(null)
+    try {
+      if (editItem) { await api.put(`/api/stock/items/${editItem.id}`, payload); showToast('Item updated!') }
+      else { await api.post('/api/stock/items', payload); showToast('Item added!') }
+      load(); setModal(null); setEditItem(null)
+    } catch (e) { showToast('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
   function openEdit(item) {
@@ -55,18 +62,40 @@ export default function Stock() {
 
   async function saveLedger(ev) {
     ev.preventDefault()
-    await api.post('/api/stock/ledger', {
-      ...ledgerForm, item_id: parseInt(ledgerForm.item_id), quantity: parseInt(ledgerForm.quantity),
-      buy_price: parseFloat(ledgerForm.buy_price) || null,
-      logistics1: parseFloat(ledgerForm.logistics1) || null,
-      logistics2: parseFloat(ledgerForm.logistics2) || null,
-      transaction_type: modal
-    })
-    load(); setModal(null); showToast('Saved!')
+    try {
+      await api.post('/api/stock/ledger', {
+        ...ledgerForm, item_id: parseInt(ledgerForm.item_id), quantity: parseInt(ledgerForm.quantity),
+        buy_price: parseFloat(ledgerForm.buy_price) || null,
+        logistics1: parseFloat(ledgerForm.logistics1) || null,
+        logistics2: parseFloat(ledgerForm.logistics2) || null,
+        transaction_type: modal
+      })
+      load(); setModal(null); showToast('Saved!')
+    } catch (e) { showToast('Error: ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function distribute(ev) {
+    ev.preventDefault()
+    try {
+      await api.post('/api/stock/distribute', {
+        item_id: parseInt(distForm.item_id),
+        employee_id: parseInt(distForm.employee_id),
+        quantity: parseInt(distForm.quantity),
+        note: distForm.note || null
+      })
+      load(); setModal(null); showToast('✅ Stock distributed!')
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function inspect(ledgerId) {
+    try {
+      await api.post(`/api/stock/inspect/${ledgerId}`)
+      load(); showToast('✅ Marked as inspected')
+    } catch (e) { showToast('Error: ' + (e.response?.data?.detail || e.message)) }
   }
 
   async function delLedger(id) {
-    if (!confirm('Delete entry?')) return
+    if (!confirm('Delete entry? This will reverse the qty change.')) return
     await api.delete(`/api/stock/ledger/${id}`)
     load(); showToast('Deleted')
   }
@@ -74,73 +103,184 @@ export default function Stock() {
   if (loading) return <div className="spinner" />
 
   const lowStock = items.filter(i => i.office_qty <= i.min_qty)
+  const pendingInspect = distributions.filter(d => !d.inspected)
+  const selectedItem = items.find(i => i.id === parseInt(distForm.item_id))
+
+  const TABS = [
+    { key: 'inventory',  label: '📦 Inventory' },
+    { key: 'distribute', label: `📤 Distribute${pendingInspect.length ? ` (${pendingInspect.length} pending)` : ''}` },
+    { key: 'emp-stock',  label: '👷 Tech Stock' },
+    { key: 'ledger',     label: '📋 Ledger' },
+  ]
 
   return (
     <div>
       <div className="section-header">
         <h3>📦 Stock & Materials</h3>
         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-          <button className="btn btn-green"   onClick={() => setModal('receive')}>+ Receive</button>
-          <button className="btn btn-primary" onClick={() => setModal('transfer')}>→ Transfer</button>
+          <button className="btn btn-green"   onClick={() => setModal('receive')}>⬇ Receive</button>
+          <button className="btn btn-primary" onClick={() => setModal('transfer')}>↔ Transfer</button>
           <button className="btn btn-outline" onClick={() => setModal('issue')}>↑ Issue</button>
+          <button className="btn btn-purple"  onClick={() => { setModal('distribute'); setDistForm({ item_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
           <button className="btn btn-outline" onClick={() => setModal('add-item')}>+ New Item</button>
         </div>
       </div>
 
+      {/* KPI */}
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         <div className="kpi-card red"><div className="kpi-label">Low Stock</div><div className="kpi-value">{lowStock.length}</div><div className="kpi-sub">Items below threshold</div></div>
         <div className="kpi-card yellow"><div className="kpi-label">Items Tracked</div><div className="kpi-value">{items.length}</div></div>
+        <div className="kpi-card blue"><div className="kpi-label">Pending Inspect</div><div className="kpi-value">{pendingInspect.length}</div><div className="kpi-sub">Distributions not yet inspected</div></div>
+        <div className="kpi-card green"><div className="kpi-label">Techs with Stock</div><div className="kpi-value">{empStock.length}</div></div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-title">Current Inventory</div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Edit</th></tr>
-            </thead>
-            <tbody>
-              {items.map(i => (
-                <tr key={i.id}>
-                  <td style={{ fontWeight: 500 }}>{i.name}</td>
-                  <td>{i.unit}</td>
-                  <td>{i.office_qty}</td>
-                  <td>{i.min_qty}</td>
-                  <td>₹{i.unit_cost}</td>
-                  <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? 'Low' : 'OK'}</span></td>
-                  <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️ Edit</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', fontWeight: 600, fontSize: 13,
+              background: tab === t.key ? 'var(--accent)' : 'var(--surface)', color: tab === t.key ? '#fff' : 'var(--text)' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── INVENTORY TAB ─────────────────────────────────────────── */}
+      {tab === 'inventory' && (
+        <div className="card">
+          <div className="card-title">Current Inventory</div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Item</th><th>Category</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Edit</th></tr>
+              </thead>
+              <tbody>
+                {items.map(i => (
+                  <tr key={i.id}>
+                    <td style={{ fontWeight: 500 }}>{i.name}</td>
+                    <td><span style={{ fontSize: 11, color: 'var(--muted)' }}>{i.category || '—'}</span></td>
+                    <td>{i.unit}</td>
+                    <td style={{ fontWeight: 700, color: i.office_qty <= i.min_qty ? 'var(--red)' : 'var(--green)' }}>{i.office_qty}</td>
+                    <td>{i.min_qty}</td>
+                    <td>₹{i.unit_cost}</td>
+                    <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? '⚠ Low' : '✓ OK'}</span></td>
+                    <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="card">
-        <div className="card-title">Stock Ledger</div>
-        <div className="table-wrap scroll-table" style={{ maxHeight: 400 }}>
-          <table>
-            <thead>
-              <tr><th>Date</th><th>Type</th><th>Item</th><th>Qty</th><th>Person</th><th>Buy Price</th><th>Note</th><th>Del</th></tr>
-            </thead>
-            <tbody>
-              {ledger.map(e => (
-                <tr key={e.id}>
-                  <td>{e.created_at?.slice(0,10)}</td>
-                  <td><span className={`pill ${e.transaction_type === 'receive' ? 'pill-green' : e.transaction_type === 'transfer' ? 'pill-blue' : 'pill-orange'}`}>{e.transaction_type}</span></td>
-                  <td>{e.item_name}</td>
-                  <td>{e.quantity}</td>
-                  <td>{e.person || '—'}</td>
-                  <td>{e.buy_price ? `₹${e.buy_price}` : '—'}</td>
-                  <td>{e.note || '—'}</td>
-                  <td><button className="btn btn-danger btn-sm" onClick={() => delLedger(e.id)}>Del</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* ── DISTRIBUTE TAB ────────────────────────────────────────── */}
+      {tab === 'distribute' && (
+        <div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div className="card-title" style={{ marginBottom: 0 }}>Distribution History</div>
+              <button className="btn btn-purple btn-sm" onClick={() => { setModal('distribute'); setDistForm({ item_id: '', employee_id: '', quantity: 1, note: '' }) }}>+ Distribute Stock</button>
+            </div>
+            {distributions.length === 0 ? (
+              <div style={{ color: 'var(--muted)', textAlign: 'center', padding: 24 }}>No distributions yet</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Date</th><th>Item</th><th>Qty</th><th>Technician</th><th>Note</th><th>Inspected</th><th>Action</th></tr>
+                  </thead>
+                  <tbody>
+                    {distributions.map(d => (
+                      <tr key={d.id}>
+                        <td>{d.created_at?.slice(0, 10)}</td>
+                        <td style={{ fontWeight: 500 }}>{d.item_name}</td>
+                        <td><b>{d.quantity}</b> {d.item_unit}</td>
+                        <td>{d.employee_name || d.person || '—'}</td>
+                        <td>{d.note || '—'}</td>
+                        <td>
+                          {d.inspected
+                            ? <span className="pill pill-green">✓ Inspected by {d.inspector_name || 'admin'}<br/><span style={{ fontSize: 10 }}>{d.inspected_at?.slice(0,10)}</span></span>
+                            : <span className="pill pill-red">Pending</span>}
+                        </td>
+                        <td>
+                          {!d.inspected && (
+                            <button className="btn btn-green btn-sm" onClick={() => inspect(d.id)}>✓ Inspect</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
+      {/* ── TECHNICIAN STOCK TAB ──────────────────────────────────── */}
+      {tab === 'emp-stock' && (
+        <div>
+          {empStock.length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
+              No technicians currently holding stock
+            </div>
+          ) : empStock.map(emp => (
+            <div key={emp.employee_id} className="card" style={{ marginBottom: 16 }}>
+              <div className="card-title">👷 {emp.employee_name}</div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Item</th><th>Category</th><th>Unit</th><th>Qty in Hand</th></tr>
+                  </thead>
+                  <tbody>
+                    {emp.items.map(it => (
+                      <tr key={it.item_id}>
+                        <td style={{ fontWeight: 500 }}>{it.item_name}</td>
+                        <td><span style={{ fontSize: 11, color: 'var(--muted)' }}>{it.category || '—'}</span></td>
+                        <td>{it.unit}</td>
+                        <td><b style={{ color: 'var(--accent2)' }}>{it.qty_in_hand}</b></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── LEDGER TAB ────────────────────────────────────────────── */}
+      {tab === 'ledger' && (
+        <div className="card">
+          <div className="card-title">Stock Ledger</div>
+          <div className="table-wrap scroll-table" style={{ maxHeight: 500 }}>
+            <table>
+              <thead>
+                <tr><th>Date</th><th>Type</th><th>Item</th><th>Qty</th><th>Person/Tech</th><th>Buy Price</th><th>School/Site</th><th>Note</th><th>Del</th></tr>
+              </thead>
+              <tbody>
+                {ledger.map(e => (
+                  <tr key={e.id}>
+                    <td>{e.created_at?.slice(0,10)}</td>
+                    <td><span className={`pill ${TYPE_COLOR[e.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[e.transaction_type] || e.transaction_type}</span></td>
+                    <td>{e.item_name}</td>
+                    <td><b>{e.quantity}</b></td>
+                    <td>{e.employee_name || e.person || '—'}</td>
+                    <td>{e.buy_price ? `₹${e.buy_price}` : '—'}</td>
+                    <td style={{ fontSize: 11 }}>{e.school_dest || '—'}</td>
+                    <td>{e.note || '—'}</td>
+                    <td><button className="btn btn-danger btn-sm" onClick={() => delLedger(e.id)}>Del</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODALS ─────────────────────────────────────────────────── */}
+
+      {/* Add / Edit Item */}
       {(modal === 'add-item' || modal === 'edit-item') && (
         <div className="modal-backdrop">
           <div className="modal-box">
@@ -160,7 +300,7 @@ export default function Stock() {
                     {['pcs','nos','ltrs','kgs','mtrs','sets','rolls'].map(u => <option key={u}>{u}</option>)}
                   </select>
                 </div>
-                <div className="form-group"><label>Min Qty</label><input type="number" value={itemForm.min_qty} onChange={e => setItemForm({...itemForm, min_qty: e.target.value})} /></div>
+                <div className="form-group"><label>Min Qty Alert</label><input type="number" value={itemForm.min_qty} onChange={e => setItemForm({...itemForm, min_qty: e.target.value})} /></div>
                 <div className="form-group"><label>Cost/Unit (₹)</label><input type="number" value={itemForm.unit_cost} onChange={e => setItemForm({...itemForm, unit_cost: e.target.value})} /></div>
               </div>
               <div className="mt-16 flex gap-8">
@@ -172,6 +312,7 @@ export default function Stock() {
         </div>
       )}
 
+      {/* Receive / Transfer / Issue */}
       {['receive','transfer','issue'].includes(modal) && (
         <div className="modal-backdrop">
           <div className="modal-box">
@@ -182,13 +323,13 @@ export default function Stock() {
                 <div className="form-group form-full"><label>Item *</label>
                   <select required value={ledgerForm.item_id} onChange={e => setLedgerForm({...ledgerForm, item_id: e.target.value})}>
                     <option value="">Select item...</option>
-                    {items.map(i => <option key={i.id} value={i.id}>{i.name} (qty: {i.office_qty})</option>)}
+                    {items.map(i => <option key={i.id} value={i.id}>{i.name} (in office: {i.office_qty})</option>)}
                   </select>
                 </div>
                 <div className="form-group"><label>Quantity *</label><input required type="number" min="1" value={ledgerForm.quantity} onChange={e => setLedgerForm({...ledgerForm, quantity: e.target.value})} /></div>
-                <div className="form-group"><label>{modal === 'receive' ? 'Received By' : 'Issued To (Employee)'}</label>
+                <div className="form-group"><label>Person</label>
                   <select value={ledgerForm.person} onChange={e => setLedgerForm({...ledgerForm, person: e.target.value})}>
-                    <option value="">— Select Employee —</option>
+                    <option value="">— Select —</option>
                     {employees.map(e => <option key={e.id} value={e.name}>{e.name} ({e.employee_code})</option>)}
                   </select>
                 </div>
@@ -215,6 +356,56 @@ export default function Stock() {
           </div>
         </div>
       )}
+
+      {/* Distribute to Technician */}
+      {modal === 'distribute' && (
+        <div className="modal-backdrop">
+          <div className="modal-box">
+            <button className="modal-close" onClick={() => setModal(null)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>📤 Distribute Stock to Technician</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>This deducts from office stock and adds to the technician's personal inventory.</p>
+            <form onSubmit={distribute}>
+              <div className="form-grid">
+                <div className="form-group form-full"><label>Item *</label>
+                  <select required value={distForm.item_id} onChange={e => setDistForm({...distForm, item_id: e.target.value})}>
+                    <option value="">Select item...</option>
+                    {items.filter(i => i.office_qty > 0).map(i => (
+                      <option key={i.id} value={i.id}>{i.name} — {i.office_qty} {i.unit} in office</option>
+                    ))}
+                  </select>
+                </div>
+                {selectedItem && (
+                  <div className="form-group form-full">
+                    <div style={{ background: 'rgba(59,130,246,.1)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>
+                      Office stock: <b style={{ color: 'var(--accent2)' }}>{selectedItem.office_qty} {selectedItem.unit}</b>
+                    </div>
+                  </div>
+                )}
+                <div className="form-group form-full"><label>Technician *</label>
+                  <select required value={distForm.employee_id} onChange={e => setDistForm({...distForm, employee_id: e.target.value})}>
+                    <option value="">Select technician...</option>
+                    {employees.filter(e => e.role === 'employee').map(e => (
+                      <option key={e.id} value={e.id}>{e.name} ({e.employee_code})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group"><label>Quantity *</label>
+                  <input required type="number" min="1" max={selectedItem?.office_qty || 9999} value={distForm.quantity}
+                    onChange={e => setDistForm({...distForm, quantity: e.target.value})} />
+                </div>
+                <div className="form-group"><label>Note</label>
+                  <input value={distForm.note} onChange={e => setDistForm({...distForm, note: e.target.value})} placeholder="Optional note..." />
+                </div>
+              </div>
+              <div className="mt-16 flex gap-8">
+                <button type="submit" className="btn btn-purple">📤 Distribute</button>
+                <button type="button" className="btn btn-outline" onClick={() => setModal(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {toast && <div className="toast">{toast}</div>}
     </div>
   )

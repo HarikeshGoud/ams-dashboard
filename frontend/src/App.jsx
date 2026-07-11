@@ -24,6 +24,7 @@ import MyTasks from './pages/employee/MyTasks'
 import MyBilling from './pages/employee/MyBilling'
 import MyTravel from './pages/employee/MyTravel'
 import MyVisits from './pages/employee/MyVisits'
+import MyStock from './pages/employee/MyStock'
 import ProofReview from './pages/ProofReview'
 import Reports from './pages/Reports'
 import UnitPage from './pages/UnitPage'
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="billing"    element={<MyBilling />} />
         <Route path="salary"     element={<MySalary />} />
         <Route path="attendance" element={<MyAttendance />} />
+        <Route path="my-stock"   element={<MyStock />} />
       </Route>
 
       {/* DESKWORK ROUTES */}

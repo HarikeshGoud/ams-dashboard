@@ -12,6 +12,7 @@ const NAV = [
   { path: '/employee/billing',  icon: '🧾', label: 'Work Bills' },
   { path: '/employee/salary',   icon: '💰', label: 'Salary'     },
   { path: '/employee/attendance', icon: '📅', label: 'Attendance' },
+  { path: '/employee/my-stock',  icon: '🎒', label: 'My Stock'   },
 ]
 
 export default function EmployeeLayout() {
