@@ -18,3 +18,4 @@ class Task(Base):
     created_at     = Column(DateTime, default=datetime.utcnow)
 
     assigned_to = relationship("Employee", back_populates="tasks", foreign_keys=[assigned_to_id])
+    school      = relationship("School", foreign_keys=[school_id], lazy="joined")
