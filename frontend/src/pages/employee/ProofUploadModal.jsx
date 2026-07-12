@@ -3,7 +3,7 @@ import api from '../../api/axios'
 import SignaturePad from '../../components/SignaturePad'
 
 // ── Camera capture ────────────────────────────────────────────────────────────
-function CameraCapture({ onCapture, onClose, gps }) {
+function CameraCapture({ onCapture, onClose, gps, siteName }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
@@ -31,7 +31,9 @@ function CameraCapture({ onCapture, onClose, gps }) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     const now = new Date(), W = canvas.width, H = canvas.height
+    const siteLabel = siteName && siteName.length > 45 ? siteName.slice(0, 44) + '…' : siteName
     const lines = [
+      ...(siteLabel ? [siteLabel] : []),
       now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + '  ' +
       now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
       gps ? `GPS: ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : 'GPS: unavailable',
@@ -396,6 +398,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       {activeCamera && (
         <CameraCapture
           gps={gps}
+          siteName={task?.school_name}
           onCapture={(file, url) => handleCaptured(activeCamera, file, url)}
           onClose={() => setActiveCamera(null)}
         />
