@@ -10,6 +10,7 @@ const NAV = [
   { path: '/deskwork/stock',      icon: '📦', label: 'Stock'      },
   { path: '/deskwork/travel',          icon: '🚗', label: 'Travel'          },
   { path: '/deskwork/service-reports', icon: '📄', label: 'Service Reports' },
+  { path: '/deskwork/live-tracking',   icon: '📍', label: 'Live Tracking'   },
   { path: '/deskwork/schools',         icon: '🏫', label: 'Schools'         },
   { path: '/deskwork/clients',         icon: '🏢', label: 'Clients'         },
 ]

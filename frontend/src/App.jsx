@@ -35,6 +35,7 @@ import DeskAttendance from './pages/deskwork/DeskAttendance'
 import DeskStock from './pages/deskwork/DeskStock'
 import DeskTravel from './pages/deskwork/DeskTravel'
 import ServiceReports from './pages/ServiceReports'
+import LiveTracking from './pages/LiveTracking'
 
 function Guard({ children }) {
   const { token } = useAuthStore()
@@ -100,6 +101,7 @@ export default function App() {
         <Route path="stock"      element={<DeskStock />} />
         <Route path="travel"          element={<DeskTravel />} />
         <Route path="service-reports" element={<ServiceReports />} />
+        <Route path="live-tracking"   element={<LiveTracking />} />
         <Route path="schools"         element={<Schools />} />
         <Route path="clients"         element={<Clients />} />
         <Route path="unit/:unit"      element={<UnitPage />} />
@@ -122,6 +124,7 @@ export default function App() {
         <Route path="proof-review"     element={<ProofReview />} />
         <Route path="reports"          element={<Reports />} />
         <Route path="service-reports"  element={<ServiceReports />} />
+        <Route path="live-tracking"    element={<LiveTracking />} />
         <Route path="unit/:unit"   element={<UnitPage />} />
       </Route>
 

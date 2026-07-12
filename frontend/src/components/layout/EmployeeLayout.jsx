@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import ChangePasswordModal from '../ChangePasswordModal'
+import api from '../../api/axios'
+
+const PING_INTERVAL_MS = 25000
 
 const NAV = [
   { path: '/employee',          icon: '🏠', label: 'Home'       },
@@ -25,6 +28,31 @@ export default function EmployeeLayout() {
   function handleLogout() { logout(); navigate('/login') }
 
   const activePath = location.pathname.replace(/\/$/, '') || '/employee'
+
+  // Live location ping — sends this technician's GPS to the server every 25s
+  // while the employee app is open in the foreground (used for admin/deskwork tracking).
+  const pingingRef = useRef(false)
+  useEffect(() => {
+    if (user?.role !== 'technician') return
+    function sendPing() {
+      if (pingingRef.current || !navigator.geolocation) return
+      pingingRef.current = true
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          api.post('/api/locations/ping', {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          }).catch(() => {}).finally(() => { pingingRef.current = false })
+        },
+        () => { pingingRef.current = false },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 }
+      )
+    }
+    sendPing()
+    const id = setInterval(sendPing, PING_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [user?.role])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 70 }}>

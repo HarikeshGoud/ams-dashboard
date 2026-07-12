@@ -17,3 +17,4 @@ from .allowance import AllowanceRequest
 from .salary_override import SalaryOverride
 from .amc_report import AMCReport
 from .service_report import ServiceReport
+from .employee_location import EmployeeLocation
