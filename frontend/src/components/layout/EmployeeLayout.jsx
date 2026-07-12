@@ -6,6 +6,14 @@ import ChangePasswordModal from '../ChangePasswordModal'
 import api from '../../api/axios'
 
 const PING_INTERVAL_MS = 25000
+const WORK_START_MIN = 9 * 60        // 9:00 AM
+const WORK_END_MIN   = 18 * 60 + 30  // 6:30 PM
+
+function withinWorkHours() {
+  const now = new Date()
+  const mins = now.getHours() * 60 + now.getMinutes()
+  return mins >= WORK_START_MIN && mins <= WORK_END_MIN
+}
 
 const NAV = [
   { path: '/employee',          icon: '🏠', label: 'Home'       },
@@ -24,18 +32,39 @@ export default function EmployeeLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [showChangePw, setShowChangePw] = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [isStandalone] = useState(() =>
+    window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true
+  )
+
+  useEffect(() => {
+    function onBeforeInstall(e) { e.preventDefault(); setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+  }, [])
+
+  async function handleInstall() {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null)
+  }
 
   function handleLogout() { logout(); navigate('/login') }
 
   const activePath = location.pathname.replace(/\/$/, '') || '/employee'
 
-  // Live location ping — sends this technician's GPS to the server every 25s
-  // while the employee app is open in the foreground (used for admin/deskwork tracking).
+  // Live location ping — sends this technician's GPS to the server every 25s,
+  // restricted to 9:00 AM-6:30 PM, while the employee app is open in the foreground
+  // (used for admin/deskwork tracking). Stops the moment the tab/app is closed or
+  // suspended — browsers don't allow geolocation access in the background.
   const pingingRef = useRef(false)
+  const wakeLockRef = useRef(null)
   useEffect(() => {
     if (user?.role !== 'technician') return
+
     function sendPing() {
-      if (pingingRef.current || !navigator.geolocation) return
+      if (!withinWorkHours() || pingingRef.current || !navigator.geolocation) return
       pingingRef.current = true
       navigator.geolocation.getCurrentPosition(
         pos => {
@@ -49,9 +78,24 @@ export default function EmployeeLayout() {
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 20000 }
       )
     }
+
+    async function acquireWakeLock() {
+      try { wakeLockRef.current = await navigator.wakeLock?.request('screen') } catch {}
+    }
+    acquireWakeLock()
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') acquireWakeLock()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
     sendPing()
     const id = setInterval(sendPing, PING_INTERVAL_MS)
-    return () => clearInterval(id)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      wakeLockRef.current?.release?.().catch(() => {})
+    }
   }, [user?.role])
 
   return (
@@ -94,6 +138,30 @@ export default function EmployeeLayout() {
           </button>
         </div>
       </div>
+
+      {/* Live tracking banner */}
+      {user?.role === 'technician' && (
+        <div style={{
+          background: withinWorkHours() ? 'rgba(52,211,153,.1)' : 'rgba(100,116,139,.1)',
+          borderBottom: `1px solid ${withinWorkHours() ? 'var(--green)' : 'var(--border)'}`,
+          padding: '6px 14px', fontSize: 11, display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: 8, flexWrap: 'wrap'
+        }}>
+          <span style={{ color: withinWorkHours() ? 'var(--green)' : 'var(--muted)', fontWeight: 600 }}>
+            {withinWorkHours()
+              ? '📍 Live tracking active till 6:30 PM — keep this app open on your phone'
+              : '📍 Live tracking resumes at 9:00 AM'}
+          </span>
+          {!isStandalone && installPrompt && (
+            <button onClick={handleInstall} style={{
+              fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+              background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer'
+            }}>
+              ⬇ Install App
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Page content */}
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '16px 14px' }}>
