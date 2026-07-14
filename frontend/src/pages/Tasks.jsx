@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { sendDailySummaryWhatsApp } from '../utils/dailySummary'
 
 const PRIORITY_PILL = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
 const STATUS_PILL   = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
@@ -10,6 +11,7 @@ const STATUS_LABEL  = { pending: 'Pending', in_progress: 'In Progress', submitte
 export default function Tasks() {
   const [tasks, setTasks]         = useState([])
   const [employees, setEmployees] = useState([])
+  const [fieldReports, setFieldReports] = useState([])
   const [loading, setLoading]     = useState(true)
   const [modal, setModal]         = useState(false)
   const [form, setForm]           = useState({ title: '', description: '', assigned_to_id: '', priority: 'medium', due_date: '' })
@@ -34,11 +36,13 @@ export default function Tasks() {
     if (filterDate) params.append('task_date', filterDate)
     Promise.all([
       api.get(`/api/tasks/?${params}`),
-      api.get('/api/employees/')
-    ]).then(([t, e]) => {
+      api.get('/api/employees/'),
+      api.get('/api/field-reports/')
+    ]).then(([t, e, r]) => {
       setTasks(t.data)
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(e.data)
+      setFieldReports(r.data)
       if (!activeTech && techs.length > 0) setActiveTech(techs[0].id)
       setLoading(false)
     })
@@ -156,6 +160,10 @@ export default function Tasks() {
             onClick={() => { setResetStep(1); setResetConfirmText('') }}
             disabled={resetStep === 2}>
             🗑️ Reset All Tasks
+          </button>
+          <button className="btn btn-outline" style={{ fontSize: 12 }}
+            onClick={() => sendDailySummaryWhatsApp(filterDate || today, tasks, employees, fieldReports)}>
+            📤 Send Daily Summary
           </button>
           <button className="btn btn-primary" onClick={() => setModal(true)}>+ Create Task</button>
         </div>

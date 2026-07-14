@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
 import SearchableSelect from '../../components/SearchableSelect'
+import { sendDailySummaryWhatsApp } from '../../utils/dailySummary'
 
 const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' }
 
@@ -11,6 +12,7 @@ export default function DeskTasks() {
   const [employees, setEmployees] = useState([])
   const [tasks, setTasks] = useState([])
   const [rotationMap, setRotationMap] = useState({})
+  const [fieldReports, setFieldReports] = useState([])
   const [pendingReports, setPendingReports] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [filterEmp, setFilterEmp] = useState('')
@@ -30,6 +32,7 @@ export default function DeskTasks() {
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(techs)
       setTasks(t.data)
+      setFieldReports(r.data)
       // Only reports awaiting review
       setPendingReports(r.data.filter(rp => rp.verification_status === 'pending'))
       // Load rotation info for each technician
@@ -91,6 +94,10 @@ export default function DeskTasks() {
             <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
               onClick={generateDaily} disabled={generating}>
               {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks (5 each)'}
+            </button>
+            <button className="btn btn-outline" style={{ fontSize: 12 }}
+              onClick={() => sendDailySummaryWhatsApp(taskDate, tasks, employees, fieldReports)}>
+              📤 Send Daily Summary
             </button>
             <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Assign Task</button>
           </>}
