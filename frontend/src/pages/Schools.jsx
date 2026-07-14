@@ -173,7 +173,7 @@ export default function Schools() {
                     <option value="">— Select Unit —</option>
                     <option value="1">Unit 1 — Telangana</option>
                     <option value="2">Unit 2 — Andhra Pradesh</option>
-                    <option value="3">Unit 3 — Other States</option>
+                    <option value="3">Unit 3</option>
                   </select>
                 </div>
                 <div className="form-group"><label>Segment / Type</label>

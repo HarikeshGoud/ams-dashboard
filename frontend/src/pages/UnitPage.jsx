@@ -7,7 +7,7 @@ import autoTable from 'jspdf-autotable'
 const UNIT_META = {
   '1': { label: 'Unit 1', state: 'Telangana',       color: '#2563eb', bg: 'rgba(37,99,235,0.08)'  },
   '2': { label: 'Unit 2', state: 'Andhra Pradesh',  color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
-  '3': { label: 'Unit 3', state: 'Other States',    color: '#0891b2', bg: 'rgba(8,145,178,0.08)'  },
+  '3': { label: 'Unit 3', state: '',                color: '#0891b2', bg: 'rgba(8,145,178,0.08)'  },
 }
 
 const SEGMENTS = [
@@ -427,7 +427,7 @@ export default function UnitPage() {
       {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, padding: '16px 20px', background: meta.bg, border: `1px solid ${meta.color}30`, borderLeft: `4px solid ${meta.color}`, borderRadius: 10 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20, color: meta.color }}>{meta.label} — {meta.state}</h2>
+          <h2 style={{ margin: 0, fontSize: 20, color: meta.color }}>{meta.label}{meta.state ? ` — ${meta.state}` : ''}</h2>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Water purifier sites · select a segment and contract type below</div>
         </div>
       </div>

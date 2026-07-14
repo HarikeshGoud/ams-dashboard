@@ -18,7 +18,7 @@ const NAV = [
 const UNITS = [
   { path: '/deskwork/unit/1', icon: '🔵', label: 'Unit 1 — Telangana'      },
   { path: '/deskwork/unit/2', icon: '🟣', label: 'Unit 2 — Andhra Pradesh' },
-  { path: '/deskwork/unit/3', icon: '🔷', label: 'Unit 3 — Other States'   },
+  { path: '/deskwork/unit/3', icon: '🔷', label: 'Unit 3'   },
 ]
 
 export default function DeskworkLayout() {
