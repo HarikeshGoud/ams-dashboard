@@ -8,6 +8,15 @@ const STATUS_CFG = {
   rejected: { label: '❌ Rejected',       color: 'var(--red)',    bg: 'rgba(248,113,113,.1)' },
 }
 
+const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function reimbursementLabel(p) {
+  if (p.status !== 'approved') return null
+  if (p.reimbursement_status === 'paid_separately') return { text: '💰 Repaid', color: 'var(--green)' }
+  if (p.reimbursement_status === 'added_to_salary') return { text: `💰 Added to ${MONTHS[p.reimbursed_month]} ${p.reimbursed_year} salary`, color: 'var(--green)' }
+  return { text: '💰 Repayment Pending', color: 'var(--yellow)' }
+}
+
 function LogPurchaseModal({ onClose, onSaved }) {
   const today = new Date().toISOString().slice(0, 10)
   const [stockItems, setStockItems] = useState([])
@@ -190,6 +199,7 @@ export default function PurchasedStock() {
       ) : (
         purchases.map(p => {
           const sc = STATUS_CFG[p.status] || STATUS_CFG.pending
+          const reimb = reimbursementLabel(p)
           return (
             <div key={p.id} style={{ background: 'var(--surface)', border: `1px solid ${sc.color}`, borderRadius: 10, padding: 14, marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
@@ -214,6 +224,12 @@ export default function PurchasedStock() {
                   ₹{p.amount_paid.toLocaleString('en-IN')}
                 </div>
               </div>
+
+              {reimb && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: reimb.color, marginTop: 8 }}>
+                  {reimb.text}
+                </div>
+              )}
 
               {p.admin_note && (
                 <div style={{ fontSize: 11, color: sc.color, marginTop: 8, background: sc.bg, padding: '5px 10px', borderRadius: 6 }}>

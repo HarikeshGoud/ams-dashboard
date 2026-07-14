@@ -17,23 +17,48 @@ export default function Salary() {
   const [baseSalaries, setBaseSalaries] = useState({})
   const [savingBase, setSavingBase] = useState({})
   const [allowances, setAllowances] = useState([])
+  const [purchases, setPurchases] = useState([])
+  const [includedPurchases, setIncludedPurchases] = useState({}) // empId -> [purchase ids] staged for this override save
   const [tab, setTab] = useState('salary')
 
   const load = async () => {
     setLoading(true)
     setEdits({})
     try {
-      const [sumRes, ovrRes] = await Promise.all([
+      const [sumRes, ovrRes, purRes] = await Promise.all([
         api.get(`/api/attendance/monthly-summary?month=${month}&year=${year}`),
-        api.get(`/api/salary-overrides/?month=${month}&year=${year}`)
+        api.get(`/api/salary-overrides/?month=${month}&year=${year}`),
+        api.get('/api/stock-purchases/')
       ])
       setData(sumRes.data)
       const ovrMap = {}
       ovrRes.data.forEach(o => { ovrMap[o.employee_id] = o })
       setOverrides(ovrMap)
+      setPurchases(purRes.data)
     } finally {
       setLoading(false)
     }
+  }
+
+  const unpaidByEmployee = {}
+  purchases
+    .filter(p => p.status === 'approved' && p.reimbursement_status === 'unpaid')
+    .forEach(p => {
+      if (!unpaidByEmployee[p.employee_id]) unpaidByEmployee[p.employee_id] = []
+      unpaidByEmployee[p.employee_id].push(p)
+    })
+
+  const addReimbursementToOverride = (empId, calcSalary) => {
+    const pending = unpaidByEmployee[empId] || []
+    if (!pending.length) return
+    const reimbTotal = pending.reduce((s, p) => s + p.amount_paid, 0)
+    const base = Number(edits[empId]?.amount) || (overrides[empId] ? overrides[empId].final_amount : calcSalary)
+    const itemList = pending.map(p => `${p.item_name} (₹${p.amount_paid.toLocaleString('en-IN')})`).join(', ')
+    setEdits(d => ({ ...d, [empId]: {
+      amount: String(base + reimbTotal),
+      note: `Includes ₹${reimbTotal.toLocaleString('en-IN')} stock purchase reimbursement: ${itemList}`
+    }}))
+    setIncludedPurchases(m => ({ ...m, [empId]: pending.map(p => p.id) }))
   }
 
   const loadAllowances = async () => {
@@ -55,6 +80,11 @@ export default function Salary() {
         final_amount: Number(edit.amount),
         note: edit.note || null
       })
+      const staged = includedPurchases[empId] || []
+      for (const purchaseId of staged) {
+        await api.patch(`/api/stock-purchases/${purchaseId}/repay`, { method: 'added_to_salary', month, year })
+      }
+      if (staged.length) setIncludedPurchases(m => { const n = { ...m }; delete n[empId]; return n })
       setMsgs(m => ({ ...m, [empId]: '✅ Saved' }))
       setEdits(e => { const n = { ...e }; delete n[empId]; return n })
       await load()
@@ -237,6 +267,21 @@ export default function Salary() {
                         {/* Actions */}
                         <td style={{ padding: '0.6rem 0.8rem', minWidth: 200 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {(unpaidByEmployee[emp.employee_id] || []).length > 0 && (
+                              <div style={{ fontSize: 11, background: '#fef9c3', color: '#92400e', borderRadius: 5, padding: '3px 7px', marginBottom: 2 }}>
+                                💰 ₹{unpaidByEmployee[emp.employee_id].reduce((s, p) => s + p.amount_paid, 0).toLocaleString('en-IN')} pending
+                                ({unpaidByEmployee[emp.employee_id].length} purchase{unpaidByEmployee[emp.employee_id].length > 1 ? 's' : ''})
+                                {!includedPurchases[emp.employee_id] && (
+                                  <button onClick={() => addReimbursementToOverride(emp.employee_id, emp.calculated_salary)}
+                                    style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, background: '#92400e', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 10 }}>
+                                    + Add to payout
+                                  </button>
+                                )}
+                                {includedPurchases[emp.employee_id] && (
+                                  <span style={{ marginLeft: 6, fontWeight: 700 }}>✓ staged — click Override to confirm</span>
+                                )}
+                              </div>
+                            )}
                             <div style={{ display: 'flex', gap: 4 }}>
                               <input type="number"
                                 placeholder={`₹${Number(emp.calculated_salary).toFixed(0)}`}

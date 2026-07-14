@@ -19,6 +19,12 @@ class PurchaseReview(BaseModel):
     status: str  # approved / rejected
     admin_note: Optional[str] = None
 
+class PurchaseRepay(BaseModel):
+    method: str  # paid_separately / added_to_salary
+    note: Optional[str] = None
+    month: Optional[int] = None
+    year: Optional[int] = None
+
 def _fmt(p: StockPurchase, base_url: str = "http://localhost:8000"):
     return {
         "id": p.id,
@@ -36,6 +42,11 @@ def _fmt(p: StockPurchase, base_url: str = "http://localhost:8000"):
         "reviewer_name": p.reviewer.name if p.reviewer else None,
         "reviewed_at": p.reviewed_at.isoformat() if p.reviewed_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
+        "reimbursement_status": p.reimbursement_status or "unpaid",
+        "reimbursed_at": p.reimbursed_at.isoformat() if p.reimbursed_at else None,
+        "reimbursement_note": p.reimbursement_note,
+        "reimbursed_month": p.reimbursed_month,
+        "reimbursed_year": p.reimbursed_year,
     }
 
 @router.post("/")
@@ -143,6 +154,39 @@ def review_purchase(purchase_id: int, data: PurchaseReview, request: Request, db
         type="STOCK_PURCHASE_REVIEWED",
         message=f"Your purchase of {p.quantity} x {p.item_name} (₹{float(p.amount_paid):.0f}) was {data.status} by {user.name}."
         + (f" Note: {data.admin_note}" if data.admin_note else "")
+    ))
+
+    db.commit(); db.refresh(p)
+    base_url = str(request.base_url).rstrip("/")
+    return _fmt(p, base_url=base_url)
+
+@router.patch("/{purchase_id}/repay")
+def repay_purchase(purchase_id: int, data: PurchaseRepay, request: Request, db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
+    if data.method not in ("paid_separately", "added_to_salary"):
+        raise HTTPException(400, "method must be paid_separately or added_to_salary")
+    p = db.query(StockPurchase).filter(StockPurchase.id == purchase_id).first()
+    if not p:
+        raise HTTPException(404, "Not found")
+    if p.status != "approved":
+        raise HTTPException(400, "Only approved purchases can be reimbursed")
+    if p.reimbursement_status != "unpaid":
+        raise HTTPException(400, f"Already {p.reimbursement_status}")
+
+    p.reimbursement_status = data.method
+    p.reimbursement_note = data.note
+    p.reimbursed_at = datetime.utcnow()
+    if data.method == "added_to_salary":
+        p.reimbursed_month = data.month
+        p.reimbursed_year = data.year
+
+    from ..models.notification import Notification
+    how = f"added to your {data.month}/{data.year} salary" if data.method == "added_to_salary" else "paid to you separately"
+    db.add(Notification(
+        recipient_id=p.employee_id,
+        sender_id=user.id,
+        type="STOCK_PURCHASE_REPAID",
+        message=f"Your ₹{float(p.amount_paid):.0f} purchase of {p.item_name} was {how} by {user.name}."
+        + (f" Note: {data.note}" if data.note else "")
     ))
 
     db.commit(); db.refresh(p)

@@ -19,6 +19,13 @@ class StockPurchase(Base):
     reviewed_at     = Column(DateTime, nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow)
 
+    # Reimbursement — separate from approval. Approval credits stock; this tracks repaying the money.
+    reimbursement_status = Column(String(20), default="unpaid")  # unpaid / paid_separately / added_to_salary
+    reimbursed_at         = Column(DateTime, nullable=True)
+    reimbursement_note    = Column(Text, nullable=True)
+    reimbursed_month      = Column(Integer, nullable=True)  # set when added_to_salary
+    reimbursed_year       = Column(Integer, nullable=True)
+
     employee = relationship("Employee", foreign_keys=[employee_id])
     reviewer = relationship("Employee", foreign_keys=[reviewed_by])
     item     = relationship("StockItem", foreign_keys=[item_id])

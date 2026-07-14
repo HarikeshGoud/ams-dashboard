@@ -55,6 +55,13 @@ export default function DeskStock() {
     showToast(status === 'approved' ? '✅ Purchase approved' : '❌ Purchase rejected')
   }
 
+  async function repayPurchase(id, note = '') {
+    await api.patch(`/api/stock-purchases/${id}/repay`, { method: 'paid_separately', note: note || null })
+    setExpandedPurchase(null)
+    load()
+    showToast('💰 Marked as repaid')
+  }
+
   async function distribute(ev) {
     ev.preventDefault()
     try {
@@ -399,6 +406,15 @@ export default function DeskStock() {
                     <div style={{ fontSize: 11, color: cfg.color, marginBottom: 8 }}>📝 {p.admin_note}</div>
                   )}
 
+                  {p.status === 'approved' && (
+                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8,
+                      color: p.reimbursement_status === 'unpaid' ? 'var(--yellow)' : 'var(--green)' }}>
+                      {p.reimbursement_status === 'unpaid' && '💰 Repayment Pending'}
+                      {p.reimbursement_status === 'paid_separately' && `💰 Repaid${p.reimbursement_note ? ` — ${p.reimbursement_note}` : ''}`}
+                      {p.reimbursement_status === 'added_to_salary' && `💰 Added to ${p.reimbursed_month}/${p.reimbursed_year} salary`}
+                    </div>
+                  )}
+
                   {p.status === 'pending' && (
                     <div>
                       {expandedPurchase === p.id && (
@@ -416,6 +432,20 @@ export default function DeskStock() {
                           reviewPurchase(p.id, 'rejected', purchaseNotes[p.id])
                         }}>❌ Reject</button>
                       </div>
+                    </div>
+                  )}
+
+                  {p.status === 'approved' && p.reimbursement_status === 'unpaid' && (
+                    <div>
+                      {expandedPurchase === p.id && (
+                        <input placeholder="How was it repaid? (e.g. cash, UPI)…" value={purchaseNotes[p.id] || ''}
+                          onChange={e => setPurchaseNotes(n => ({ ...n, [p.id]: e.target.value }))}
+                          style={{ marginBottom: 8 }} />
+                      )}
+                      <button className="btn btn-outline btn-sm" onClick={() => {
+                        if (expandedPurchase !== p.id) { setExpandedPurchase(p.id); return }
+                        repayPurchase(p.id, purchaseNotes[p.id])
+                      }}>💰 Mark as Repaid</button>
                     </div>
                   )}
                 </div>
