@@ -20,7 +20,7 @@ const NAV = [
   { path: '/employee/tasks',    icon: '✅', label: 'Tasks'      },
   { path: '/employee/visits',   icon: '🏫', label: 'Visits'     },
   { path: '/employee/travel',   icon: '🚗', label: 'Travel'     },
-  { path: '/employee/billing',  icon: '🧾', label: 'Work Bills' },
+  { path: '/employee/purchases', icon: '🛒', label: 'Purchased Stock' },
   { path: '/employee/salary',   icon: '💰', label: 'Salary'     },
   { path: '/employee/attendance', icon: '📅', label: 'Attendance' },
   { path: '/employee/my-stock',  icon: '🎒', label: 'My Stock'   },

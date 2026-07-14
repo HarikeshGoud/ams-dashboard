@@ -14,6 +14,7 @@ from .routers import notifications, allowances, salary_overrides
 from .routers import amc_reports
 from .routers import service_reports
 from .routers import locations
+from .routers import stock_purchases
 
 
 def _auto_generate_daily_tasks():
@@ -118,6 +119,7 @@ app.include_router(salary_overrides.router)
 app.include_router(amc_reports.router)
 app.include_router(service_reports.router)
 app.include_router(locations.router)
+app.include_router(stock_purchases.router)
 
 @app.get("/")
 def root():

@@ -21,7 +21,7 @@ import EmployeeDashboard from './pages/employee/EmployeeDashboard'
 import MyAttendance from './pages/employee/MyAttendance'
 import MySalary from './pages/employee/MySalary'
 import MyTasks from './pages/employee/MyTasks'
-import MyBilling from './pages/employee/MyBilling'
+import PurchasedStock from './pages/employee/PurchasedStock'
 import MyTravel from './pages/employee/MyTravel'
 import MyVisits from './pages/employee/MyVisits'
 import MyStock from './pages/employee/MyStock'
@@ -87,7 +87,7 @@ export default function App() {
         <Route path="tasks"      element={<MyTasks />} />
         <Route path="visits"     element={<MyVisits />} />
         <Route path="travel"     element={<MyTravel />} />
-        <Route path="billing"    element={<MyBilling />} />
+        <Route path="purchases"  element={<PurchasedStock />} />
         <Route path="salary"     element={<MySalary />} />
         <Route path="attendance" element={<MyAttendance />} />
         <Route path="my-stock"   element={<MyStock />} />
