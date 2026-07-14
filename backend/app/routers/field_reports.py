@@ -283,6 +283,9 @@ def verify_report(report_id: int, req: VerifyRequest, request: Request, db: Sess
     r.verification_note = req.note
     r.verified_at = now_ist() if req.status in ("verified", "rejected") else None
 
+    from .service_reports import sync_verification
+    sync_verification(r.id, req.status, db)
+
     # Sync task status and attendance based on verification result
     if r.task_id:
         from ..models.task import Task

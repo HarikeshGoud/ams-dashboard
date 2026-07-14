@@ -129,20 +129,31 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
                     pass
         return Paragraph("", ps("empty"))
 
-    # ── School stamp ──────────────────────────────────────────────────────────
+    # ── Verification status — gates the stamp; serial_no is assigned separately ─
+    field_report_verified = False
+    if report.field_report_id:
+        from ..models.field_report import FieldReport
+        linked_fr = db.query(FieldReport).filter(FieldReport.id == report.field_report_id).first()
+        if linked_fr and linked_fr.verification_status == "verified":
+            field_report_verified = True
+
+    # ── School stamp — only shown once the underlying proof has been verified ───
     stamp_img = None
+    stamp_placeholder = "(no stamp on file)"
     if report.school_id:
         for ext in ("png", "jpg", "jpeg"):
             sp = os.path.join(UPLOADS_DIR, "stamps", f"{report.school_id}.{ext}")
             if os.path.exists(sp):
-                try:
-                    img = RLImage(sp)
-                    r = min(30*mm / img.imageWidth, 15*mm / img.imageHeight)
-                    img.drawWidth  = img.imageWidth  * r
-                    img.drawHeight = img.imageHeight * r
-                    stamp_img = img
-                except Exception:
-                    pass
+                stamp_placeholder = "(pending verification)"
+                if field_report_verified:
+                    try:
+                        img = RLImage(sp)
+                        r = min(30*mm / img.imageWidth, 15*mm / img.imageHeight)
+                        img.drawWidth  = img.imageWidth  * r
+                        img.drawHeight = img.imageHeight * r
+                        stamp_img = img
+                    except Exception:
+                        pass
                 break
 
     story = []
@@ -183,13 +194,16 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     # ══════════════════════════════════════════════════════════════════════════
     # 2. REPORT META ROW — Report No | Visit Date | Complaint No | Unit Type
     # ══════════════════════════════════════════════════════════════════════════
+    serial_display = report.serial_no if report.serial_no else "PENDING VERIFICATION"
+    serial_color = BLACK if report.serial_no else RED
     meta_data = [[
+        Paragraph(f"<b>Serial No:</b> {serial_display}", ps("m",9,bold=True,color=serial_color)),
         Paragraph(f"<b>Report No:</b> {val(report.report_no)}", ps("m",9)),
         Paragraph(f"<b>Visit Date:</b> {report.report_date}", ps("m",9)),
         Paragraph(f"<b>Complaint No:</b> {val(report.complaint_no)}", ps("m",9)),
         Paragraph(f"<b>Unit Type: {val(report.unit_type)}</b>", ps("m",9,bold=True)),
     ]]
-    meta_tbl = Table(meta_data, colWidths=[PAGE_W*0.22, PAGE_W*0.25, PAGE_W*0.28, PAGE_W*0.25])
+    meta_tbl = Table(meta_data, colWidths=[PAGE_W*0.20, PAGE_W*0.18, PAGE_W*0.20, PAGE_W*0.22, PAGE_W*0.20])
     meta_tbl.setStyle(TableStyle([
         ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
         ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
@@ -309,7 +323,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     cust_val_row = [
         Paragraph(f"{val(report.principal_name)}\n{val(report.customer_mobile)}", ps("cv2",9)),
         sig_img(report.principal_signature, 55*mm, 20*mm),
-        stamp_img if stamp_img else Paragraph("(no stamp)", ps("ns",8,color=BORDER)),
+        stamp_img if stamp_img else Paragraph(stamp_placeholder, ps("ns",8,color=BORDER)),
     ]
     sig_tbl = Table([cust_lbl_row, cust_val_row],
                     colWidths=[PAGE_W*0.33, PAGE_W*0.37, PAGE_W*0.30])
@@ -401,6 +415,7 @@ def _fmt(r: ServiceReport, base_url: str = ""):
         "employee_name":      r.employee.name if r.employee else None,
         "report_date":        r.report_date.isoformat() if r.report_date else None,
         "report_no":          r.report_no,
+        "serial_no":          r.serial_no,
         "complaint_no":       r.complaint_no,
         "unit_type":          r.unit_type,
         "problem_description":r.problem_description,
@@ -427,6 +442,25 @@ def _fmt(r: ServiceReport, base_url: str = ""):
         "pdf_url":            f"{base_url}/uploads/{r.pdf_path}" if r.pdf_path else None,
         "created_at":         r.created_at.isoformat() if r.created_at else None,
     }
+
+
+def sync_verification(field_report_id: int, verification_status: str, db: Session) -> None:
+    """Called whenever a FieldReport's verification_status changes.
+    Assigns a permanent unique serial number the first time a report is verified,
+    then regenerates the PDF so the school stamp only appears while currently verified."""
+    report = db.query(ServiceReport).filter(ServiceReport.field_report_id == field_report_id).first()
+    if not report:
+        return
+    if verification_status == "verified" and not report.serial_no:
+        count = db.query(ServiceReport).filter(ServiceReport.serial_no.isnot(None)).count()
+        report.serial_no = f"SR-{str(count + 1).zfill(6)}"
+        db.flush()
+    try:
+        pdf_rel = _generate_pdf(report, db)
+        if pdf_rel:
+            report.pdf_path = pdf_rel
+    except Exception as e:
+        print(f"PDF regeneration error (non-fatal): {e}")
 
 
 @router.post("/")

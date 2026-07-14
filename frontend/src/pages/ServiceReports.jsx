@@ -68,13 +68,22 @@ export default function ServiceReports() {
                   {r.principal_name && <> · 🧑‍💼 {r.principal_name}</>}
                 </div>
               </div>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
-                background: r.pdf_url ? 'rgba(52,211,153,.15)' : 'rgba(251,191,36,.15)',
-                color: r.pdf_url ? 'var(--green)' : 'var(--yellow)'
-              }}>
-                {r.pdf_url ? '✅ PDF Ready' : '⏳ No PDF'}
-              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
+                  background: r.pdf_url ? 'rgba(52,211,153,.15)' : 'rgba(251,191,36,.15)',
+                  color: r.pdf_url ? 'var(--green)' : 'var(--yellow)'
+                }}>
+                  {r.pdf_url ? '✅ PDF Ready' : '⏳ No PDF'}
+                </span>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
+                  background: r.serial_no ? 'rgba(52,211,153,.15)' : 'rgba(148,163,184,.15)',
+                  color: r.serial_no ? 'var(--green)' : 'var(--muted)'
+                }}>
+                  {r.serial_no ? `🔖 ${r.serial_no}` : '🔖 Pending verification'}
+                </span>
+              </div>
             </div>
 
             {/* Work summary */}

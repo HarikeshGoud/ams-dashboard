@@ -20,6 +20,7 @@ class ServiceReport(Base):
     voltage              = Column(Float, nullable=True)
     flow_rate            = Column(Float, nullable=True)
     report_no            = Column(String(50),  nullable=True)
+    serial_no            = Column(String(30),  nullable=True, unique=True)  # auto-assigned once verified/approved
     complaint_no         = Column(String(50),  nullable=True)
     unit_type            = Column(String(30),  default="AMC")
     plant_capacity       = Column(String(100), nullable=True)

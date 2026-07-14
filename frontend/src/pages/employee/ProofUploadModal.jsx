@@ -627,7 +627,10 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 <div style={{ textAlign: 'center', padding: '16px 0' }}>
                   <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
                   <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Service Report Generated!</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>PDF is ready with signatures and school stamp.</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>PDF is ready with signatures.</div>
+                  <div style={{ fontSize: 11, color: 'var(--yellow)', background: 'rgba(251,191,36,.1)', border: '1px solid var(--yellow)', borderRadius: 8, padding: '8px 12px', marginBottom: 16, textAlign: 'left' }}>
+                    🔖 The official site stamp and serial number will be added automatically once your proof is verified by admin/deskwork.
+                  </div>
                   <a href={pdfUrl} target="_blank" rel="noreferrer"
                     style={{ display: 'inline-block', padding: '10px 24px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13, textDecoration: 'none', marginBottom: 12 }}>
                     📄 Download PDF
