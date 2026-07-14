@@ -12,11 +12,14 @@ export default function Stock() {
   const [empStock, setEmpStock]       = useState([])
   const [employees, setEmployees]     = useState([])
   const [schools, setSchools]         = useState([])
+  const [purchases, setPurchases]     = useState([])
   const [loading, setLoading]         = useState(true)
-  const [tab, setTab]                 = useState('inventory')   // inventory | ledger | distribute | emp-stock
+  const [tab, setTab]                 = useState('inventory')   // inventory | ledger | distribute | emp-stock | purchases
   const [expandedTech, setExpandedTech] = useState(null)
   const [techProofs, setTechProofs]     = useState({})   // { [emp_id]: reports[] }
   const [lightbox, setLightbox]         = useState(null) // url string
+  const [expandedPurchase, setExpandedPurchase] = useState(null)
+  const [purchaseNotes, setPurchaseNotes]       = useState({})
   const [modal, setModal]             = useState(null)
   const [editItem, setEditItem]       = useState(null)
   const [itemForm, setItemForm]       = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
@@ -34,15 +37,31 @@ export default function Stock() {
       api.get('/api/stock/employee-stock'),
       api.get('/api/employees/'),
       api.get('/api/schools/?limit=200'),
-    ]).then(([it, lg, dist, es, emp, sch]) => {
+      api.get('/api/stock-purchases/'),
+    ]).then(([it, lg, dist, es, emp, sch, pu]) => {
       setItems(it.data)
       setLedger(lg.data)
       setDist(dist.data)
       setEmpStock(es.data)
       setEmployees(emp.data || [])
       setSchools(sch.data?.items || sch.data || [])
+      setPurchases(pu.data || [])
       setLoading(false)
     }).catch(() => setLoading(false))
+  }
+
+  async function reviewPurchase(id, status, note = '') {
+    await api.patch(`/api/stock-purchases/${id}`, { status, admin_note: note || null })
+    setExpandedPurchase(null)
+    load()
+    showToast(status === 'approved' ? '✅ Purchase approved' : '❌ Purchase rejected')
+  }
+
+  async function repayPurchase(id, note = '') {
+    await api.patch(`/api/stock-purchases/${id}/repay`, { method: 'paid_separately', note: note || null })
+    setExpandedPurchase(null)
+    load()
+    showToast('💰 Marked as repaid')
   }
 
   useEffect(() => { load() }, [])
@@ -140,10 +159,13 @@ export default function Stock() {
   })
   const techList = Object.values(techMap)
 
+  const pendingPurchases = purchases.filter(p => p.status === 'pending')
+
   const TABS = [
     { key: 'inventory',  label: '📦 Inventory' },
     { key: 'distribute', label: '📤 Distribute' },
     { key: 'emp-stock',  label: `👁 Usage Monitor${techList.length ? ` (${techList.length})` : ''}` },
+    { key: 'purchases',  label: `🛒 Purchased Stock${pendingPurchases.length ? ` (${pendingPurchases.length})` : ''}` },
     { key: 'ledger',     label: '📋 Ledger' },
   ]
 
@@ -412,6 +434,92 @@ export default function Stock() {
       )}
 
       {/* ── LEDGER TAB ────────────────────────────────────────────── */}
+      {tab === 'purchases' && (
+        <div className="card">
+          <div className="card-title">Technician-Purchased Stock — Review &amp; Approve</div>
+          {purchases.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 30, color: 'var(--muted)' }}>No purchases logged yet.</div>
+          ) : (
+            purchases.map(p => {
+              const cfg = {
+                pending:  { color: 'var(--yellow)', bg: 'rgba(251,191,36,.1)',  label: '⏳ Pending' },
+                approved: { color: 'var(--green)',  bg: 'rgba(52,211,153,.1)',  label: '✅ Approved' },
+                rejected: { color: 'var(--red)',     bg: 'rgba(248,113,113,.1)', label: '❌ Rejected' },
+              }[p.status]
+              return (
+                <div key={p.id} style={{ background: 'var(--surface2)', border: `1px solid ${cfg.color}`, borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{p.employee_name} <span style={{ fontWeight: 400, color: 'var(--muted)' }}>bought</span> {p.item_name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                        {p.quantity} unit{p.quantity > 1 ? 's' : ''} · ₹{p.amount_paid.toLocaleString('en-IN')} · 📅 {p.purchase_date}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 8, background: cfg.bg, color: cfg.color, alignSelf: 'flex-start', whiteSpace: 'nowrap' }}>
+                      {cfg.label}
+                    </span>
+                  </div>
+
+                  {p.bill_photo_url && (
+                    <div style={{ marginBottom: 8 }}>
+                      <img src={p.bill_photo_url} alt="bill" onClick={() => setLightbox(p.bill_photo_url)}
+                        style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }} />
+                    </div>
+                  )}
+
+                  {p.admin_note && (
+                    <div style={{ fontSize: 11, color: cfg.color, marginBottom: 8 }}>📝 {p.admin_note}</div>
+                  )}
+
+                  {p.status === 'approved' && (
+                    <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 8,
+                      color: p.reimbursement_status === 'unpaid' ? 'var(--yellow)' : 'var(--green)' }}>
+                      {p.reimbursement_status === 'unpaid' && '💰 Repayment Pending'}
+                      {p.reimbursement_status === 'paid_separately' && `💰 Repaid${p.reimbursement_note ? ` — ${p.reimbursement_note}` : ''}`}
+                      {p.reimbursement_status === 'added_to_salary' && `💰 Added to ${p.reimbursed_month}/${p.reimbursed_year} salary`}
+                    </div>
+                  )}
+
+                  {p.status === 'pending' && (
+                    <div>
+                      {expandedPurchase === p.id && (
+                        <input placeholder="Optional note…" value={purchaseNotes[p.id] || ''}
+                          onChange={e => setPurchaseNotes(n => ({ ...n, [p.id]: e.target.value }))}
+                          style={{ marginBottom: 8 }} />
+                      )}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-green btn-sm" onClick={() => {
+                          if (expandedPurchase !== p.id) { setExpandedPurchase(p.id); return }
+                          reviewPurchase(p.id, 'approved', purchaseNotes[p.id])
+                        }}>✅ Approve</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => {
+                          if (expandedPurchase !== p.id) { setExpandedPurchase(p.id); return }
+                          reviewPurchase(p.id, 'rejected', purchaseNotes[p.id])
+                        }}>❌ Reject</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {p.status === 'approved' && p.reimbursement_status === 'unpaid' && (
+                    <div>
+                      {expandedPurchase === p.id && (
+                        <input placeholder="How was it repaid? (e.g. cash, UPI)…" value={purchaseNotes[p.id] || ''}
+                          onChange={e => setPurchaseNotes(n => ({ ...n, [p.id]: e.target.value }))}
+                          style={{ marginBottom: 8 }} />
+                      )}
+                      <button className="btn btn-outline btn-sm" onClick={() => {
+                        if (expandedPurchase !== p.id) { setExpandedPurchase(p.id); return }
+                        repayPurchase(p.id, purchaseNotes[p.id])
+                      }}>💰 Mark as Repaid</button>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
       {tab === 'ledger' && (
         <div className="card">
           <div className="card-title">Stock Ledger</div>

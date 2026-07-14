@@ -19,7 +19,7 @@ export default function EmployeeDashboard() {
   function load() {
     const todayIso = new Date().toISOString().slice(0, 10)
     Promise.all([
-      api.get('/api/tasks/my-tasks'),
+      api.get('/api/tasks/my-tasks/all'),
       api.get('/api/field-reports/'),
       api.get('/api/attendance/', { params: { employee_id: myId } })
     ]).then(([t, r, a]) => {
@@ -47,7 +47,10 @@ export default function EmployeeDashboard() {
 
   const todayIso = new Date().toISOString().slice(0, 10)
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const overdueCount = tasks.filter(t => t.due_date && t.due_date < todayIso).length
+  // tasks holds every status (needed to resume Step 3 on already-submitted tasks) —
+  // the "My Tasks" list itself only shows actionable ones.
+  const activeTasks = tasks.filter(t => ['pending', 'in_progress'].includes(t.status))
+  const overdueCount = activeTasks.filter(t => t.due_date && t.due_date < todayIso).length
   const todayReports = submittedToday.filter(r => r.report_date === todayIso)
   // accepted = verified by school/admin; submitted = proof uploaded but not yet verified
   const acceptedTaskIds = new Set(submittedToday.filter(r => r.verification_status === 'verified').map(r => r.task_id))
@@ -67,7 +70,7 @@ export default function EmployeeDashboard() {
         <div style={{ marginTop: 10, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 13 }}>
             <span style={{ color: 'var(--muted)' }}>Pending tasks: </span>
-            <span style={{ fontWeight: 700, color: tasks.length > 0 ? 'var(--yellow)' : 'var(--green)' }}>{tasks.length}</span>
+            <span style={{ fontWeight: 700, color: activeTasks.length > 0 ? 'var(--yellow)' : 'var(--green)' }}>{activeTasks.length}</span>
           </div>
           <div style={{ fontSize: 13 }}>
             <span style={{ color: 'var(--muted)' }}>Submitted today: </span>
@@ -114,7 +117,7 @@ export default function EmployeeDashboard() {
         My Tasks
       </div>
 
-      {tasks.length === 0 && (
+      {activeTasks.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: 40 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>All tasks done for today!</div>
@@ -122,7 +125,7 @@ export default function EmployeeDashboard() {
         </div>
       )}
 
-      {tasks.map(task => {
+      {activeTasks.map(task => {
         const accepted  = acceptedTaskIds.has(task.id)
         const submitted = !accepted && submittedTaskIds.has(task.id)
         const overdue   = !accepted && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
