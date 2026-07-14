@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
+import CameraCapture from '../../components/CameraCapture'
 
 const STATUS_CFG = {
   pending:  { label: '⏳ Pending Review', color: 'var(--yellow)', bg: 'rgba(251,191,36,.1)' },
@@ -17,6 +18,7 @@ function LogPurchaseModal({ onClose, onSaved }) {
   const [purchaseDate, setPurchaseDate] = useState(today)
   const [billPhoto, setBillPhoto] = useState(null)
   const [billPreview, setBillPreview] = useState(null)
+  const [showCamera, setShowCamera] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -24,11 +26,10 @@ function LogPurchaseModal({ onClose, onSaved }) {
     api.get('/api/stock/items').then(r => setStockItems(r.data || [])).catch(() => setStockItems([]))
   }, [])
 
-  function handlePhoto(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  function handleCaptured(file, url) {
     setBillPhoto(file)
-    setBillPreview(URL.createObjectURL(file))
+    setBillPreview(url)
+    setShowCamera(false)
   }
 
   async function submit() {
@@ -103,18 +104,24 @@ function LogPurchaseModal({ onClose, onSaved }) {
           {billPreview ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <img src={billPreview} alt="bill" style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
-              <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>
-                Retake
-                <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: 'none' }} />
-              </label>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowCamera(true)}>Retake</button>
             </div>
           ) : (
-            <label className="btn btn-outline" style={{ cursor: 'pointer', textAlign: 'center', display: 'block' }}>
-              📷 Take / Upload Bill Photo
-              <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: 'none' }} />
-            </label>
+            <button type="button" className="btn btn-outline" style={{ width: '100%' }} onClick={() => setShowCamera(true)}>
+              📷 Open Camera — Take Bill Photo
+            </button>
           )}
         </div>
+
+        {showCamera && (
+          <CameraCapture
+            gps={null}
+            siteName={null}
+            showGps={false}
+            onCapture={handleCaptured}
+            onClose={() => setShowCamera(false)}
+          />
+        )}
 
         {error && <div className="alert alert-red" style={{ marginBottom: 12 }}><span>⚠️</span><div>{error}</div></div>}
 
