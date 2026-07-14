@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
 import ProofUploadModal from './ProofUploadModal'
+import SearchableSelect from '../../components/SearchableSelect'
 
 function StartVisitModal({ onClose, onStarted, employeeId }) {
   const today = new Date().toISOString().slice(0, 10)
@@ -46,10 +47,8 @@ function StartVisitModal({ onClose, onStarted, employeeId }) {
 
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label>School *</label>
-          <select value={schoolId} onChange={e => setSchoolId(e.target.value)}>
-            <option value="">Select school…</option>
-            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <SearchableSelect value={schoolId} onChange={setSchoolId} placeholder="Select school…"
+            options={schools.map(s => ({ value: String(s.id), label: s.name }))} />
         </div>
 
         <div className="form-group" style={{ marginBottom: 16 }}>

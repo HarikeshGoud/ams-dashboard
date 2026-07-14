@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 export default function Schools() {
   const [data, setData] = useState({ items: [], total: 0 })
@@ -108,14 +109,12 @@ export default function Schools() {
       </div>
       <div className="filter-bar">
         <input placeholder="Search school..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ minWidth: 180 }} />
-        <select value={mandalFilter} onChange={e => { setMandalFilter(e.target.value); setTechFilter(''); setPage(1) }}>
-          <option value="">All Mandals</option>
-          {mandals.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-        <select value={techFilter} onChange={e => { setTechFilter(e.target.value); setMandalFilter(''); setPage(1) }}>
-          <option value="">All Technicians</option>
-          {technicians.map(t => <option key={t.id} value={t.id}>{t.name} ({t.employee_code})</option>)}
-        </select>
+        <SearchableSelect value={mandalFilter} onChange={val => { setMandalFilter(val); setTechFilter(''); setPage(1) }}
+          placeholder="All Mandals" options={mandals.map(m => ({ value: String(m.id), label: m.name }))}
+          style={{ minWidth: 180, display: 'inline-block' }} />
+        <SearchableSelect value={techFilter} onChange={val => { setTechFilter(val); setMandalFilter(''); setPage(1) }}
+          placeholder="All Technicians" options={technicians.map(t => ({ value: String(t.id), label: `${t.name} (${t.employee_code})` }))}
+          style={{ minWidth: 200, display: 'inline-block' }} />
       </div>
       <div className="card">
         {loading ? <div className="spinner" /> : (
@@ -163,10 +162,8 @@ export default function Schools() {
               <div className="form-grid">
                 <div className="form-group form-full"><label>School Name *</label><input required value={form.name} onChange={f('name')} /></div>
                 <div className="form-group"><label>Client</label>
-                  <select value={form.client_id} onChange={f('client_id')}>
-                    <option value="">Select client...</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.client_id} onChange={val => setForm({ ...form, client_id: val })}
+                    placeholder="Select client…" options={clients.map(c => ({ value: String(c.id), label: c.name }))} />
                 </div>
                 <div className="form-group"><label>Unit (State)</label>
                   <select value={form.unit_number} onChange={f('unit_number')}>
@@ -196,10 +193,8 @@ export default function Schools() {
                   </select>
                 </div>
                 <div className="form-group"><label>Mandal</label>
-                  <select value={form.mandal} onChange={f('mandal')}>
-                    <option value="">Select mandal...</option>
-                    {mandals.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.mandal} onChange={val => setForm({ ...form, mandal: val })}
+                    placeholder="Select mandal…" options={mandals.map(m => ({ value: m.name, label: m.name }))} />
                 </div>
                 <div className="form-group"><label>Capacity</label><input value={form.capacity} onChange={f('capacity')} placeholder="e.g. 1000 LPH" /></div>
                 <div className="form-group form-full"><label>Plant Model</label><input value={form.plant_model} onChange={f('plant_model')} /></div>

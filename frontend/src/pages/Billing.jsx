@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -39,6 +40,7 @@ export default function Billing() {
 
   async function save(ev) {
     ev.preventDefault()
+    if (!form.client_id) { showToast('❌ Select a client'); return }
     await api.post('/api/billing/', { ...form, client_id: parseInt(form.client_id), gst_percent: parseFloat(form.gst_percent), line_items: lines.map(l => ({ description: l.description, quantity: parseInt(l.quantity), unit_price: parseFloat(l.unit_price) })) })
     load(); setModal(false); showToast('Invoice created!')
   }
@@ -99,10 +101,8 @@ export default function Billing() {
             <form onSubmit={save}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Client *</label>
-                  <select required value={form.client_id} onChange={f('client_id')}>
-                    <option value="">Select client...</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.client_id} onChange={val => setForm({ ...form, client_id: val })}
+                    placeholder="Select client…" options={clients.map(c => ({ value: String(c.id), label: c.name }))} />
                 </div>
                 <div className="form-group"><label>Invoice Date</label><input type="date" value={form.invoice_date} onChange={f('invoice_date')} /></div>
                 <div className="form-group"><label>Due Date</label><input type="date" value={form.due_date} onChange={f('due_date')} /></div>
@@ -120,33 +120,12 @@ export default function Billing() {
                   <div key={i} style={{ marginBottom: 10, padding: '10px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
                     {/* Grouped stock picker */}
                     <div style={{ marginBottom: 6 }}>
-                      <select onChange={e => pickStockItem(i, e.target.value)} defaultValue=""
-                        style={{ width: '100%', borderRadius: 6, padding: '6px 8px', fontSize: 12 }}>
-                        <option value="">📋 Pick from approved price list (auto-fills price)…</option>
-                        <optgroup label={`── ${CAT_A} ──`}>
-                          {stockItems.filter(s => s.category === CAT_A).map(s => (
-                            <option key={s.id} value={s.id}>
-                              {s.name} — ₹{(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/{s.unit}
-                            </option>
-                          ))}
-                        </optgroup>
-                        <optgroup label={`── ${CAT_B} ──`}>
-                          {stockItems.filter(s => s.category === CAT_B).map(s => (
-                            <option key={s.id} value={s.id}>
-                              {s.name} — ₹{(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/{s.unit}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {stockItems.filter(s => s.category !== CAT_A && s.category !== CAT_B).length > 0 && (
-                          <optgroup label="── Other ──">
-                            {stockItems.filter(s => s.category !== CAT_A && s.category !== CAT_B).map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.name} — ₹{(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/{s.unit}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </select>
+                      <SearchableSelect value="" onChange={val => pickStockItem(i, val)}
+                        placeholder="📋 Pick from approved price list (auto-fills price)…"
+                        options={stockItems.map(s => ({
+                          value: String(s.id),
+                          label: `[${s.category === CAT_A ? CAT_A : s.category === CAT_B ? CAT_B : 'Other'}] ${s.name} — ₹${(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/${s.unit}`
+                        }))} />
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 100px 30px', gap: 6 }}>
                       <input placeholder="Description (or type custom)" value={l.description}

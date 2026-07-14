@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 export default function Employees() {
   const [employees, setEmployees] = useState([])
@@ -99,10 +100,9 @@ export default function Employees() {
                 </div>
                 <div className="form-group"><label>Designation</label><input value={form.designation} onChange={e => setForm({...form, designation: e.target.value})} /></div>
                 <div className="form-group form-full"><label>Mandal</label>
-                  <select value={form.mandal_id} onChange={e => setForm({...form, mandal_id: e.target.value})}>
-                    <option value="">Select mandal...</option>
-                    {mandals.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.mandal_id} onChange={val => setForm({...form, mandal_id: val})}
+                    placeholder="Select mandal…"
+                    options={mandals.map(m => ({ value: String(m.id), label: m.name }))} />
                 </div>
               </div>
               <div className="mt-16 flex gap-8">

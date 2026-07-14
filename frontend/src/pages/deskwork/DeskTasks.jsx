@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
+import SearchableSelect from '../../components/SearchableSelect'
 
 const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' }
 
@@ -133,10 +134,13 @@ export default function DeskTasks() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="date" value={taskDate} onChange={e => setTaskDate(e.target.value)}
           style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }} />
-        <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}>
-          <option value="">All Employees</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
-        </select>
+        <SearchableSelect
+          value={filterEmp}
+          onChange={setFilterEmp}
+          placeholder="All Employees"
+          options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
+          style={{ minWidth: 200 }}
+        />
         <button className="btn btn-outline" style={{ fontSize: 12 }} onClick={() => {
           api.post('/api/tasks/auto-attendance', null, { params: { task_date: taskDate } })
             .then(r => showToast(`✅ Attendance calculated for ${r.data.processed} employees`))
@@ -400,10 +404,12 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <div className="form-group" style={{ flex: 2 }}>
             <label>Assign To *</label>
-            <select value={empId} onChange={e => setEmpId(e.target.value)}>
-              <option value="">Select employee…</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
-            </select>
+            <SearchableSelect
+              value={empId}
+              onChange={setEmpId}
+              placeholder="Select employee…"
+              options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
+            />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
             <label>Date</label>
@@ -473,10 +479,12 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
           <div className="form-group" style={{ flex: 2 }}>
             <label>School (optional)</label>
-            <select value={form.school_id} onChange={e => set('school_id', e.target.value)}>
-              <option value="">Select school…</option>
-              {mandalSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.school_id}
+              onChange={val => set('school_id', val)}
+              placeholder="Select school…"
+              options={mandalSchools.map(s => ({ value: String(s.id), label: s.name }))}
+            />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
             <label>Priority</label>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
+import SearchableSelect from '../../components/SearchableSelect'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -64,6 +65,7 @@ export default function DeskStock() {
 
   async function distribute(ev) {
     ev.preventDefault()
+    if (!distForm.item_id || !distForm.employee_id) { showToast('❌ Select an item and technician'); return }
     try {
       await api.post('/api/stock/distribute', {
         item_id: parseInt(distForm.item_id),
@@ -545,12 +547,9 @@ export default function DeskStock() {
             <form onSubmit={distribute}>
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Item *</label>
-                <select required value={distForm.item_id} onChange={e => setDistForm({...distForm, item_id: e.target.value})}>
-                  <option value="">Select item...</option>
-                  {items.filter(i => (i.office_qty || i.quantity || 0) > 0).map(i => (
-                    <option key={i.id} value={i.id}>{i.name} — {i.office_qty || i.quantity} {i.unit} in office</option>
-                  ))}
-                </select>
+                <SearchableSelect value={distForm.item_id} onChange={val => setDistForm({...distForm, item_id: val})}
+                  placeholder="Select item…"
+                  options={items.filter(i => (i.office_qty || i.quantity || 0) > 0).map(i => ({ value: String(i.id), label: `${i.name} — ${i.office_qty || i.quantity} ${i.unit} in office` }))} />
               </div>
               {selectedItem && (
                 <div style={{ background: 'rgba(59,130,246,.1)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 12 }}>
@@ -559,12 +558,9 @@ export default function DeskStock() {
               )}
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Technician *</label>
-                <select required value={distForm.employee_id} onChange={e => setDistForm({...distForm, employee_id: e.target.value})}>
-                  <option value="">Select technician...</option>
-                  {employees.filter(e => e.role === 'technician').map(e => (
-                    <option key={e.id} value={e.id}>{e.name} ({e.employee_code || 'no code'})</option>
-                  ))}
-                </select>
+                <SearchableSelect value={distForm.employee_id} onChange={val => setDistForm({...distForm, employee_id: val})}
+                  placeholder="Select technician…"
+                  options={employees.filter(e => e.role === 'technician').map(e => ({ value: String(e.id), label: `${e.name} (${e.employee_code || 'no code'})` }))} />
               </div>
               <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
                 <div className="form-group" style={{ flex: 1 }}>

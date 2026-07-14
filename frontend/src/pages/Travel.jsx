@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 const STATUS_COLOR = { pending: 'var(--yellow)', approved: 'var(--green)', rejected: 'var(--red)' }
 
@@ -142,11 +143,9 @@ export default function Travel() {
 
       {/* Filter */}
       <div style={{ marginBottom: 12 }}>
-        <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}
-          style={{ padding: '6px 10px', borderRadius: 8, fontSize: 13 }}>
-          <option value="">All Technicians</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
-        </select>
+        <SearchableSelect value={filterEmp} onChange={setFilterEmp} placeholder="All Technicians"
+          options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
+          style={{ minWidth: 200, display: 'inline-block' }} />
       </div>
 
       {/* Trip cards */}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
+import SearchableSelect from '../../components/SearchableSelect'
 
 export default function MyStock() {
   const [data, setData]       = useState(null)
@@ -30,6 +31,7 @@ export default function MyStock() {
 
   async function submitReturn(ev) {
     ev.preventDefault()
+    if (!form.item_id) { showToast('❌ Select an item'); return }
     try {
       await api.post('/api/stock/return', {
         item_id: parseInt(form.item_id),
@@ -43,6 +45,7 @@ export default function MyStock() {
 
   async function submitInstall(ev) {
     ev.preventDefault()
+    if (!form.item_id) { showToast('❌ Select an item'); return }
     try {
       await api.post('/api/stock/install', {
         item_id: parseInt(form.item_id),
@@ -216,10 +219,9 @@ export default function MyStock() {
             <form onSubmit={submitReturn}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <select required value={form.item_id} onChange={e => setForm({...form, item_id: e.target.value})}>
-                    <option value="">Select item...</option>
-                    {inHand.map(s => <option key={s.item_id} value={s.item_id}>{s.item_name} — {s.qty_in_hand} {s.unit} in hand</option>)}
-                  </select>
+                  <SearchableSelect value={form.item_id} onChange={val => setForm({...form, item_id: val})}
+                    placeholder="Select item…"
+                    options={inHand.map(s => ({ value: String(s.item_id), label: `${s.item_name} — ${s.qty_in_hand} ${s.unit} in hand` }))} />
                 </div>
                 {inHandItem && (
                   <div className="form-group form-full">
@@ -255,10 +257,9 @@ export default function MyStock() {
             <form onSubmit={submitInstall}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <select required value={form.item_id} onChange={e => setForm({...form, item_id: e.target.value})}>
-                    <option value="">Select item...</option>
-                    {inHand.map(s => <option key={s.item_id} value={s.item_id}>{s.item_name} — {s.qty_in_hand} {s.unit} in hand</option>)}
-                  </select>
+                  <SearchableSelect value={form.item_id} onChange={val => setForm({...form, item_id: val})}
+                    placeholder="Select item…"
+                    options={inHand.map(s => ({ value: String(s.item_id), label: `${s.item_name} — ${s.qty_in_hand} ${s.unit} in hand` }))} />
                 </div>
                 {inHandItem && (
                   <div className="form-group form-full">
@@ -272,10 +273,9 @@ export default function MyStock() {
                     onChange={e => setForm({...form, quantity: e.target.value})} />
                 </div>
                 <div className="form-group form-full"><label>School / Site</label>
-                  <select value={form.school_dest} onChange={e => setForm({...form, school_dest: e.target.value})}>
-                    <option value="">— Select School —</option>
-                    {schools.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.school_dest} onChange={val => setForm({...form, school_dest: val})}
+                    placeholder="— Select School —"
+                    options={schools.map(s => ({ value: s.name, label: s.name }))} />
                 </div>
                 <div className="form-group form-full"><label>Note</label>
                   <input value={form.note} onChange={e => setForm({...form, note: e.target.value})} placeholder="What was installed..." />

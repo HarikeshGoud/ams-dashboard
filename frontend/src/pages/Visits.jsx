@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 export default function Visits() {
   const [visits, setVisits] = useState([])
@@ -25,6 +26,7 @@ export default function Visits() {
 
   async function save(ev) {
     ev.preventDefault()
+    if (!form.employee_id || !form.school_id) { showToast('❌ Select employee and school'); return }
     await api.post('/api/visits/', {
       ...form, school_id: parseInt(form.school_id), employee_id: parseInt(form.employee_id),
       tds_reading: form.tds_reading ? parseFloat(form.tds_reading) : null,
@@ -82,16 +84,12 @@ export default function Visits() {
             <form onSubmit={save}>
               <div className="form-grid">
                 <div className="form-group"><label>Employee *</label>
-                  <select required value={form.employee_id} onChange={f('employee_id')}>
-                    <option value="">Select...</option>
-                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.employee_id} onChange={val => setForm({ ...form, employee_id: val })}
+                    placeholder="Select…" options={employees.map(e => ({ value: String(e.id), label: e.name }))} />
                 </div>
                 <div className="form-group"><label>School *</label>
-                  <select required value={form.school_id} onChange={f('school_id')}>
-                    <option value="">Select...</option>
-                    {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.school_id} onChange={val => setForm({ ...form, school_id: val })}
+                    placeholder="Select…" options={schools.map(s => ({ value: String(s.id), label: s.name }))} />
                 </div>
                 <div className="form-group"><label>Date *</label><input type="date" required value={form.visit_date} onChange={f('visit_date')} /></div>
                 <div className="form-group"><label>Type</label>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 const PRIORITY_PILL = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
 const STATUS_PILL   = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
@@ -63,6 +64,7 @@ export default function Tasks() {
 
   async function save(ev) {
     ev.preventDefault()
+    if (!form.assigned_to_id) { showToast('❌ Select who to assign this to'); return }
     await api.post('/api/tasks/', { ...form, assigned_to_id: parseInt(form.assigned_to_id) })
     load(); setModal(false); showToast('Task created!')
   }
@@ -334,12 +336,9 @@ export default function Tasks() {
                 <div className="form-group form-full"><label>Title *</label><input required value={form.title} onChange={f('title')} /></div>
                 <div className="form-group form-full"><label>Description</label><textarea value={form.description} onChange={f('description')} /></div>
                 <div className="form-group"><label>Assign To *</label>
-                  <select required value={form.assigned_to_id} onChange={f('assigned_to_id')}>
-                    <option value="">Select...</option>
-                    {employees.filter(e => e.role === 'technician').map(e => (
-                      <option key={e.id} value={e.id}>{e.name} ({e.employee_code})</option>
-                    ))}
-                  </select>
+                  <SearchableSelect value={form.assigned_to_id} onChange={val => setForm({ ...form, assigned_to_id: val })}
+                    placeholder="Select…"
+                    options={employees.filter(e => e.role === 'technician').map(e => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` }))} />
                 </div>
                 <div className="form-group"><label>Priority</label>
                   <select value={form.priority} onChange={f('priority')}>

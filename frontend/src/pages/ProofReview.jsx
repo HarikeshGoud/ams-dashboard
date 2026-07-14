@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 const STATUS_CONFIG = {
   pending:  { label: 'Awaiting Verification', color: 'var(--yellow)',  bg: 'rgba(251,191,36,.12)',  icon: '⏳' },
@@ -155,10 +156,9 @@ export default function ProofReview() {
 
       {/* Filters */}
       <div className="filter-bar" style={{ marginBottom: 16 }}>
-        <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}>
-          <option value="">All Employees</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
-        </select>
+        <SearchableSelect value={filterEmp} onChange={setFilterEmp} placeholder="All Employees"
+          options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
+          style={{ minWidth: 220 }} />
       </div>
 
       {filtered.length === 0 && (
