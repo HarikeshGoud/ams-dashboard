@@ -1,6 +1,7 @@
 // Builds a WhatsApp-ready daily task summary. Only technicians who completed
 // at least one task get a section, listing just the work they finished —
 // pending/incomplete tasks are left out entirely.
+
 export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
   const techs = employees.filter(e => e.role === 'technician')
   const reportsByTaskId = {}
