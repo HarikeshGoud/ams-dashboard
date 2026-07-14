@@ -351,8 +351,11 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!empId) return
     api.get('/api/schools/', { params: { limit: 300 } }).then(r => setSchools(r.data?.items || []))
+  }, [])
+
+  useEffect(() => {
+    if (!empId) return
     api.get('/api/tasks/daily-count', { params: { employee_id: empId, task_date: form.due_date } })
       .then(r => setDailyCount(r.data))
     api.get('/api/tasks/suggested-schools', { params: { employee_id: empId, task_date: form.due_date } })
@@ -381,10 +384,11 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   }
 
   const emp = employees.find(e => String(e.id) === String(empId))
-  // Use rotation-eligible schools for the dropdown (enforced by backend too)
-  const eligibleSchoolIds = new Set(suggested.schools.map(s => s.id))
+  // Full list of schools in the technician's mandal — rotation eligibility is
+  // enforced server-side and shown via the suggestion chips above, not by
+  // hiding schools here (that made the dropdown look empty in edge cases).
   const mandalSchools = emp?.mandal_id
-    ? schools.filter(s => s.mandal_id === emp.mandal_id && (eligibleSchoolIds.size === 0 || eligibleSchoolIds.has(s.id)))
+    ? schools.filter(s => s.mandal_id === emp.mandal_id)
     : schools
 
   return (
