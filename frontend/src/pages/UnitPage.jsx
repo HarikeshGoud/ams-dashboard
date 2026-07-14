@@ -14,6 +14,7 @@ const SEGMENTS = [
   { key: 'all',      label: 'All Sites',  icon: '🏠' },
   { key: 'school',   label: 'Schools',    icon: '🏫' },
   { key: 'hospital', label: 'Hospitals',  icon: '🏥' },
+  { key: 'hostel',   label: 'Hostels',    icon: '🏘️' },
   { key: 'temple',   label: 'Temples',    icon: '🛕' },
   { key: 'park',     label: 'Parks',      icon: '🌳' },
   { key: 'village',  label: 'Villages',   icon: '🏡' },

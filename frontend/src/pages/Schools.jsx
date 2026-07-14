@@ -180,6 +180,7 @@ export default function Schools() {
                   <select value={form.model} onChange={f('model')}>
                     <option value="school">School</option>
                     <option value="hospital">Hospital</option>
+                    <option value="hostel">Hostel</option>
                     <option value="temple">Temple</option>
                     <option value="park">Park</option>
                     <option value="village">Village</option>
