@@ -23,7 +23,7 @@ export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
     empTasks.forEach(t => {
       const rep = reportsByTaskId[t.id]
       const statusIcon = t.status === 'completed' ? '✅' : t.status === 'submitted' ? '⏳' : '⬜'
-      const schoolPart = t.school_name ? ` — ${t.school_name}` : ''
+      const schoolPart = (t.school_name && !t.title.includes(t.school_name)) ? ` — ${t.school_name}` : ''
       const itemPart = rep?.item_installed ? ` (${rep.item_installed})` : ''
       lines.push(`  ${statusIcon} ${t.title}${schoolPart}${itemPart}`)
     })
