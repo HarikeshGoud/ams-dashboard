@@ -1,5 +1,6 @@
-// Builds a WhatsApp-ready daily task summary, one section per technician,
-// covering everyone with at least one task due on the given date.
+// Builds a WhatsApp-ready daily task summary. Only technicians who completed
+// at least one task get a section, listing just the work they finished —
+// pending/incomplete tasks are left out entirely.
 export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
   const techs = employees.filter(e => e.role === 'technician')
   const reportsByTaskId = {}
@@ -8,24 +9,23 @@ export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
     .forEach(r => { reportsByTaskId[r.task_id] = r })
 
   const lines = [`📊 *Daily Task Summary — ${dateStr}*`, '']
-  let totalTasks = 0, totalDone = 0, activeTechCount = 0
+  let totalDone = 0, activeTechCount = 0
 
   techs.forEach(emp => {
     const empTasks = tasks.filter(t => t.assigned_to_id === emp.id && t.due_date === dateStr)
     if (empTasks.length === 0) return
     activeTechCount++
 
-    const done = empTasks.filter(t => t.status === 'completed').length
-    totalTasks += empTasks.length
-    totalDone += done
+    const doneTasks = empTasks.filter(t => t.status === 'completed')
+    if (doneTasks.length === 0) return
+    totalDone += doneTasks.length
 
-    lines.push(`👷 *${emp.name}* (${emp.employee_code || '—'}) — ${done}/${empTasks.length} completed`)
-    empTasks.forEach(t => {
+    lines.push(`👷 *${emp.name}* — completed ${doneTasks.length} task${doneTasks.length > 1 ? 's' : ''}`)
+    doneTasks.forEach(t => {
       const rep = reportsByTaskId[t.id]
-      const statusIcon = t.status === 'completed' ? '✅' : t.status === 'submitted' ? '⏳' : '⬜'
       const schoolPart = (t.school_name && !t.title.includes(t.school_name)) ? ` — ${t.school_name}` : ''
       const itemPart = rep?.item_installed ? ` (${rep.item_installed})` : ''
-      lines.push(`  ${statusIcon} ${t.title}${schoolPart}${itemPart}`)
+      lines.push(`  ✅ ${t.title}${schoolPart}${itemPart}`)
     })
     lines.push('')
   })
@@ -33,11 +33,12 @@ export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
   if (activeTechCount === 0) {
     lines.push('No tasks were scheduled for this date.')
   } else {
+    if (totalDone === 0) { lines.push('No tasks completed yet today.', '') }
     lines.push('━━━━━━━━━━━━━━━')
-    lines.push(`*Total: ${totalDone}/${totalTasks} tasks completed* across ${activeTechCount} technician${activeTechCount > 1 ? 's' : ''}`)
+    lines.push(`*Total: ${totalDone} task${totalDone !== 1 ? 's' : ''} completed* across ${activeTechCount} technician${activeTechCount > 1 ? 's' : ''}`)
   }
   lines.push('')
-  lines.push('AMS Dashboard — Water Purifier Management')
+  lines.push('Sri Hamsini & Chandra Enterprises')
 
   return lines.join('\n')
 }
