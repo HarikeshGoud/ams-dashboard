@@ -1,301 +1,260 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import api from '../../api/axios'
+import { exportAttendanceExcel, exportAttendancePDF } from '../../utils/exportReports'
 
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+const DAY_NAMES = ["Su","Mo","Tu","We","Th","Fr","Sa"]
 
-const STATUS_STYLE = {
-  present:  { bg: '#dcfce7', color: '#15803d', label: 'P', text: 'Present' },
-  half_day: { bg: '#fef9c3', color: '#a16207', label: 'H', text: 'Half Day' },
-  absent:   { bg: '#fee2e2', color: '#b91c1c', label: 'A', text: 'Absent' },
-  leave:    { bg: '#ffedd5', color: '#c2410c', label: 'L', text: 'Leave' },
+const STATUS = {
+  present:  { label: 'P', color: '#16a34a', bg: '#dcfce7', text: 'Present' },
+  half_day: { label: 'H', color: '#d97706', bg: '#fef3c7', text: 'Half Day' },
+  absent:   { label: 'A', color: '#dc2626', bg: '#fee2e2', text: 'Absent' },
+  leave:    { label: 'L', color: '#7c3aed', bg: '#ede9fe', text: 'Leave' },
 }
+
+// Cycle order when clicking an empty/marked cell
+const CYCLE = ['present', 'absent', 'half_day', 'leave', null]
 
 export default function DeskAttendance() {
   const now = new Date()
+  const todayStr = now.toISOString().slice(0, 10)
   const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear]   = useState(now.getFullYear())
-  const [summary, setSummary] = useState(null)
-  const [selected, setSelected] = useState(null)
-  const [dailyCache, setDailyCache] = useState({})
-  const [loadingMain, setLoadingMain] = useState(false)
-  const [loadingDetail, setLoadingDetail] = useState(false)
-  const [popup, setPopup] = useState(null)
-  const [markingStatus, setMarkingStatus] = useState(null)
+  const [year, setYear] = useState(now.getFullYear())
+  const [technicians, setTechnicians] = useState([])
+  const [records, setRecords] = useState({}) // { empId: { dateStr: status } }
+  const [loading, setLoading] = useState(true)
+  const [marking, setMarking] = useState(null) // "empId-dateStr"
+  const [workingDays, setWorkingDays] = useState(0)
   const [toast, setToast] = useState('')
-  const popupRef = useRef(null)
 
-  const loadSummary = async (keepSelected = false) => {
-    setLoadingMain(true)
-    if (!keepSelected) { setSelected(null); setDailyCache({}) }
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 2500) }
+
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const days = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = i + 1
+    const dt = new Date(year, month - 1, d)
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    return { d, dow: dt.getDay(), isSun: dt.getDay() === 0, dateStr, isToday: dateStr === todayStr }
+  })
+
+  async function load() {
+    setLoading(true)
     try {
       const r = await api.get(`/api/attendance/monthly-summary?month=${month}&year=${year}`)
-      setSummary(r.data)
-    } finally {
-      setLoadingMain(false)
-    }
-  }
+      setTechnicians(r.data.technicians || [])
+      setWorkingDays(r.data.working_days || 0)
 
-  const loadDaily = async (empId) => {
-    setLoadingDetail(true)
-    try {
-      const r = await api.get(`/api/attendance/?employee_id=${empId}&month=${month}&year=${year}`)
-      setDailyCache(c => ({ ...c, [empId]: r.data }))
-    } finally {
-      setLoadingDetail(false)
-    }
-  }
-
-  useEffect(() => { loadSummary() }, [month, year])
-
-  useEffect(() => {
-    const handler = (e) => { if (popupRef.current && !popupRef.current.contains(e.target)) setPopup(null) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  const selectTech = async (empId) => {
-    if (selected === empId) { setSelected(null); return }
-    setSelected(empId)
-    setPopup(null)
-    await loadDaily(empId)
-  }
-
-  const markAttendance = async (status) => {
-    if (!popup || !selected) return
-    setMarkingStatus(status)
-    try {
-      await api.post('/api/attendance/mark', {
-        employee_id: selected,
-        date: popup.dateStr,
-        status,
+      const empIds = (r.data.technicians || []).map(t => t.employee_id)
+      const results = await Promise.all(
+        empIds.map(id => api.get(`/api/attendance/?employee_id=${id}&month=${month}&year=${year}`))
+      )
+      const map = {}
+      results.forEach((res, i) => {
+        const empId = empIds[i]
+        map[empId] = {}
+        ;(res.data || []).forEach(rec => { map[empId][rec.date] = rec.status })
       })
-      setPopup(null)
-      setToast(`✅ Marked as ${STATUS_STYLE[status].text} — Admin notified`)
-      setTimeout(() => setToast(''), 3500)
-      await loadDaily(selected)
-      await loadSummary(true)
-    } catch (e) {
-      setToast('❌ Failed to mark: ' + (e?.response?.data?.detail || e.message))
-      setTimeout(() => setToast(''), 3500)
+      setRecords(map)
     } finally {
-      setMarkingStatus(null)
+      setLoading(false)
     }
   }
 
-  const years = []
-  for (let y = now.getFullYear(); y >= now.getFullYear() - 2; y--) years.push(y)
+  useEffect(() => { load() }, [month, year])
 
-  const buildCalendar = (yr, mo) => {
-    const daysInMonth = new Date(yr, mo, 0).getDate()
-    return Array.from({ length: daysInMonth }, (_, i) => {
-      const d = i + 1
-      const dt = new Date(yr, mo - 1, d)
-      return { day: d, dow: dt.getDay(), isSunday: dt.getDay() === 0,
-        dateStr: `${yr}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}` }
-    })
+  async function toggleStatus(empId, dateStr, currentStatus) {
+    const key = `${empId}-${dateStr}`
+    setMarking(key)
+    const idx = CYCLE.indexOf(currentStatus)
+    const nextStatus = CYCLE[(idx + 1) % CYCLE.length]
+    try {
+      if (nextStatus === null) {
+        await api.post('/api/attendance/mark', { employee_id: empId, date: dateStr, status: 'absent' })
+        setRecords(r => ({ ...r, [empId]: { ...r[empId], [dateStr]: undefined } }))
+      } else {
+        await api.post('/api/attendance/mark', { employee_id: empId, date: dateStr, status: nextStatus })
+        setRecords(r => ({ ...r, [empId]: { ...r[empId], [dateStr]: nextStatus } }))
+      }
+      showToast('✅ Marked — admin notified')
+      const sr = await api.get(`/api/attendance/monthly-summary?month=${month}&year=${year}`)
+      setTechnicians(sr.data.technicians || [])
+    } catch(e) {
+      showToast('❌ Failed to mark — try again')
+    } finally {
+      setMarking(null)
+    }
   }
 
-  const calDays = buildCalendar(year, month)
-  const selectedEmp = summary?.technicians.find(t => t.employee_id === selected)
-  const dailyRecords = selected ? (dailyCache[selected] || []) : []
-  const recordByDate = {}
-  dailyRecords.forEach(r => { recordByDate[r.date] = r })
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, flexDirection: 'column', gap: 12 }}>
+      <div className="spinner" />
+      <div style={{ color: 'var(--muted)', fontSize: 13 }}>Loading attendance register…</div>
+    </div>
+  )
 
   return (
-    <div style={{ padding: '1rem', maxWidth: 1100 }}>
-      <h2 style={{ marginBottom: '1rem' }}>Attendance</h2>
+    <div>
 
-      {/* Toast notification */}
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20 }}>🗓️ Attendance Register</h2>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>{workingDays} working days · Click any cell to mark · Admin is notified of every change</div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button onClick={() => { if (month === 1) { setMonth(12); setYear(y => y-1) } else setMonth(m => m-1) }}
+            style={navBtn}>‹ Prev</button>
+          <div style={{ fontWeight: 700, fontSize: 15, minWidth: 130, textAlign: 'center' }}>
+            {MONTHS[month-1]} {year}
+          </div>
+          <button onClick={() => { if (month === 12) { setMonth(1); setYear(y => y+1) } else setMonth(m => m+1) }}
+            style={navBtn}>Next ›</button>
+
+          <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 4px' }} />
+
+          <button onClick={() => exportAttendanceExcel(technicians, month, year, workingDays)}
+            style={{ ...actionBtn, background: '#16a34a' }}>⬇ Excel</button>
+          <button onClick={() => exportAttendancePDF(technicians, month, year, workingDays)}
+            style={{ ...actionBtn, background: '#dc2626' }}>⬇ PDF</button>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+        {Object.entries(STATUS).map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: v.bg, border: `2px solid ${v.color}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: v.color, fontSize: 12 }}>
+              {v.label}
+            </div>
+            <span style={{ color: 'var(--muted)' }}>{v.text}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--surface2)', border: '1px dashed var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 11 }}>—</div>
+          <span style={{ color: 'var(--muted)' }}>Not marked</span>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 'auto', alignSelf: 'center' }}>
+          💡 Click a cell to cycle: Present → Absent → Half Day → Leave
+        </div>
+      </div>
+
+      {/* Register Table */}
+      <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
+          <thead>
+            <tr style={{ background: 'var(--surface2)' }}>
+              <th style={{ ...th, width: 160, textAlign: 'left', position: 'sticky', left: 0, background: 'var(--surface2)', zIndex: 2 }}>
+                Employee
+              </th>
+              {days.map(({ d, dow, isSun, isToday }) => (
+                <th key={d} style={{
+                  ...th, width: 36, padding: '6px 2px',
+                  background: isToday ? '#2563eb' : isSun ? 'var(--surface)' : 'var(--surface2)',
+                  color: isToday ? '#fff' : isSun ? 'var(--muted)' : 'var(--text)',
+                  borderBottom: isToday ? '2px solid #2563eb' : '1px solid var(--border)',
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.7 }}>{DAY_NAMES[dow]}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{d}</div>
+                </th>
+              ))}
+              <th style={{ ...th, background: '#dcfce7', color: '#15803d', minWidth: 36 }}>P</th>
+              <th style={{ ...th, background: '#fee2e2', color: '#dc2626', minWidth: 36 }}>A</th>
+              <th style={{ ...th, background: '#fef3c7', color: '#d97706', minWidth: 36 }}>H</th>
+              <th style={{ ...th, background: '#ede9fe', color: '#7c3aed', minWidth: 36 }}>L</th>
+              <th style={{ ...th, minWidth: 52 }}>%</th>
+              <th style={{ ...th, minWidth: 90 }}>Salary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {technicians.map((emp, rowIdx) => {
+              const empRecords = records[emp.employee_id] || {}
+              const rowBg = rowIdx % 2 === 0 ? 'var(--surface)' : 'var(--surface2)'
+              const pct = emp.attendance_pct || 0
+              const pctColor = pct >= 80 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626'
+
+              return (
+                <tr key={emp.employee_id} style={{ background: rowBg }}>
+                  <td style={{ ...td, position: 'sticky', left: 0, background: rowBg, zIndex: 1, fontWeight: 600, fontSize: 13, minWidth: 160 }}>
+                    <div>{emp.employee_name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{emp.employee_code}</div>
+                  </td>
+
+                  {days.map(({ d, isSun, dateStr, isToday }) => {
+                    const status = empRecords[dateStr]
+                    const s = status ? STATUS[status] : null
+                    const key = `${emp.employee_id}-${dateStr}`
+                    const isMarking = marking === key
+                    return (
+                      <td key={d} style={{ padding: 3, textAlign: 'center', borderRight: '1px solid var(--border)' }}>
+                        <div
+                          onClick={() => !isMarking && toggleStatus(emp.employee_id, dateStr, status || null)}
+                          title={s ? s.text : 'Click to mark'}
+                          style={{
+                            width: 30, height: 30, borderRadius: 6, margin: '0 auto',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: isMarking ? 'var(--surface2)' : s ? s.bg : isSun ? 'transparent' : 'var(--surface2)',
+                            border: isMarking ? '1px dashed var(--muted)' : s ? `2px solid ${s.color}` : isToday ? '2px solid #2563eb33' : isSun ? 'none' : '1px dashed var(--border)',
+                            color: s ? s.color : 'var(--muted)',
+                            fontWeight: 800, fontSize: 12,
+                            cursor: isSun ? 'default' : 'pointer',
+                            opacity: isSun && !s ? 0.3 : 1,
+                            transition: 'all 0.1s',
+                          }}
+                          onMouseEnter={e => { if (!isSun) e.currentTarget.style.transform = 'scale(1.15)' }}
+                          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                          {isMarking ? '·' : s ? s.label : ''}
+                        </div>
+                      </td>
+                    )
+                  })}
+
+                  <td style={{ ...td, textAlign: 'center', color: '#16a34a', fontWeight: 700, background: '#dcfce710' }}>{emp.present || 0}</td>
+                  <td style={{ ...td, textAlign: 'center', color: '#dc2626', fontWeight: 700, background: '#fee2e210' }}>{emp.absent || 0}</td>
+                  <td style={{ ...td, textAlign: 'center', color: '#d97706', fontWeight: 700, background: '#fef3c710' }}>{emp.half_day || 0}</td>
+                  <td style={{ ...td, textAlign: 'center', color: '#7c3aed', fontWeight: 700, background: '#ede9fe10' }}>{emp.leave || 0}</td>
+                  <td style={{ ...td, textAlign: 'center', fontWeight: 700, color: pctColor, fontSize: 14 }}>{pct}%</td>
+
+                  {/* Salary — read-only for deskwork (only admin can change base salary) */}
+                  <td style={{ ...td, textAlign: 'center', fontSize: 12 }}>
+                    <div style={{ fontWeight: 600 }}>₹{Number(emp.calculated_salary || 0).toLocaleString()}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>base ₹{Number(emp.base_salary || 0).toLocaleString()}</div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
       {toast && (
-        <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 1000,
-          background: toast.startsWith('✅') ? '#dcfce7' : '#fee2e2',
-          color: toast.startsWith('✅') ? '#15803d' : '#b91c1c',
-          border: `1px solid ${toast.startsWith('✅') ? '#86efac' : '#fca5a5'}`,
-          borderRadius: 10, padding: '0.75rem 1.25rem', fontWeight: 600, fontSize: 14,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#1e293b', color: '#fff', padding: '10px 20px', borderRadius: 10,
+          fontSize: 14, fontWeight: 600, zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
           {toast}
         </div>
       )}
-
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={month} onChange={e => setMonth(+e.target.value)}
-          style={{ padding: '0.5rem 1rem', borderRadius: 8, fontSize: 14 }}>
-          {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-        </select>
-        <select value={year} onChange={e => setYear(+e.target.value)}
-          style={{ padding: '0.5rem 1rem', borderRadius: 8, fontSize: 14 }}>
-          {years.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        {summary && <span style={{ fontSize: 13, color: '#888' }}>Working days: <b>{summary.working_days}</b></span>}
-      </div>
-
-      {loadingMain && <p style={{ color: '#888' }}>Loading...</p>}
-      {summary && summary.technicians.length === 0 && <p style={{ color: '#888' }}>No technicians found.</p>}
-
-      {summary && summary.technicians.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: selected ? '280px 1fr' : 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', alignItems: 'start' }}>
-
-          {/* Technician cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {summary.technicians.map(emp => {
-              const isActive = selected === emp.employee_id
-              const pct = emp.attendance_pct
-              const pctColor = pct >= 80 ? '#15803d' : pct >= 50 ? '#a16207' : '#b91c1c'
-              return (
-                <div key={emp.employee_id} onClick={() => selectTech(emp.employee_id)}
-                  style={{ padding: '0.9rem 1rem', borderRadius: 10, cursor: 'pointer',
-                    border: isActive ? '2px solid #2563eb' : '1px solid var(--border)',
-                    background: isActive ? 'var(--surface2)' : 'var(--surface,#fff)', transition: 'all 0.15s' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 15 }}>{emp.employee_name}</div>
-                      <div style={{ fontSize: 12, color: '#888' }}>{emp.employee_code || '—'}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: pctColor }}>{pct}%</div>
-                      <div style={{ fontSize: 11, color: '#888' }}>attendance</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, marginTop: '0.5rem', fontSize: 12 }}>
-                    <span style={{ color: '#15803d' }}>✓{emp.present}</span>
-                    <span style={{ color: '#a16207' }}>½{emp.half_day}</span>
-                    <span style={{ color: '#b91c1c' }}>✗{emp.absent}</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Detail panel */}
-          {selected && selectedEmp && (
-            <div style={{ background: 'var(--surface,#fff)', border: '1px solid var(--border)', borderRadius: 12, padding: '1.25rem', position: 'relative' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 17 }}>{selectedEmp.employee_name}</h3>
-                  <span style={{ fontSize: 12, color: '#888' }}>{selectedEmp.employee_code} · {MONTHS[month-1]} {year}</span>
-                </div>
-                <button onClick={() => setSelected(null)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#888', lineHeight: 1 }}>✕</button>
-              </div>
-
-              {/* Stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.6rem', marginBottom: '1.25rem' }}>
-                <StatCard label="Present"     value={selectedEmp.present}   color="#15803d" bg="#dcfce7" />
-                <StatCard label="Half Day"    value={selectedEmp.half_day}  color="#a16207" bg="#fef9c3" />
-                <StatCard label="Absent"      value={selectedEmp.absent}    color="#b91c1c" bg="#fee2e2" />
-                <StatCard label="Att %"       value={`${selectedEmp.attendance_pct}%`}
-                  color={selectedEmp.attendance_pct >= 80 ? '#15803d' : '#b91c1c'} bg="var(--surface2)" />
-                <StatCard label="Calc Salary" value={`₹${Number(selectedEmp.calculated_salary).toLocaleString()}`} color="#2563eb" bg="var(--surface2)" />
-              </div>
-
-              {/* Notice */}
-              <div style={{ background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 8, padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: 13, color: '#92400e' }}>
-                ⚠️ Any changes you make will be notified to the admin automatically.
-              </div>
-
-              <p style={{ margin: '0 0 0.5rem', fontSize: 12, color: '#888' }}>
-                💡 Click any day to mark attendance
-              </p>
-
-              {loadingDetail ? <p style={{ color: '#888', fontSize: 13 }}>Loading calendar...</p> : (
-                <div style={{ position: 'relative' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
-                    {DAY_NAMES.map(d => (
-                      <div key={d} style={{ textAlign: 'center', fontSize: 11, color: '#888', fontWeight: 600, padding: '4px 0' }}>{d}</div>
-                    ))}
-                  </div>
-
-                  <CalendarGrid calDays={calDays} recordByDate={recordByDate}
-                    onDayClick={(dateStr, day, currentStatus) => setPopup({ dateStr, day, currentStatus })} />
-
-                  {popup && (
-                    <div ref={popupRef} style={{
-                      position: 'absolute', zIndex: 100, background: 'var(--surface)', border: '1px solid var(--border)',
-                      borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.15)', padding: '0.75rem',
-                      minWidth: 185, top: 'auto', left: '50%', transform: 'translateX(-50%)'
-                    }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: '0.4rem', color: '#1e293b' }}>
-                        {MONTHS[month-1]} {popup.day}, {year}
-                      </div>
-                      {popup.currentStatus && (
-                        <div style={{ fontSize: 12, color: '#888', marginBottom: '0.5rem' }}>
-                          Current: <b>{STATUS_STYLE[popup.currentStatus]?.text}</b>
-                        </div>
-                      )}
-                      <p style={{ margin: '0 0 0.5rem', fontSize: 11, color: '#92400e' }}>Admin will be notified.</p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {Object.entries(STATUS_STYLE).map(([k, v]) => (
-                          <button key={k} onClick={() => markAttendance(k)}
-                            disabled={markingStatus !== null}
-                            style={{ padding: '0.4rem 0.8rem', borderRadius: 6, border: `1px solid ${v.color}`,
-                              background: popup.currentStatus === k ? v.bg : 'var(--surface)',
-                              color: v.color, fontWeight: popup.currentStatus === k ? 700 : 400,
-                              cursor: 'pointer', textAlign: 'left', fontSize: 13,
-                              opacity: markingStatus ? 0.6 : 1 }}>
-                            {markingStatus === k ? '...' : v.text}
-                          </button>
-                        ))}
-                      </div>
-                      <button onClick={() => setPopup(null)}
-                        style={{ marginTop: 8, width: '100%', padding: '0.3rem', borderRadius: 6,
-                          border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#888' }}>
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: 12, marginTop: '0.75rem', fontSize: 12, flexWrap: 'wrap' }}>
-                    {Object.entries(STATUS_STYLE).map(([k, v]) => (
-                      <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: v.bg, border: `1px solid ${v.color}` }} />
-                        {v.text}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
 
-function CalendarGrid({ calDays, recordByDate, onDayClick }) {
-  const firstDow = calDays[0]?.dow || 0
-  const blanks = Array(firstDow).fill(null)
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-      {blanks.map((_, i) => <div key={`b${i}`} />)}
-      {calDays.map(({ day, isSunday, dateStr }) => {
-        const rec = recordByDate[dateStr]
-        const s = rec ? STATUS_STYLE[rec.status] : null
-        return (
-          <div key={day} onClick={() => onDayClick(dateStr, day, rec?.status || null)}
-            style={{ aspectRatio: '1', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', borderRadius: 6,
-              background: s ? s.bg : 'var(--surface2)',
-              border: isSunday && !rec ? '1px dashed #94a3b8' : `1px solid ${s ? s.color+'55' : 'var(--border)'}`,
-              color: s ? s.color : isSunday ? '#94a3b8' : '#64748b',
-              fontWeight: s ? 700 : 400, cursor: 'pointer', transition: 'transform 0.1s' }}
-            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
-            <span style={{ fontSize: 11, opacity: 0.7 }}>{day}</span>
-            {s && <span style={{ fontSize: 10, fontWeight: 800 }}>{s.label}</span>}
-          </div>
-        )
-      })}
-    </div>
-  )
+const th = {
+  padding: '8px 4px', textAlign: 'center', fontWeight: 700, fontSize: 12,
+  borderBottom: '2px solid var(--border)', borderRight: '1px solid var(--border)',
+  whiteSpace: 'nowrap',
 }
-
-function StatCard({ label, value, color, bg }) {
-  return (
-    <div style={{ background: bg, borderRadius: 8, padding: '0.6rem 0.5rem', textAlign: 'center' }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{label}</div>
-    </div>
-  )
+const td = {
+  padding: '8px 6px', fontSize: 13, borderBottom: '1px solid var(--border)',
+  borderRight: '1px solid var(--border)', whiteSpace: 'nowrap',
+}
+const navBtn = {
+  padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)',
+  background: 'var(--surface2)', color: 'var(--text)', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+}
+const actionBtn = {
+  padding: '7px 14px', borderRadius: 8, border: 'none',
+  color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
 }
