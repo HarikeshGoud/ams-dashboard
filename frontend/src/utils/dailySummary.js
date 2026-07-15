@@ -1,5 +1,7 @@
 // Builds a WhatsApp/Email-ready daily task summary as plain text.
 // Client-facing: shows only completed work, no internal workflow states.
+// Avoids pictographic emoji (📊 👷 ✅ etc.) — WhatsApp's wa.me deep link
+// corrupts them into replacement characters. Plain symbols (✓, ━) are safe.
 
 const DIVIDER = '━━━━━━━━━━━━━━━━━━━━━━━━'
 
@@ -18,8 +20,8 @@ export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
   const completedToday = tasks.filter(t => t.due_date === dateStr && t.status === 'completed')
 
   const lines = [
-    '📊 DAILY TASK SUMMARY',
-    `📅 ${formatDateHeader(dateStr)}`,
+    'DAILY TASK SUMMARY',
+    formatDateHeader(dateStr),
     DIVIDER,
   ]
 
@@ -31,7 +33,7 @@ export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
     activeTechCount++
 
     lines.push('')
-    lines.push(`👷 ${emp.name}`)
+    lines.push(emp.name)
     doneTasks.forEach(t => {
       const rep = reportsByTaskId[t.id]
       const schoolPart = (t.school_name && !t.title.includes(t.school_name)) ? ` — ${t.school_name}` : ''
@@ -45,7 +47,7 @@ export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
   if (activeTechCount === 0) {
     lines.push('No tasks completed for this date.')
   } else {
-    lines.push(`✅ ${completedToday.length} task${completedToday.length !== 1 ? 's' : ''} completed today  ·  ${activeTechCount} technician${activeTechCount > 1 ? 's' : ''}`)
+    lines.push(`${completedToday.length} task${completedToday.length !== 1 ? 's' : ''} completed today  ·  ${activeTechCount} technician${activeTechCount > 1 ? 's' : ''}`)
   }
   lines.push('')
   lines.push('Sri Hamsini & Chandra Enterprises')
