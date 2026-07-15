@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import SearchableSelect from '../../components/SearchableSelect'
 
+function batchLabel(b) {
+  return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
+}
+
 export default function MyStock() {
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
@@ -9,7 +13,8 @@ export default function MyStock() {
   const [modal, setModal]     = useState(null)        // 'return' | 'install'
   const [items, setItems]     = useState([])
   const [schools, setSchools] = useState([])
-  const [form, setForm]       = useState({ item_id: '', quantity: 1, school_dest: '', note: '' })
+  const [form, setForm]       = useState({ item_id: '', batch_id: '', quantity: 1, school_dest: '', note: '' })
+  const [myBatches, setMyBatches] = useState([])
   const [toast, setToast]     = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -29,12 +34,20 @@ export default function MyStock() {
 
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    if (modal && form.item_id) {
+      api.get('/api/stock/employee-batches', { params: { item_id: form.item_id } }).then(r => setMyBatches(r.data))
+    } else { setMyBatches([]) }
+  }, [modal, form.item_id])
+
   async function submitReturn(ev) {
     ev.preventDefault()
     if (!form.item_id) { showToast('❌ Select an item'); return }
+    if (!form.batch_id) { showToast('❌ Select which batch you\'re returning'); return }
     try {
       await api.post('/api/stock/return', {
         item_id: parseInt(form.item_id),
+        batch_id: parseInt(form.batch_id),
         quantity: parseInt(form.quantity),
         note: form.note || null
       })
@@ -46,9 +59,11 @@ export default function MyStock() {
   async function submitInstall(ev) {
     ev.preventDefault()
     if (!form.item_id) { showToast('❌ Select an item'); return }
+    if (!form.batch_id) { showToast('❌ Select which batch you\'re installing from'); return }
     try {
       await api.post('/api/stock/install', {
         item_id: parseInt(form.item_id),
+        batch_id: parseInt(form.batch_id),
         quantity: parseInt(form.quantity),
         school_dest: form.school_dest || null,
         note: form.note || null
@@ -64,14 +79,15 @@ export default function MyStock() {
   const received  = data?.received   || []
   const installed = data?.installed  || []
   const inHandItem = inHand.find(i => i.item_id === parseInt(form.item_id))
+  const selectedBatch = myBatches.find(b => b.id === parseInt(form.batch_id))
 
   return (
     <div>
       <div className="section-header">
         <h3>🎒 My Stock</h3>
         <div className="flex gap-8">
-          <button className="btn btn-outline" onClick={() => { setModal('return'); setForm({ item_id: '', quantity: 1, note: '' }) }}>↩ Return to Office</button>
-          <button className="btn btn-primary" onClick={() => { setModal('install'); setForm({ item_id: '', quantity: 1, school_dest: '', note: '' }) }}>🔧 Mark Installed</button>
+          <button className="btn btn-outline" onClick={() => { setModal('return'); setForm({ item_id: '', batch_id: '', quantity: 1, note: '' }) }}>↩ Return to Office</button>
+          <button className="btn btn-primary" onClick={() => { setModal('install'); setForm({ item_id: '', batch_id: '', quantity: 1, school_dest: '', note: '' }) }}>🔧 Mark Installed</button>
         </div>
       </div>
 
@@ -136,8 +152,8 @@ export default function MyStock() {
                       </td>
                       <td>
                         <div className="flex gap-6">
-                          <button className="btn btn-primary btn-sm" onClick={() => { setModal('install'); setForm({ item_id: String(s.item_id), quantity: 1, school_dest: '', note: '' }) }}>🔧 Install</button>
-                          <button className="btn btn-outline btn-sm" onClick={() => { setModal('return'); setForm({ item_id: String(s.item_id), quantity: 1, note: '' }) }}>↩ Return</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => { setModal('install'); setForm({ item_id: String(s.item_id), batch_id: '', quantity: 1, school_dest: '', note: '' }) }}>🔧 Install</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => { setModal('return'); setForm({ item_id: String(s.item_id), batch_id: '', quantity: 1, note: '' }) }}>↩ Return</button>
                         </div>
                       </td>
                     </tr>
@@ -219,7 +235,7 @@ export default function MyStock() {
             <form onSubmit={submitReturn}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <SearchableSelect value={form.item_id} onChange={val => setForm({...form, item_id: val})}
+                  <SearchableSelect value={form.item_id} onChange={val => setForm({...form, item_id: val, batch_id: ''})}
                     placeholder="Select item…"
                     options={inHand.map(s => ({ value: String(s.item_id), label: `${s.item_name} — ${s.qty_in_hand} ${s.unit} in hand` }))} />
                 </div>
@@ -230,8 +246,13 @@ export default function MyStock() {
                     </div>
                   </div>
                 )}
+                <div className="form-group form-full"><label>Batch *</label>
+                  <SearchableSelect value={form.batch_id} onChange={val => setForm({...form, batch_id: val})}
+                    placeholder={form.item_id ? 'Select batch…' : 'Select an item first'}
+                    options={myBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                </div>
                 <div className="form-group"><label>Quantity to Return *</label>
-                  <input required type="number" min="1" max={inHandItem?.qty_in_hand || 9999} value={form.quantity}
+                  <input required type="number" min="1" max={selectedBatch?.qty_office || 0} value={form.quantity}
                     onChange={e => setForm({...form, quantity: e.target.value})} />
                 </div>
                 <div className="form-group"><label>Note</label>
@@ -257,7 +278,7 @@ export default function MyStock() {
             <form onSubmit={submitInstall}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <SearchableSelect value={form.item_id} onChange={val => setForm({...form, item_id: val})}
+                  <SearchableSelect value={form.item_id} onChange={val => setForm({...form, item_id: val, batch_id: ''})}
                     placeholder="Select item…"
                     options={inHand.map(s => ({ value: String(s.item_id), label: `${s.item_name} — ${s.qty_in_hand} ${s.unit} in hand` }))} />
                 </div>
@@ -268,8 +289,13 @@ export default function MyStock() {
                     </div>
                   </div>
                 )}
+                <div className="form-group form-full"><label>Batch *</label>
+                  <SearchableSelect value={form.batch_id} onChange={val => setForm({...form, batch_id: val})}
+                    placeholder={form.item_id ? 'Select batch…' : 'Select an item first'}
+                    options={myBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                </div>
                 <div className="form-group"><label>Quantity Installed *</label>
-                  <input required type="number" min="1" max={inHandItem?.qty_in_hand || 9999} value={form.quantity}
+                  <input required type="number" min="1" max={selectedBatch?.qty_office || 0} value={form.quantity}
                     onChange={e => setForm({...form, quantity: e.target.value})} />
                 </div>
                 <div className="form-group form-full"><label>School / Site</label>

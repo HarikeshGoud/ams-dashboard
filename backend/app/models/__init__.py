@@ -5,7 +5,7 @@ from .client import Client
 from .school import School
 from .visit import Visit
 from .complaint import Complaint
-from .stock import StockItem, StockLedger, StockUsage
+from .stock import StockItem, StockLedger, StockUsage, StockBatch, EmployeeStockBatch, EmployeeStock
 from .billing import Invoice, InvoiceLineItem, Payment
 from .salary import SalaryRecord
 from .attendance import Attendance

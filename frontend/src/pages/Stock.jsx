@@ -3,8 +3,12 @@ import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
 
 const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
-const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red' }
-const TYPE_LABEL = { receive: '⬇ Receive', transfer: '↔ Transfer', issue: '↑ Issue', distribute: '📦 Distribute', return: '↩ Return', install: '🔧 Install' }
+const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red', purchase: 'pill-blue' }
+const TYPE_LABEL = { receive: '⬇ Receive', transfer: '↔ Transfer', issue: '↑ Issue', distribute: '📦 Distribute', return: '↩ Return', install: '🔧 Install', purchase: '🛒 Purchase' }
+
+function batchLabel(b) {
+  return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
+}
 
 export default function Stock() {
   const [items, setItems]             = useState([])
@@ -24,8 +28,13 @@ export default function Stock() {
   const [modal, setModal]             = useState(null)
   const [editItem, setEditItem]       = useState(null)
   const [itemForm, setItemForm]       = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
-  const [ledgerForm, setLedgerForm]   = useState({ item_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', school_dest: '', note: '' })
-  const [distForm, setDistForm]       = useState({ item_id: '', employee_id: '', quantity: 1, note: '' })
+  const [ledgerForm, setLedgerForm]   = useState({ item_id: '', batch_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', school_dest: '', note: '' })
+  const [distForm, setDistForm]       = useState({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' })
+  const [ledgerBatches, setLedgerBatches] = useState([])
+  const [distBatches, setDistBatches]     = useState([])
+  const [lookupItem, setLookupItem]       = useState('')
+  const [lookupBatches, setLookupBatches] = useState([])
+  const [lookupTrace, setLookupTrace]     = useState(null)
   const [toast, setToast]             = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -67,6 +76,30 @@ export default function Stock() {
 
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    if (modal === 'issue' && ledgerForm.item_id) {
+      api.get('/api/stock/batches', { params: { item_id: ledgerForm.item_id } }).then(r => setLedgerBatches(r.data))
+    } else { setLedgerBatches([]) }
+  }, [modal, ledgerForm.item_id])
+
+  useEffect(() => {
+    if (modal === 'distribute' && distForm.item_id) {
+      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => setDistBatches(r.data))
+    } else { setDistBatches([]) }
+  }, [modal, distForm.item_id])
+
+  useEffect(() => {
+    if (lookupItem) {
+      api.get('/api/stock/batches', { params: { item_id: lookupItem, include_depleted: true } }).then(r => setLookupBatches(r.data))
+      setLookupTrace(null)
+    } else { setLookupBatches([]); setLookupTrace(null) }
+  }, [lookupItem])
+
+  async function openTrace(batchId) {
+    const r = await api.get(`/api/stock/batches/${batchId}/trace`)
+    setLookupTrace(r.data)
+  }
+
   async function saveItem(ev) {
     ev.preventDefault()
     const payload = { ...itemForm, min_qty: parseInt(itemForm.min_qty), unit_cost: parseFloat(itemForm.unit_cost) || 0 }
@@ -86,9 +119,11 @@ export default function Stock() {
   async function saveLedger(ev) {
     ev.preventDefault()
     if (!ledgerForm.item_id) { showToast('❌ Select an item'); return }
+    if (modal === 'issue' && !ledgerForm.batch_id) { showToast('❌ Select which batch this is being issued from'); return }
     try {
       await api.post('/api/stock/ledger', {
         ...ledgerForm, item_id: parseInt(ledgerForm.item_id), quantity: parseInt(ledgerForm.quantity),
+        batch_id: ledgerForm.batch_id ? parseInt(ledgerForm.batch_id) : null,
         buy_price: parseFloat(ledgerForm.buy_price) || null,
         logistics1: parseFloat(ledgerForm.logistics1) || null,
         logistics2: parseFloat(ledgerForm.logistics2) || null,
@@ -101,9 +136,11 @@ export default function Stock() {
   async function distribute(ev) {
     ev.preventDefault()
     if (!distForm.item_id || !distForm.employee_id) { showToast('❌ Select an item and technician'); return }
+    if (!distForm.batch_id) { showToast('❌ Select which batch to distribute from'); return }
     try {
       await api.post('/api/stock/distribute', {
         item_id: parseInt(distForm.item_id),
+        batch_id: parseInt(distForm.batch_id),
         employee_id: parseInt(distForm.employee_id),
         quantity: parseInt(distForm.quantity),
         note: distForm.note || null
@@ -133,6 +170,8 @@ export default function Stock() {
 
   const lowStock = items.filter(i => i.office_qty <= i.min_qty)
   const selectedItem = items.find(i => i.id === parseInt(distForm.item_id))
+  const selectedDistBatch = distBatches.find(b => b.id === parseInt(distForm.batch_id))
+  const selectedLedgerBatch = ledgerBatches.find(b => b.id === parseInt(ledgerForm.batch_id))
 
   // Build per-technician usage summary
   const techMap = {}
@@ -170,6 +209,7 @@ export default function Stock() {
     { key: 'emp-stock',  label: `👁 Usage Monitor${techList.length ? ` (${techList.length})` : ''}` },
     { key: 'purchases',  label: `🛒 Purchased Stock${pendingPurchases.length ? ` (${pendingPurchases.length})` : ''}` },
     { key: 'ledger',     label: '📋 Ledger' },
+    { key: 'batches',    label: '🔍 Batch Lookup' },
   ]
 
   return (
@@ -179,7 +219,7 @@ export default function Stock() {
         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
           <button className="btn btn-green"   onClick={() => setModal('receive')}>⬇ Receive</button>
           <button className="btn btn-outline" onClick={() => setModal('issue')}>↑ Issue</button>
-          <button className="btn btn-purple"  onClick={() => { setModal('distribute'); setDistForm({ item_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
+          <button className="btn btn-purple"  onClick={() => { setModal('distribute'); setDistForm({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
           <button className="btn btn-outline" onClick={() => setModal('add-item')}>+ New Item</button>
         </div>
       </div>
@@ -237,7 +277,7 @@ export default function Stock() {
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <div className="card-title" style={{ marginBottom: 0 }}>Distribution History</div>
-              <button className="btn btn-purple btn-sm" onClick={() => { setModal('distribute'); setDistForm({ item_id: '', employee_id: '', quantity: 1, note: '' }) }}>+ Distribute Stock</button>
+              <button className="btn btn-purple btn-sm" onClick={() => { setModal('distribute'); setDistForm({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' }) }}>+ Distribute Stock</button>
             </div>
             {distributions.length === 0 ? (
               <div style={{ color: 'var(--muted)', textAlign: 'center', padding: 24 }}>No distributions yet</div>
@@ -529,7 +569,7 @@ export default function Stock() {
           <div className="table-wrap scroll-table" style={{ maxHeight: 500 }}>
             <table>
               <thead>
-                <tr><th>Date</th><th>Type</th><th>Item</th><th>Qty</th><th>Person/Tech</th><th>Buy Price</th><th>School/Site</th><th>Note</th><th>Del</th></tr>
+                <tr><th>Date</th><th>Type</th><th>Item</th><th>Batch</th><th>Qty</th><th>Person/Tech</th><th>Buy Price</th><th>School/Site</th><th>Note</th><th>Del</th></tr>
               </thead>
               <tbody>
                 {ledger.map(e => (
@@ -537,6 +577,7 @@ export default function Stock() {
                     <td>{e.created_at?.slice(0,10)}</td>
                     <td><span className={`pill ${TYPE_COLOR[e.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[e.transaction_type] || e.transaction_type}</span></td>
                     <td>{e.item_name}</td>
+                    <td style={{ fontSize: 11, color: 'var(--muted)' }}>{e.batch_no || '—'}</td>
                     <td><b>{e.quantity}</b></td>
                     <td>{e.employee_name || e.person || '—'}</td>
                     <td>{e.buy_price ? `₹${e.buy_price}` : '—'}</td>
@@ -548,6 +589,84 @@ export default function Stock() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── BATCH LOOKUP TAB ──────────────────────────────────────── */}
+      {tab === 'batches' && (
+        <div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">🔍 Batch Lookup</div>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Pick an item to see every batch received, how much is left, and (by clicking a batch) exactly which technicians and schools it went to.</p>
+            <div className="form-group form-full">
+              <label>Item</label>
+              <SearchableSelect value={lookupItem} onChange={setLookupItem}
+                placeholder="Select item…"
+                options={items.map(i => ({ value: String(i.id), label: i.name }))} />
+            </div>
+          </div>
+
+          {lookupItem && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-title">Batches</div>
+              {lookupBatches.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No batches received for this item yet</div>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr><th>Batch No</th><th>Source</th><th>Received</th><th>Qty Received</th><th>In Office Now</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      {lookupBatches.map(b => (
+                        <tr key={b.id} style={{ cursor: 'pointer', background: lookupTrace?.batch?.id === b.id ? 'var(--surface2)' : 'transparent' }} onClick={() => openTrace(b.id)}>
+                          <td style={{ fontWeight: 600 }}>{b.batch_no}</td>
+                          <td style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{b.source}</td>
+                          <td style={{ fontSize: 12 }}>{b.received_date}</td>
+                          <td>{b.qty_received}</td>
+                          <td><b style={{ color: b.qty_office > 0 ? 'var(--green)' : 'var(--muted)' }}>{b.qty_office}</b></td>
+                          <td><button className="btn btn-outline btn-sm" onClick={() => openTrace(b.id)}>🔍 Trace</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {lookupTrace && (
+            <div className="card">
+              <div className="card-title">📍 {lookupTrace.batch.batch_no} — Movement History</div>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                {lookupTrace.item_name} · received {lookupTrace.batch.received_date} · {lookupTrace.batch.qty_received} units · <b>{lookupTrace.batch.qty_office}</b> still in office
+                {lookupTrace.batch.person && <> · from {lookupTrace.batch.person}</>}
+              </p>
+              {lookupTrace.movements.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No movements yet — still fully in office</div>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr><th>Date</th><th>Action</th><th>Qty</th><th>Technician</th><th>School / Site</th><th>Note</th></tr>
+                    </thead>
+                    <tbody>
+                      {lookupTrace.movements.map(m => (
+                        <tr key={m.id}>
+                          <td style={{ fontSize: 11 }}>{m.created_at?.slice(0, 10)}</td>
+                          <td><span className={`pill ${TYPE_COLOR[m.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[m.transaction_type] || m.transaction_type}</span></td>
+                          <td><b>{m.quantity}</b></td>
+                          <td>{m.employee_name || m.person || '—'}</td>
+                          <td style={{ fontSize: 12 }}>{m.school_dest || '—'}</td>
+                          <td style={{ fontSize: 12, color: 'var(--muted)' }}>{m.note || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -594,11 +713,18 @@ export default function Stock() {
             <form onSubmit={saveLedger}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <SearchableSelect value={ledgerForm.item_id} onChange={val => setLedgerForm({...ledgerForm, item_id: val})}
+                  <SearchableSelect value={ledgerForm.item_id} onChange={val => setLedgerForm({...ledgerForm, item_id: val, batch_id: ''})}
                     placeholder="Select item…"
                     options={items.map(i => ({ value: String(i.id), label: `${i.name} (in office: ${i.office_qty})` }))} />
                 </div>
-                <div className="form-group"><label>Quantity *</label><input required type="number" min="1" value={ledgerForm.quantity} onChange={e => setLedgerForm({...ledgerForm, quantity: e.target.value})} /></div>
+                {modal === 'issue' && (
+                  <div className="form-group form-full"><label>Batch *</label>
+                    <SearchableSelect value={ledgerForm.batch_id} onChange={val => setLedgerForm({...ledgerForm, batch_id: val})}
+                      placeholder={ledgerForm.item_id ? 'Select batch…' : 'Select an item first'}
+                      options={ledgerBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                  </div>
+                )}
+                <div className="form-group"><label>Quantity *</label><input required type="number" min="1" max={modal === 'issue' ? (selectedLedgerBatch?.qty_office || 0) : undefined} value={ledgerForm.quantity} onChange={e => setLedgerForm({...ledgerForm, quantity: e.target.value})} /></div>
                 <div className="form-group"><label>Person</label>
                   <SearchableSelect value={ledgerForm.person} onChange={val => setLedgerForm({...ledgerForm, person: val})}
                     placeholder="— Select —"
@@ -637,7 +763,7 @@ export default function Stock() {
             <form onSubmit={distribute}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <SearchableSelect value={distForm.item_id} onChange={val => setDistForm({...distForm, item_id: val})}
+                  <SearchableSelect value={distForm.item_id} onChange={val => setDistForm({...distForm, item_id: val, batch_id: ''})}
                     placeholder="Select item…"
                     options={items.filter(i => i.office_qty > 0).map(i => ({ value: String(i.id), label: `${i.name} — ${i.office_qty} ${i.unit} in office` }))} />
                 </div>
@@ -648,13 +774,18 @@ export default function Stock() {
                     </div>
                   </div>
                 )}
+                <div className="form-group form-full"><label>Batch *</label>
+                  <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
+                    placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
+                    options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                </div>
                 <div className="form-group form-full"><label>Technician *</label>
                   <SearchableSelect value={distForm.employee_id} onChange={val => setDistForm({...distForm, employee_id: val})}
                     placeholder="Select technician…"
                     options={employees.filter(e => e.role === 'technician').map(e => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` }))} />
                 </div>
                 <div className="form-group"><label>Quantity *</label>
-                  <input required type="number" min="1" max={selectedItem?.office_qty || 9999} value={distForm.quantity}
+                  <input required type="number" min="1" max={selectedDistBatch?.qty_office || 0} value={distForm.quantity}
                     onChange={e => setDistForm({...distForm, quantity: e.target.value})} />
                 </div>
                 <div className="form-group"><label>Note</label>
