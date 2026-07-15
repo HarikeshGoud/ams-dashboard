@@ -32,6 +32,7 @@ export default function Stock() {
   const [purchaseNotes, setPurchaseNotes]       = useState({})
   const [modal, setModal]             = useState(null)
   const [editItem, setEditItem]       = useState(null)
+  const [adjusting, setAdjusting]     = useState(null)
   const [itemForm, setItemForm]       = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
   const [ledgerForm, setLedgerForm]   = useState({ item_id: '', batch_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', school_dest: '', note: '' })
   const [distForm, setDistForm]       = useState({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' })
@@ -284,7 +285,7 @@ export default function Stock() {
               <div className="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>#</th><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Edit</th></tr>
+                    <tr><th>#</th><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
                     {grouped[cat].map((i, idx) => (
@@ -296,7 +297,10 @@ export default function Stock() {
                         <td>{i.min_qty}</td>
                         <td>₹{i.unit_cost}</td>
                         <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? '⚠ Low' : '✓ OK'}</span></td>
-                        <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button></td>
+                        <td style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => setAdjusting(i)}>± Adjust</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -864,7 +868,87 @@ export default function Stock() {
         </div>
       )}
 
+      {adjusting && <AdjustStockModal item={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { load(); showToast('Stock updated!') }} />}
+
       {toast && <div className="toast">{toast}</div>}
+    </div>
+  )
+}
+
+function AdjustStockModal({ item, onClose, onSaved }) {
+  const [qty, setQty] = useState(0)
+  const [action, setAction] = useState('add')
+  const [notes, setNotes] = useState('')
+  const [batchId, setBatchId] = useState('')
+  const [batches, setBatches] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (action === 'remove') {
+      api.get('/api/stock/batches', { params: { item_id: item.id } }).then(r => setBatches(r.data))
+    }
+  }, [action, item.id])
+
+  const selectedBatch = batches.find(b => b.id === parseInt(batchId))
+
+  async function submit() {
+    const delta = action === 'add' ? Number(qty) : -Number(qty)
+    if (action === 'remove' && !batchId) { setError('Select which batch this is being removed from'); return }
+    try {
+      setLoading(true)
+      await api.post(`/api/stock/${item.id}/adjust`, {
+        quantity_change: delta, notes,
+        batch_id: action === 'remove' ? parseInt(batchId) : null
+      })
+      onSaved(); onClose()
+    } catch (e) { setError(e.response?.data?.detail || 'Failed') }
+    setLoading(false)
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => e.target.className === 'modal-backdrop' && onClose()}>
+      <div className="modal-box" style={{ maxWidth: 380 }}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>± Adjust Stock</h3>
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+          {item.name} · <b>₹{(item.unit_cost ?? 0).toLocaleString('en-IN')}/{item.unit || 'pcs'}</b>
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+          Current stock: <b>{item.office_qty || 0} {item.unit || 'pcs'}</b>
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          {['add','remove'].map(a => (
+            <button key={a} onClick={() => { setAction(a); setBatchId('') }} style={{
+              flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
+              background: action === a ? (a === 'add' ? 'rgba(52,211,153,.15)' : 'rgba(248,113,113,.15)') : 'var(--surface2)',
+              border: `1.5px solid ${action === a ? (a === 'add' ? 'var(--green)' : 'var(--red)') : 'var(--border)'}`,
+              color: action === a ? (a === 'add' ? 'var(--green)' : 'var(--red)') : 'var(--muted)'
+            }}>{a === 'add' ? '+ Add Stock' : '- Remove Stock'}</button>
+          ))}
+        </div>
+        {action === 'remove' && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label>Batch *</label>
+            <SearchableSelect value={batchId} onChange={setBatchId}
+              placeholder="Select batch…"
+              options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+          </div>
+        )}
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label>Quantity</label>
+          <input type="number" min="1" max={action === 'remove' ? (selectedBatch?.qty_office || 0) : undefined} value={qty} onChange={e => setQty(e.target.value)} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 14 }}>
+          <label>Notes</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Reason / reference…" />
+        </div>
+        {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit} disabled={loading}>{loading ? '⏳…' : 'Update Stock'}</button>
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
     </div>
   )
 }
