@@ -32,5 +32,6 @@ class School(Base):
 
     mandal     = relationship("Mandal", back_populates="schools")
     client     = relationship("Client", back_populates="schools")
+    technician = relationship("Employee", foreign_keys=[technician_id])
     visits     = relationship("Visit", back_populates="school")
     complaints = relationship("Complaint", back_populates="school")

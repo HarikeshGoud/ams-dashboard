@@ -1,6 +1,6 @@
 import os, shutil
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional
 from ..database import get_db
@@ -25,11 +25,7 @@ class SchoolCreate(BaseModel):
     amc_status: Optional[str] = "amc"
 
 def _fmt(s: School):
-    tech = s.technician if hasattr(s, 'technician') and s.technician_id else None
-    try:
-        tech_obj = s.technician
-    except Exception:
-        tech_obj = None
+    tech_obj = s.technician if s.technician_id else None
     return {
         "id": s.id, "name": s.name, "mandal_id": s.mandal_id,
         "mandal_name": s.mandal.name if s.mandal else None,
@@ -58,7 +54,11 @@ def list_schools(
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
-    q = db.query(School).filter(School.is_active == True)
+    q = db.query(School).options(
+        joinedload(School.mandal),
+        joinedload(School.client),
+        joinedload(School.technician),
+    ).filter(School.is_active == True)
     if search:
         q = q.filter(School.name.ilike(f"%{search}%"))
     if mandal_id:
