@@ -643,7 +643,11 @@ export default function Stock() {
                 {lookupTrace.batch.person && <> · from {lookupTrace.batch.person}</>}
               </p>
               {lookupTrace.movements.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No movements yet — still fully in office</div>
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>
+                  {lookupTrace.batch.qty_office === lookupTrace.batch.qty_received
+                    ? 'No movements yet — still fully in office'
+                    : "No recorded movements — this batch predates batch tracking, so who's holding the rest isn't tracked."}
+                </div>
               ) : (
                 <div className="table-wrap">
                   <table>
