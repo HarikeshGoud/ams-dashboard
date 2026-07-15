@@ -7,15 +7,21 @@ const TODAY = new Date().toISOString().slice(0, 10)
 const THIS_YEAR = new Date().getFullYear()
 const THIS_MONTH = new Date().getMonth() + 1
 
+const EMPTY_REPORT = { visit_count: 0, working_count: 0, not_working_count: 0, service_reports: [], movements: [], by_item: [], by_technician: [] }
+
 // ── helpers ────────────────────────────────────────────────────────────────
 function fmtDate(d) { return d ? new Date(d + 'T00:00:00').toLocaleDateString('en-IN') : '-' }
 function pad(n) { return String(n).padStart(2, '0') }
 function monthLabel(y, m) { return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y}` }
 
-function condBadge(c) {
-  const map = { working: ['#198754', 'Working'], not_working: ['#dc3545', 'Not Working'], under_repair: ['#fd7e14', 'Under Repair'] }
-  const [color, label] = map[c] || ['#6c757d', c || '-']
-  return <span style={{ background: color, color: '#fff', borderRadius: 4, padding: '1px 7px', fontSize: 11 }}>{label}</span>
+// The old report's headline consumables — now summed from real stock installs instead of
+// Visit fields nothing ever populated. Matched by name since there's no dedicated "type" flag.
+function mcfQty(byItem) { return byItem.filter(i => /mcf/i.test(i.item_name)).reduce((s, i) => s + i.total_qty, 0) }
+function antiQty(byItem) { return byItem.filter(i => /anti.?scalant/i.test(i.item_name)).reduce((s, i) => s + i.total_qty, 0) }
+
+function statusBadge(status) {
+  const resolved = status === 'PROBLEM RESOLVED'
+  return <span style={{ background: resolved ? '#198754' : '#dc3545', color: '#fff', borderRadius: 4, padding: '1px 7px', fontSize: 11 }}>{resolved ? 'Resolved' : 'Unresolved'}</span>
 }
 
 // ── PDF generators ─────────────────────────────────────────────────────────
@@ -38,121 +44,90 @@ function pdfHeader(doc, title, subtitle) {
   return subtitle ? 36 : 30
 }
 
-function downloadDailyPDF(visits, date) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  const y = pdfHeader(doc, 'DAILY VISIT REPORT', `Date: ${fmtDate(date)}   Total Visits: ${visits.length}`)
-
-  const cols = ['S.No', 'School / Village', 'Mandal', 'Technician', 'Plant Condition', 'Reason (Not Working)', 'MCF Used', 'Antiscalant (L)', 'Spares Used', 'Remarks']
-  const rows = visits.map((v, i) => [
-    i + 1,
-    v.school_name || '-',
-    v.mandal_name || '-',
-    v.employee_name || '-',
-    v.plant_condition?.replace(/_/g, ' ') || '-',
-    v.not_working_reason || '-',
-    v.mcf_used ?? 0,
-    v.antiscalant_used ?? 0,
-    v.spares_used || '-',
-    v.remarks || '-',
-  ])
-
-  autoTable(doc, {
-    startY: y,
-    head: [cols],
-    body: rows,
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [13, 110, 253], textColor: 255 },
-    alternateRowStyles: { fillColor: [245, 248, 255] },
-    margin: { left: 10, right: 10 },
-    columnStyles: { 1: { cellWidth: 38 }, 5: { cellWidth: 28 }, 8: { cellWidth: 30 } },
-  })
-
-  // Summary
-  const fy = doc.lastAutoTable.finalY + 6
-  const working = visits.filter(v => v.plant_condition === 'working').length
+function addSummaryAndStock(doc, data, startY, techLabel) {
+  let fy = startY
+  if (data.movements.length) {
+    autoTable(doc, {
+      startY: fy,
+      head: [['Item Used', 'Qty', 'Technician', 'School / Site']],
+      body: data.movements.map(m => [m.item_name, `${m.quantity} ${m.unit}`.trim(), m.employee_name, m.school_dest || '-']),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [111, 66, 193], textColor: 255 },
+      margin: { left: 10, right: 10 },
+    })
+    fy = doc.lastAutoTable.finalY + 6
+  }
+  if (techLabel && data.by_technician.length) {
+    autoTable(doc, {
+      startY: fy,
+      head: [['Technician', 'Total Items Used']],
+      body: data.by_technician.map(t => [t.employee_name, t.items_used_qty]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [40, 167, 69], textColor: 255 },
+      margin: { left: 10, right: 160 },
+    })
+  }
   autoTable(doc, {
     startY: fy,
     head: [['Summary', '']],
     body: [
-      ['Total Visits', visits.length],
-      ['Plants Working', working],
-      ['Plants Not Working', visits.filter(v => v.plant_condition === 'not_working').length],
-      ['Total MCF Used', visits.reduce((s, v) => s + (v.mcf_used || 0), 0)],
-      ['Total Antiscalant (L)', visits.reduce((s, v) => s + (v.antiscalant_used || 0), 0).toFixed(2)],
+      ['Total Visits', data.visit_count],
+      ['Resolved', data.working_count],
+      ['Unresolved', data.not_working_count],
+      ['Total MCF Used', mcfQty(data.by_item)],
+      ['Total Antiscalant Used', antiQty(data.by_item)],
     ],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [13, 110, 253], textColor: 255 },
-    margin: { left: 10, right: 200 },
+    margin: techLabel ? { left: 155, right: 10 } : { left: 10, right: 200 },
   })
-
-  doc.save(`Daily_Report_${date}.pdf`)
 }
 
-function downloadMonthlyPDF(visits, label, months) {
+function downloadDailyPDF(data, date) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  const y = pdfHeader(doc, `${months === 3 ? '3-MONTH (AMC CYCLE)' : 'MONTHLY'} VISIT REPORT`, `Period: ${label}   Total Visits: ${visits.length}`)
+  const y = pdfHeader(doc, 'DAILY SERVICE REPORT', `Date: ${fmtDate(date)}   Total Visits: ${data.visit_count}`)
 
-  const cols = ['S.No', 'School / Village', 'Mandal', 'Visit Date', 'Technician', 'Plant Condition', 'Reason (Not Working)', 'MCF Used', 'Antiscalant (L)', 'Spares Used']
-  const rows = visits.map((v, i) => [
-    i + 1,
-    v.school_name || '-',
-    v.mandal_name || '-',
-    fmtDate(v.visit_date),
-    v.employee_name || '-',
-    v.plant_condition?.replace(/_/g, ' ') || '-',
-    v.not_working_reason || '-',
-    v.mcf_used ?? 0,
-    v.antiscalant_used ?? 0,
-    v.spares_used || '-',
+  const cols = ['S.No', 'School / Village', 'Mandal', 'Technician', 'Status', 'Complaint No', 'TDS In', 'TDS Out', 'Observation']
+  const rows = data.service_reports.map((s, i) => [
+    i + 1, s.school_name || '-', s.mandal_name || '-', s.employee_name || '-',
+    s.status === 'PROBLEM RESOLVED' ? 'Resolved' : 'Unresolved',
+    s.complaint_no || '-', s.tds_input ?? '-', s.tds_output ?? '-', s.observation || '-',
   ])
 
   autoTable(doc, {
-    startY: y,
-    head: [cols],
-    body: rows,
+    startY: y, head: [cols], body: rows,
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [13, 110, 253], textColor: 255 },
     alternateRowStyles: { fillColor: [245, 248, 255] },
     margin: { left: 10, right: 10 },
-    columnStyles: { 1: { cellWidth: 38 }, 6: { cellWidth: 28 }, 9: { cellWidth: 30 } },
+    columnStyles: { 1: { cellWidth: 38 }, 8: { cellWidth: 40 } },
   })
 
-  // Technician-wise summary
-  const techMap = {}
-  visits.forEach(v => {
-    const n = v.employee_name || 'Unknown'
-    if (!techMap[n]) techMap[n] = { visits: 0, mcf: 0, anti: 0 }
-    techMap[n].visits++
-    techMap[n].mcf += (v.mcf_used || 0)
-    techMap[n].anti += (v.antiscalant_used || 0)
-  })
+  addSummaryAndStock(doc, data, doc.lastAutoTable.finalY + 6, false)
+  doc.save(`Daily_Report_${date}.pdf`)
+}
 
-  const fy = doc.lastAutoTable.finalY + 6
+function downloadMonthlyPDF(data, label, months) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const y = pdfHeader(doc, `${months === 3 ? '3-MONTH (AMC CYCLE)' : 'MONTHLY'} SERVICE REPORT`, `Period: ${label}   Total Visits: ${data.visit_count}`)
+
+  const cols = ['S.No', 'School / Village', 'Mandal', 'Visit Date', 'Technician', 'Status', 'Complaint No', 'TDS In', 'TDS Out']
+  const rows = data.service_reports.map((s, i) => [
+    i + 1, s.school_name || '-', s.mandal_name || '-', fmtDate(s.report_date), s.employee_name || '-',
+    s.status === 'PROBLEM RESOLVED' ? 'Resolved' : 'Unresolved',
+    s.complaint_no || '-', s.tds_input ?? '-', s.tds_output ?? '-',
+  ])
+
   autoTable(doc, {
-    startY: fy,
-    head: [['Technician', 'Total Visits', 'MCF Used', 'Antiscalant (L)']],
-    body: Object.entries(techMap).map(([n, s]) => [n, s.visits, s.mcf, s.anti.toFixed(2)]),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [40, 167, 69], textColor: 255 },
-    margin: { left: 10, right: 160 },
-  })
-
-  // Spares billing summary
-  autoTable(doc, {
-    startY: fy,
-    head: [['Overall Summary', '']],
-    body: [
-      ['Total Visits', visits.length],
-      ['Plants Working', visits.filter(v => v.plant_condition === 'working').length],
-      ['Plants Not Working', visits.filter(v => v.plant_condition === 'not_working').length],
-      ['Total MCF Filters Used', visits.reduce((s, v) => s + (v.mcf_used || 0), 0)],
-      ['Total Antiscalant (L)', visits.reduce((s, v) => s + (v.antiscalant_used || 0), 0).toFixed(2)],
-    ],
-    styles: { fontSize: 9 },
+    startY: y, head: [cols], body: rows,
+    styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [13, 110, 253], textColor: 255 },
-    margin: { left: 155, right: 10 },
+    alternateRowStyles: { fillColor: [245, 248, 255] },
+    margin: { left: 10, right: 10 },
+    columnStyles: { 1: { cellWidth: 38 } },
   })
 
+  addSummaryAndStock(doc, data, doc.lastAutoTable.finalY + 6, true)
   doc.save(`${months === 3 ? 'AMC_Cycle' : 'Monthly'}_Report_${label.replace(/\s/g, '_')}.pdf`)
 }
 
@@ -166,11 +141,11 @@ function Stat({ label, value, color }) {
   )
 }
 
-// ── Table ──────────────────────────────────────────────────────────────────
-function VisitTable({ visits, showDate }) {
-  if (!visits.length) return (
+// ── Service report table (replaces the old Visit table) ────────────────────
+function ServiceReportTable({ reports, showDate }) {
+  if (!reports.length) return (
     <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 50, background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
-      No visits found for the selected period.
+      No service reports found for the selected period.
     </div>
   )
   return (
@@ -183,28 +158,26 @@ function VisitTable({ visits, showDate }) {
             <th style={th}>Mandal</th>
             {showDate && <th style={th}>Visit Date</th>}
             <th style={th}>Technician</th>
-            <th style={th}>Plant Condition</th>
-            <th style={th}>Reason (Not Working)</th>
-            <th style={th}>MCF Used</th>
-            <th style={th}>Antiscalant (L)</th>
-            <th style={th}>Spares Used</th>
-            <th style={th}>Remarks</th>
+            <th style={th}>Status</th>
+            <th style={th}>Complaint No</th>
+            <th style={th}>TDS In</th>
+            <th style={th}>TDS Out</th>
+            <th style={th}>Observation</th>
           </tr>
         </thead>
         <tbody>
-          {visits.map((v, i) => (
-            <tr key={v.id} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+          {reports.map((s, i) => (
+            <tr key={s.id} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
               <td style={td}>{i + 1}</td>
-              <td style={{ ...td, fontWeight: 600 }}>{v.school_name || '-'}</td>
-              <td style={td}>{v.mandal_name || '-'}</td>
-              {showDate && <td style={td}>{fmtDate(v.visit_date)}</td>}
-              <td style={td}>{v.employee_name || '-'}</td>
-              <td style={td}>{condBadge(v.plant_condition)}</td>
-              <td style={{ ...td, color: 'var(--muted)', fontSize: 12 }}>{v.not_working_reason || '-'}</td>
-              <td style={{ ...td, textAlign: 'center' }}>{v.mcf_used ?? 0}</td>
-              <td style={{ ...td, textAlign: 'center' }}>{v.antiscalant_used ?? 0}</td>
-              <td style={{ ...td, fontSize: 12 }}>{v.spares_used || '-'}</td>
-              <td style={{ ...td, fontSize: 12, color: 'var(--muted)' }}>{v.remarks || '-'}</td>
+              <td style={{ ...td, fontWeight: 600 }}>{s.school_name || '-'}</td>
+              <td style={td}>{s.mandal_name || '-'}</td>
+              {showDate && <td style={td}>{fmtDate(s.report_date)}</td>}
+              <td style={td}>{s.employee_name || '-'}</td>
+              <td style={td}>{statusBadge(s.status)}</td>
+              <td style={{ ...td, fontSize: 12 }}>{s.complaint_no || '-'}</td>
+              <td style={{ ...td, textAlign: 'center' }}>{s.tds_input ?? '-'}</td>
+              <td style={{ ...td, textAlign: 'center' }}>{s.tds_output ?? '-'}</td>
+              <td style={{ ...td, fontSize: 12, color: 'var(--muted)' }}>{s.observation || '-'}</td>
             </tr>
           ))}
         </tbody>
@@ -213,38 +186,59 @@ function VisitTable({ visits, showDate }) {
   )
 }
 
-// ── Technician summary ─────────────────────────────────────────────────────
-function TechSummary({ visits }) {
-  const map = {}
-  visits.forEach(v => {
-    const n = v.employee_name || 'Unknown'
-    if (!map[n]) map[n] = { visits: 0, mcf: 0, anti: 0 }
-    map[n].visits++
-    map[n].mcf += (v.mcf_used || 0)
-    map[n].anti += (v.antiscalant_used || 0)
-  })
-  const rows = Object.entries(map)
-  if (!rows.length) return null
+// ── Stock used table ─────────────────────────────────────────────────────
+function StockUsedTable({ movements }) {
+  if (!movements.length) return null
   return (
     <div style={{ marginTop: 24 }}>
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--accent)' }}>Technician-wise Summary</div>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--accent)' }}>Stock Used</div>
+      <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--surface2)' }}>
+              <th style={th}>Date</th>
+              <th style={th}>Item</th>
+              <th style={th}>Qty</th>
+              <th style={th}>Technician</th>
+              <th style={th}>School / Site</th>
+            </tr>
+          </thead>
+          <tbody>
+            {movements.map((m, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                <td style={td}>{m.date?.slice(0, 10)}</td>
+                <td style={{ ...td, fontWeight: 600 }}>{m.item_name}</td>
+                <td style={td}>{m.quantity} {m.unit}</td>
+                <td style={td}>{m.employee_name}</td>
+                <td style={td}>{m.school_dest || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Technician summary ─────────────────────────────────────────────────────
+function TechSummary({ byTechnician }) {
+  if (!byTechnician.length) return null
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--accent)' }}>Technician-wise Stock Usage</div>
       <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--surface2)' }}>
               <th style={th}>Technician</th>
-              <th style={th}>Total Visits</th>
-              <th style={th}>MCF Filters Used</th>
-              <th style={th}>Antiscalant (L)</th>
+              <th style={th}>Total Items Used</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(([name, s], i) => (
-              <tr key={name} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                <td style={{ ...td, fontWeight: 600 }}>{name}</td>
-                <td style={{ ...td, textAlign: 'center' }}>{s.visits}</td>
-                <td style={{ ...td, textAlign: 'center' }}>{s.mcf}</td>
-                <td style={{ ...td, textAlign: 'center' }}>{s.anti.toFixed(2)}</td>
+            {byTechnician.map((t, i) => (
+              <tr key={t.employee_name} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                <td style={{ ...td, fontWeight: 600 }}>{t.employee_name}</td>
+                <td style={{ ...td, textAlign: 'center' }}>{t.items_used_qty}</td>
               </tr>
             ))}
           </tbody>
@@ -257,14 +251,14 @@ function TechSummary({ visits }) {
 // ── DAILY REPORT ───────────────────────────────────────────────────────────
 function DailyReport() {
   const [date, setDate] = useState(TODAY)
-  const [visits, setVisits] = useState([])
+  const [data, setData] = useState(EMPTY_REPORT)
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async (d) => {
     setLoading(true)
     try {
-      const r = await api.get(`/api/visits/?limit=500&date_from=${d}&date_to=${d}`)
-      setVisits(r.data?.items || r.data || [])
+      const r = await api.get('/api/reports/stock-usage', { params: { date_from: d, date_to: d } })
+      setData(r.data)
     } finally { setLoading(false) }
   }, [])
 
@@ -278,7 +272,7 @@ function DailyReport() {
           <input type="date" value={date} max={TODAY} onChange={e => setDate(e.target.value)}
             style={{ padding: '8px 12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14 }} />
         </div>
-        <button onClick={() => downloadDailyPDF(visits, date)}
+        <button onClick={() => downloadDailyPDF(data, date)}
           style={{ marginTop: 18, background: '#198754', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
           ⬇ Download PDF
         </button>
@@ -287,13 +281,14 @@ function DailyReport() {
       {loading ? <div style={{ color: 'var(--muted)', padding: 30 }}>Loading...</div> : (
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-            <Stat label="Total Visits" value={visits.length} color="var(--accent)" />
-            <Stat label="Working" value={visits.filter(v => v.plant_condition === 'working').length} color="#198754" />
-            <Stat label="Not Working" value={visits.filter(v => v.plant_condition === 'not_working').length} color="#dc3545" />
-            <Stat label="MCF Used" value={visits.reduce((s, v) => s + (v.mcf_used || 0), 0)} color="#fd7e14" />
-            <Stat label="Antiscalant (L)" value={visits.reduce((s, v) => s + (v.antiscalant_used || 0), 0).toFixed(1)} color="#6f42c1" />
+            <Stat label="Total Visits" value={data.visit_count} color="var(--accent)" />
+            <Stat label="Resolved" value={data.working_count} color="#198754" />
+            <Stat label="Unresolved" value={data.not_working_count} color="#dc3545" />
+            <Stat label="MCF Used" value={mcfQty(data.by_item)} color="#fd7e14" />
+            <Stat label="Antiscalant Used" value={antiQty(data.by_item)} color="#6f42c1" />
           </div>
-          <VisitTable visits={visits} showDate={false} />
+          <ServiceReportTable reports={data.service_reports} showDate={false} />
+          <StockUsedTable movements={data.movements} />
         </>
       )}
     </div>
@@ -304,7 +299,7 @@ function DailyReport() {
 function MonthlyReport({ months }) {
   const [year, setYear] = useState(THIS_YEAR)
   const [month, setMonth] = useState(THIS_MONTH)
-  const [visits, setVisits] = useState([])
+  const [data, setData] = useState(EMPTY_REPORT)
   const [loading, setLoading] = useState(false)
   const [label, setLabel] = useState('')
 
@@ -317,10 +312,8 @@ function MonthlyReport({ months }) {
       const from = `${startY}-${pad(startM)}-01`
       const lastDay = new Date(y, m, 0).getDate()
       const to = `${y}-${pad(m)}-${pad(lastDay)}`
-      const r = await api.get(`/api/visits/?limit=2000&date_from=${from}&date_to=${to}`)
-      const unique = (r.data?.items || r.data || [])
-      unique.sort((a, b) => a.visit_date.localeCompare(b.visit_date))
-      setVisits(unique)
+      const r = await api.get('/api/reports/stock-usage', { params: { date_from: from, date_to: to } })
+      setData(r.data)
 
       if (mo === 1) setLabel(monthLabel(y, m))
       else setLabel(`${monthLabel(startY, startM)} – ${monthLabel(y, m)}`)
@@ -349,7 +342,7 @@ function MonthlyReport({ months }) {
             {years.map(y => <option key={y}>{y}</option>)}
           </select>
         </div>
-        <button onClick={() => downloadMonthlyPDF(visits, label, months)}
+        <button onClick={() => downloadMonthlyPDF(data, label, months)}
           style={{ background: '#198754', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
           ⬇ Download PDF
         </button>
@@ -364,14 +357,15 @@ function MonthlyReport({ months }) {
       {loading ? <div style={{ color: 'var(--muted)', padding: 30 }}>Loading...</div> : (
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-            <Stat label="Total Visits" value={visits.length} color="var(--accent)" />
-            <Stat label="Working" value={visits.filter(v => v.plant_condition === 'working').length} color="#198754" />
-            <Stat label="Not Working" value={visits.filter(v => v.plant_condition === 'not_working').length} color="#dc3545" />
-            <Stat label="MCF Used" value={visits.reduce((s, v) => s + (v.mcf_used || 0), 0)} color="#fd7e14" />
-            <Stat label="Antiscalant (L)" value={visits.reduce((s, v) => s + (v.antiscalant_used || 0), 0).toFixed(1)} color="#6f42c1" />
+            <Stat label="Total Visits" value={data.visit_count} color="var(--accent)" />
+            <Stat label="Resolved" value={data.working_count} color="#198754" />
+            <Stat label="Unresolved" value={data.not_working_count} color="#dc3545" />
+            <Stat label="MCF Used" value={mcfQty(data.by_item)} color="#fd7e14" />
+            <Stat label="Antiscalant Used" value={antiQty(data.by_item)} color="#6f42c1" />
           </div>
-          <VisitTable visits={visits} showDate={true} />
-          <TechSummary visits={visits} />
+          <ServiceReportTable reports={data.service_reports} showDate={true} />
+          <StockUsedTable movements={data.movements} />
+          <TechSummary byTechnician={data.by_technician} />
         </>
       )}
     </div>
@@ -388,7 +382,7 @@ export default function Reports() {
       {/* Page header */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>📊 Reports</h2>
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Visit reports — daily, monthly, and AMC cycle summaries</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Service reports — daily, monthly, and AMC cycle summaries, backed by real stock &amp; service data</div>
       </div>
 
       {/* Main tabs: Daily | Monthly */}
