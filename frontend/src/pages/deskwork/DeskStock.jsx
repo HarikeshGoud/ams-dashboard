@@ -185,6 +185,14 @@ export default function DeskStock() {
         </div>
       </div>
 
+      {/* KPI */}
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        <div className="kpi-card red"><div className="kpi-label">Low Stock</div><div className="kpi-value">{lowStock.length}</div><div className="kpi-sub">Items below threshold</div></div>
+        <div className="kpi-card yellow"><div className="kpi-label">Items Tracked</div><div className="kpi-value">{items.length}</div></div>
+        <div className="kpi-card blue"><div className="kpi-label">Total Distributed</div><div className="kpi-value">{distributions.length}</div><div className="kpi-sub">Distribution events</div></div>
+        <div className="kpi-card green"><div className="kpi-label">Techs with Stock</div><div className="kpi-value">{techList.length}</div></div>
+      </div>
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, flexWrap: 'wrap' }}>
         {[
