@@ -418,7 +418,6 @@ export default function Tasks() {
       {summaryModal && (
         <SendSummaryModal
           summary={buildDailyTaskSummary(filterDate || today, tasks, employees, fieldReports)}
-          employees={employees}
           onClose={() => setSummaryModal(false)}
         />
       )}

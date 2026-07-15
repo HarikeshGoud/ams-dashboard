@@ -11,7 +11,6 @@ export default function DeskTasks() {
   const { user } = useAuthStore()
   const [mainTab, setMainTab] = useState('tasks') // 'tasks' | 'review'
   const [employees, setEmployees] = useState([])
-  const [allEmployees, setAllEmployees] = useState([])
   const [tasks, setTasks] = useState([])
   const [rotationMap, setRotationMap] = useState({})
   const [fieldReports, setFieldReports] = useState([])
@@ -34,7 +33,6 @@ export default function DeskTasks() {
     ]).then(([e, t, r]) => {
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(techs)
-      setAllEmployees(e.data)
       setTasks(t.data)
       setFieldReports(r.data)
       // Only reports awaiting review
@@ -244,8 +242,7 @@ export default function DeskTasks() {
 
       {summaryModal && (
         <SendSummaryModal
-          summary={buildDailyTaskSummary(taskDate, tasks, allEmployees, fieldReports)}
-          employees={allEmployees}
+          summary={buildDailyTaskSummary(taskDate, tasks, employees, fieldReports)}
           onClose={() => setSummaryModal(false)}
         />
       )}
