@@ -823,6 +823,13 @@ function AddStockModal({ onClose, onSaved }) {
             <option value="">-- Select category --</option>
             <option value={CAT_A}>{CAT_A}</option>
             <option value={CAT_B}>{CAT_B}</option>
+            <option value="ATW Parts">ATW Parts</option>
+            <option value="Consumables">Consumables</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Filter">Filter</option>
+            <option value="Fittings">Fittings</option>
+            <option value="Membranes">Membranes</option>
+            <option value="Pumps">Pumps</option>
             <option value="Other">Other</option>
           </select>
         </div>

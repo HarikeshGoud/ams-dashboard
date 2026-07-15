@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
 
-const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
+// Matches the exact category strings actually in use in the data — picking one here
+// should never create a new, slightly-different-spelled category by accident.
+const STOCK_CATEGORIES = [CAT_A, CAT_B, 'ATW Parts', 'Consumables', 'Electrical', 'Filter', 'Fittings', 'Membranes', 'Pumps', 'Chemical', 'Housings', 'UV', 'Other']
 const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red', purchase: 'pill-blue' }
 const TYPE_LABEL = { receive: '⬇ Receive', transfer: '↔ Transfer', issue: '↑ Issue', distribute: '📦 Distribute', return: '↩ Return', install: '🔧 Install', purchase: '🛒 Purchase' }
 
