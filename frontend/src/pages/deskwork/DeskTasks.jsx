@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
 import SearchableSelect from '../../components/SearchableSelect'
-import { sendDailySummaryWhatsApp } from '../../utils/dailySummary'
+import SendSummaryModal from '../../components/SendSummaryModal'
+import { buildDailyTaskSummary } from '../../utils/dailySummary'
 
 const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' }
 
@@ -10,6 +11,7 @@ export default function DeskTasks() {
   const { user } = useAuthStore()
   const [mainTab, setMainTab] = useState('tasks') // 'tasks' | 'review'
   const [employees, setEmployees] = useState([])
+  const [allEmployees, setAllEmployees] = useState([])
   const [tasks, setTasks] = useState([])
   const [rotationMap, setRotationMap] = useState({})
   const [fieldReports, setFieldReports] = useState([])
@@ -18,6 +20,7 @@ export default function DeskTasks() {
   const [filterEmp, setFilterEmp] = useState('')
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState('')
+  const [summaryModal, setSummaryModal] = useState(false)
   const today = new Date().toISOString().slice(0, 10)
   const [taskDate, setTaskDate] = useState(today)
 
@@ -31,6 +34,7 @@ export default function DeskTasks() {
     ]).then(([e, t, r]) => {
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(techs)
+      setAllEmployees(e.data)
       setTasks(t.data)
       setFieldReports(r.data)
       // Only reports awaiting review
@@ -96,7 +100,7 @@ export default function DeskTasks() {
               {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks (5 each)'}
             </button>
             <button className="btn btn-outline" style={{ fontSize: 12 }}
-              onClick={() => sendDailySummaryWhatsApp(taskDate, tasks, employees, fieldReports)}>
+              onClick={() => setSummaryModal(true)}>
               📤 Send Daily Summary
             </button>
             <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Assign Task</button>
@@ -237,6 +241,14 @@ export default function DeskTasks() {
         />
       )}
       </>}
+
+      {summaryModal && (
+        <SendSummaryModal
+          summary={buildDailyTaskSummary(taskDate, tasks, allEmployees, fieldReports)}
+          employees={allEmployees}
+          onClose={() => setSummaryModal(false)}
+        />
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </div>

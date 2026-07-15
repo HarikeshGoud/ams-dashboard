@@ -26,7 +26,7 @@ def list_employees(db: Session = Depends(get_db), _=Depends(require_admin_or_des
         selectinload(Employee.mandals),
     ).filter(Employee.is_active == True).order_by(Employee.employee_code).all()
     return [{"id": e.id, "employee_code": e.employee_code, "name": e.name,
-             "phone": e.phone, "role": e.role,
+             "phone": e.phone, "email": e.email, "role": e.role,
              "designation": e.designation, "mandal_id": e.mandal_id,
              "mandal_name": e.mandal.name if e.mandal else None,
              "mandals": [{"id": m.id, "name": m.name} for m in e.mandals]} for e in emps]

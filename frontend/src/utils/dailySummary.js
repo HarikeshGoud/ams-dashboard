@@ -43,8 +43,3 @@ export function buildDailyTaskSummary(dateStr, tasks, employees, fieldReports) {
 
   return lines.join('\n')
 }
-
-export function sendDailySummaryWhatsApp(dateStr, tasks, employees, fieldReports) {
-  const msg = buildDailyTaskSummary(dateStr, tasks, employees, fieldReports)
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
-}

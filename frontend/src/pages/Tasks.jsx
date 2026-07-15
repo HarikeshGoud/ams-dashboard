@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
-import { sendDailySummaryWhatsApp } from '../utils/dailySummary'
+import SendSummaryModal from '../components/SendSummaryModal'
+import { buildDailyTaskSummary } from '../utils/dailySummary'
 
 const PRIORITY_PILL = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
 const STATUS_PILL   = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
@@ -16,6 +17,7 @@ export default function Tasks() {
   const [modal, setModal]         = useState(false)
   const [form, setForm]           = useState({ title: '', description: '', assigned_to_id: '', priority: 'medium', due_date: '' })
   const [toast, setToast]         = useState('')
+  const [summaryModal, setSummaryModal] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [resetStep, setResetStep]   = useState(0)   // 0=idle, 1=confirm modal, 2=resetting
   const [resetConfirmText, setResetConfirmText] = useState('')
@@ -162,7 +164,7 @@ export default function Tasks() {
             🗑️ Reset All Tasks
           </button>
           <button className="btn btn-outline" style={{ fontSize: 12 }}
-            onClick={() => sendDailySummaryWhatsApp(filterDate || today, tasks, employees, fieldReports)}>
+            onClick={() => setSummaryModal(true)}>
             📤 Send Daily Summary
           </button>
           <button className="btn btn-primary" onClick={() => setModal(true)}>+ Create Task</button>
@@ -411,6 +413,14 @@ export default function Tasks() {
             </div>
           </div>
         </div>
+      )}
+
+      {summaryModal && (
+        <SendSummaryModal
+          summary={buildDailyTaskSummary(filterDate || today, tasks, employees, fieldReports)}
+          employees={employees}
+          onClose={() => setSummaryModal(false)}
+        />
       )}
 
       {toast && <div className="toast">{toast}</div>}
