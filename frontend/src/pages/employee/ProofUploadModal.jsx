@@ -134,11 +134,16 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
   // Fetch the batches the technician actually holds for each selected item they have in hand
   useEffect(() => {
-    selectedItems.forEach(item => {
+    selectedItems.forEach((item, i) => {
       const held = myStock.find(m => m.item_id === item.id)
       if (held && !(item.id in itemBatches)) {
         api.get('/api/stock/employee-batches', { params: { item_id: item.id } })
-          .then(r => setItemBatches(prev => ({ ...prev, [item.id]: r.data })))
+          .then(r => {
+            setItemBatches(prev => ({ ...prev, [item.id]: r.data }))
+            if (r.data.length === 1) {
+              setInstallDetails(prev => ({ ...prev, [i]: { ...prev[i], batch_id: String(r.data[0].id) } }))
+            }
+          })
           .catch(() => setItemBatches(prev => ({ ...prev, [item.id]: [] })))
       }
     })
@@ -531,10 +536,16 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                         </div>
                         <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
                           <label style={{ fontSize: 10 }}>From Batch {batches.length > 0 ? '(so stock stays traceable)' : ''}</label>
-                          <SearchableSelect value={details.batch_id ?? ''}
-                            onChange={val => setInstallDetails(prev => ({ ...prev, [i]: { ...prev[i], batch_id: val } }))}
-                            placeholder={batches.length ? 'Select batch…' : 'No batch in hand'}
-                            options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                          {batches.length === 1 ? (
+                            <div style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 11, color: 'var(--muted)' }}>
+                              {batchLabel(batches[0])}
+                            </div>
+                          ) : (
+                            <SearchableSelect value={details.batch_id ?? ''}
+                              onChange={val => setInstallDetails(prev => ({ ...prev, [i]: { ...prev[i], batch_id: val } }))}
+                              placeholder={batches.length ? 'Select batch…' : 'No batch in hand'}
+                              options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                          )}
                         </div>
                       </div>
                     )}

@@ -84,7 +84,10 @@ export default function DeskStock() {
 
   useEffect(() => {
     if (distModal && distForm.item_id) {
-      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => setDistBatches(r.data))
+      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => {
+        setDistBatches(r.data)
+        if (r.data.length === 1) setDistForm(f => ({ ...f, batch_id: String(r.data[0].id) }))
+      })
     } else { setDistBatches([]) }
   }, [distModal, distForm.item_id])
 
@@ -912,9 +915,15 @@ export default function DeskStock() {
               )}
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Batch *</label>
-                <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
-                  placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
-                  options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                {distBatches.length === 1 ? (
+                  <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                    {batchLabel(distBatches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+                  </div>
+                ) : (
+                  <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
+                    placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
+                    options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                )}
               </div>
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Technician *</label>
@@ -1030,7 +1039,10 @@ function AdjustStockModal({ item, onClose, onSaved }) {
 
   useEffect(() => {
     if (action === 'remove') {
-      api.get('/api/stock/batches', { params: { item_id: item.id } }).then(r => setBatches(r.data))
+      api.get('/api/stock/batches', { params: { item_id: item.id } }).then(r => {
+        setBatches(r.data)
+        if (r.data.length === 1) setBatchId(String(r.data[0].id))
+      })
     }
   }, [action, item.id])
 
@@ -1074,9 +1086,15 @@ function AdjustStockModal({ item, onClose, onSaved }) {
         {action === 'remove' && (
           <div className="form-group" style={{ marginBottom: 10 }}>
             <label>Batch *</label>
-            <SearchableSelect value={batchId} onChange={setBatchId}
-              placeholder="Select batch…"
-              options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+            {batches.length === 1 ? (
+              <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                {batchLabel(batches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+              </div>
+            ) : (
+              <SearchableSelect value={batchId} onChange={setBatchId}
+                placeholder="Select batch…"
+                options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+            )}
           </div>
         )}
         <div className="form-group" style={{ marginBottom: 10 }}>
