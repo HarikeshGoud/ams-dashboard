@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 from ..database import get_db
 from ..models.reorder_request import ReorderRequest
-from ..models.stock import StockItem
+from ..models.stock import StockItem, StockLedger
 from ..models.employee import Employee
 from ..dependencies import get_current_user
+from .stock import _create_batch
 
 router = APIRouter(prefix="/api/reorder", tags=["reorder"])
 
@@ -19,6 +20,9 @@ class ReorderCreate(BaseModel):
 class ReorderUpdate(BaseModel):
     status: str  # ordered / received / cancelled
     note: Optional[str] = None
+    received_qty: Optional[int] = None  # actual qty received, if different from what was requested
+    buy_price: Optional[float] = None
+    person: Optional[str] = None  # supplier name, optional
 
 def _fmt(r: ReorderRequest):
     return {
@@ -83,9 +87,32 @@ def update_reorder(reorder_id: int, data: ReorderUpdate, db: Session = Depends(g
         raise HTTPException(400, "status must be ordered, received, or cancelled")
     r = db.query(ReorderRequest).filter(ReorderRequest.id == reorder_id).first()
     if not r: raise HTTPException(404, "Not found")
+    if r.status in ("received", "cancelled"):
+        raise HTTPException(400, f"Already {r.status}")
 
     r.status = data.status
     if data.note: r.note = data.note
+
+    if data.status == "received":
+        qty = data.received_qty if data.received_qty is not None else r.requested_qty
+        if qty <= 0:
+            raise HTTPException(400, "Received quantity must be greater than 0")
+        item = db.query(StockItem).filter(StockItem.id == r.item_id).first()
+        if not item: raise HTTPException(404, "Item not found")
+
+        batch = _create_batch(
+            db, item_id=r.item_id, quantity=qty, source="reorder", source_ref_id=r.id,
+            received_date=date.today(), buy_price=data.buy_price, person=data.person,
+            created_by=user.id, note=f"Received against reorder request #{r.id}"
+        )
+        item.office_qty = (item.office_qty or 0) + qty
+        db.add(StockLedger(
+            item_id=r.item_id, transaction_type="receive", batch_id=batch.id,
+            quantity=qty, person=data.person, buy_price=data.buy_price,
+            note=f"Reorder #{r.id} received" + (f" — {data.note}" if data.note else ""),
+            created_by=user.id
+        ))
+
     if data.status in ("received", "cancelled"):
         r.resolved_by = user.id
         r.resolved_at = datetime.utcnow()

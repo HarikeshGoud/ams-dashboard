@@ -39,6 +39,8 @@ export default function DeskStock() {
   const [reorders, setReorders]           = useState([])
   const [reorderModal, setReorderModal]   = useState(null)
   const [reorderForm, setReorderForm]     = useState({ quantity: 1, note: '' })
+  const [receiveModal, setReceiveModal]   = useState(null)
+  const [receiveForm, setReceiveForm]     = useState({ quantity: 1, buy_price: '', person: '' })
   const [toast, setToast]           = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -79,6 +81,19 @@ export default function DeskStock() {
     try {
       await api.patch(`/api/reorder/${id}`, { status })
       load(); showToast(`Marked as ${status}`)
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function confirmReceive(ev) {
+    ev.preventDefault()
+    try {
+      await api.patch(`/api/reorder/${receiveModal.id}`, {
+        status: 'received',
+        received_qty: parseInt(receiveForm.quantity),
+        buy_price: parseFloat(receiveForm.buy_price) || null,
+        person: receiveForm.person || null,
+      })
+      setReceiveModal(null); load(); showToast('✅ Stock received — added to office inventory as a new batch')
     } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
   }
 
@@ -743,7 +758,7 @@ export default function DeskStock() {
                         <td style={{ padding: '8px 10px' }}><span className={`pill ${r.status === 'ordered' ? 'pill-blue' : 'pill-yellow'}`}>{r.status === 'ordered' ? '🚚 Ordered' : '🆕 Pending'}</span></td>
                         <td style={{ padding: '8px 10px', display: 'flex', gap: 6 }}>
                           {r.status === 'pending' && <button className="btn btn-outline btn-sm" onClick={() => updateReorder(r.id, 'ordered')}>Mark Ordered</button>}
-                          <button className="btn btn-green btn-sm" onClick={() => updateReorder(r.id, 'received')}>✅ Received</button>
+                          <button className="btn btn-green btn-sm" onClick={() => { setReceiveModal(r); setReceiveForm({ quantity: r.requested_qty, buy_price: '', person: '' }) }}>✅ Received</button>
                           <button className="btn btn-danger btn-sm" onClick={() => updateReorder(r.id, 'cancelled')}>✕ Cancel</button>
                         </td>
                       </tr>
@@ -807,6 +822,37 @@ export default function DeskStock() {
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Request Reorder</button>
                 <button type="button" className="btn btn-outline" onClick={() => setReorderModal(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Received — actually adds stock as a new batch */}
+      {receiveModal && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: 380 }}>
+            <button className="modal-close" onClick={() => setReceiveModal(null)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>✅ Confirm Stock Received</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              {receiveModal.item_name} · requested {receiveModal.requested_qty} {receiveModal.item_unit}. This creates a new batch and adds to office stock — confirm the actual quantity that arrived.
+            </p>
+            <form onSubmit={confirmReceive}>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Quantity Received</label>
+                <input required type="number" min="1" value={receiveForm.quantity} onChange={e => setReceiveForm({ ...receiveForm, quantity: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Buy Price (₹, optional)</label>
+                <input type="number" value={receiveForm.buy_price} onChange={e => setReceiveForm({ ...receiveForm, buy_price: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label>Supplier (optional)</label>
+                <input value={receiveForm.person} onChange={e => setReceiveForm({ ...receiveForm, person: e.target.value })} placeholder="Who supplied it…" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Confirm Received</button>
+                <button type="button" className="btn btn-outline" onClick={() => setReceiveModal(null)}>Cancel</button>
               </div>
             </form>
           </div>
