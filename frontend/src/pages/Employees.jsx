@@ -94,6 +94,7 @@ export default function Employees() {
                 <div className="form-group"><label>Role</label>
                   <select value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
                     <option value="technician">Technician</option>
+                    <option value="deskwork">Deskwork</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
