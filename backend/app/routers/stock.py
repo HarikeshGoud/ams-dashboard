@@ -527,8 +527,16 @@ def trace_batch(batch_id: int, db: Session = Depends(get_db), user=Depends(get_c
     movements = db.query(StockLedger).filter(
         StockLedger.batch_id == batch_id
     ).order_by(StockLedger.created_at.asc()).all()
+    holders = db.query(EmployeeStockBatch).filter(
+        EmployeeStockBatch.batch_id == batch_id, EmployeeStockBatch.qty_in_hand > 0
+    ).all()
     return {
         "batch": _batch_fmt(batch),
         "item_name": batch.item.name if batch.item else None,
         "movements": [_ledger_fmt(e) for e in movements],
+        "holders": [{
+            "employee_id": h.employee_id,
+            "employee_name": h.employee.name if h.employee else None,
+            "qty_in_hand": h.qty_in_hand,
+        } for h in holders],
     }

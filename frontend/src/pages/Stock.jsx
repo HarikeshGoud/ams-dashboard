@@ -3,6 +3,8 @@ import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
 
 const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
+const CAT_A = '50/100 LPH RO Units'
+const CAT_B = '1000/1500/2000 LPH RO Units'
 const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red', purchase: 'pill-blue' }
 const TYPE_LABEL = { receive: '⬇ Receive', transfer: '↔ Transfer', issue: '↑ Issue', distribute: '📦 Distribute', return: '↩ Return', install: '🔧 Install', purchase: '🛒 Purchase' }
 
@@ -19,6 +21,7 @@ export default function Stock() {
   const [schools, setSchools]         = useState([])
   const [purchases, setPurchases]     = useState([])
   const [loading, setLoading]         = useState(true)
+  const [search, setSearch]           = useState('')
   const [tab, setTab]                 = useState('inventory')   // inventory | ledger | distribute | emp-stock | purchases
   const [expandedTech, setExpandedTech] = useState(null)
   const [techProofs, setTechProofs]     = useState({})   // { [emp_id]: reports[] }
@@ -173,6 +176,15 @@ export default function Stock() {
   const selectedDistBatch = distBatches.find(b => b.id === parseInt(distForm.batch_id))
   const selectedLedgerBatch = ledgerBatches.find(b => b.id === parseInt(ledgerForm.batch_id))
 
+  const filteredItems = items.filter(i => !search || i.name.toLowerCase().includes(search.toLowerCase()))
+  const grouped = {}
+  filteredItems.forEach(item => {
+    const cat = item.category || 'Other'
+    if (!grouped[cat]) grouped[cat] = []
+    grouped[cat].push(item)
+  })
+  const groupOrder = [CAT_A, CAT_B, ...Object.keys(grouped).filter(c => c !== CAT_A && c !== CAT_B)]
+
   // Build per-technician usage summary
   const techMap = {}
   empStock.forEach(emp => {
@@ -244,32 +256,54 @@ export default function Stock() {
       </div>
 
       {/* ── INVENTORY TAB ─────────────────────────────────────────── */}
-      {tab === 'inventory' && (
-        <div className="card">
-          <div className="card-title">Current Inventory</div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Item</th><th>Category</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Edit</th></tr>
-              </thead>
-              <tbody>
-                {items.map(i => (
-                  <tr key={i.id}>
-                    <td style={{ fontWeight: 500 }}>{i.name}</td>
-                    <td><span style={{ fontSize: 11, color: 'var(--muted)' }}>{i.category || '—'}</span></td>
-                    <td>{i.unit}</td>
-                    <td style={{ fontWeight: 700, color: i.office_qty <= i.min_qty ? 'var(--red)' : 'var(--green)' }}>{i.office_qty}</td>
-                    <td>{i.min_qty}</td>
-                    <td>₹{i.unit_cost}</td>
-                    <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? '⚠ Low' : '✓ OK'}</span></td>
-                    <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {tab === 'inventory' && <>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search stock items…"
+          style={{ marginBottom: 14, display: 'block', width: '100%', fontSize: 15, padding: '12px 16px' }} />
+
+        {filteredItems.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>No items found.</div>
+        ) : (
+          groupOrder.filter(cat => grouped[cat]?.length > 0).map(cat => (
+            <div key={cat} style={{ marginBottom: 24 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
+                padding: '8px 12px', borderRadius: 8,
+                background: cat === CAT_A ? 'rgba(56,189,248,.08)' : cat === CAT_B ? 'rgba(52,211,153,.08)' : 'var(--surface2)',
+                border: `1px solid ${cat === CAT_A ? 'var(--accent)' : cat === CAT_B ? 'var(--green)' : 'var(--border)'}`,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: cat === CAT_A ? 'var(--accent)' : cat === CAT_B ? 'var(--green)' : 'var(--muted)' }}>
+                  {cat === CAT_A ? '🔵' : cat === CAT_B ? '🟢' : '📦'} {cat}
+                </span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>
+                  {grouped[cat].length} items
+                </span>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>#</th><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Edit</th></tr>
+                  </thead>
+                  <tbody>
+                    {grouped[cat].map((i, idx) => (
+                      <tr key={i.id}>
+                        <td style={{ color: 'var(--muted)', fontSize: 11 }}>{idx + 1}</td>
+                        <td style={{ fontWeight: 500 }}>{i.name}</td>
+                        <td>{i.unit}</td>
+                        <td style={{ fontWeight: 700, color: i.office_qty <= i.min_qty ? 'var(--red)' : 'var(--green)' }}>{i.office_qty}</td>
+                        <td>{i.min_qty}</td>
+                        <td>₹{i.unit_cost}</td>
+                        <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? '⚠ Low' : '✓ OK'}</span></td>
+                        <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))
+        )}
+      </>}
 
       {/* ── DISTRIBUTE TAB ────────────────────────────────────────── */}
       {tab === 'distribute' && (
@@ -642,11 +676,23 @@ export default function Stock() {
                 {lookupTrace.item_name} · received {lookupTrace.batch.received_date} · {lookupTrace.batch.qty_received} units · <b>{lookupTrace.batch.qty_office}</b> still in office
                 {lookupTrace.batch.person && <> · from {lookupTrace.batch.person}</>}
               </p>
+
+              {lookupTrace.holders && lookupTrace.holders.length > 0 && (
+                <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 8, background: 'rgba(251,191,36,.08)', border: '1px solid var(--yellow)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', marginBottom: 4 }}>🎒 Currently Held By</div>
+                  {lookupTrace.holders.map(h => (
+                    <div key={h.employee_id} style={{ fontSize: 12 }}>{h.employee_name} — <b>{h.qty_in_hand}</b> units</div>
+                  ))}
+                </div>
+              )}
+
               {lookupTrace.movements.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>
                   {lookupTrace.batch.qty_office === lookupTrace.batch.qty_received
                     ? 'No movements yet — still fully in office'
-                    : "No recorded movements — this batch predates batch tracking, so who's holding the rest isn't tracked."}
+                    : lookupTrace.holders?.length > 0
+                      ? 'No ledger movements recorded — this batch predates batch tracking, but current holders are shown above.'
+                      : "No recorded movements, and no one currently holds this batch — it likely left the system before batch tracking existed."}
                 </div>
               ) : (
                 <div className="table-wrap">
