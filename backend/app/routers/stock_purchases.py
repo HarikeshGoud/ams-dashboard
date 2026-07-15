@@ -9,7 +9,7 @@ from ..models.stock_purchase import StockPurchase
 from ..models.stock import StockItem, StockLedger
 from ..models.employee import Employee
 from ..dependencies import get_current_user, require_admin_or_deskwork
-from .stock import _upsert_employee_stock
+from .stock import _upsert_employee_stock, _upsert_employee_stock_batch, _create_batch
 
 router = APIRouter(prefix="/api/stock-purchases", tags=["stock-purchases"])
 
@@ -140,9 +140,16 @@ def review_purchase(purchase_id: int, data: PurchaseReview, request: Request, db
     p.reviewed_at = datetime.utcnow()
 
     if data.status == "approved" and p.item_id:
+        batch = _create_batch(
+            db, item_id=p.item_id, quantity=p.quantity, source="purchase", source_ref_id=p.id,
+            received_date=p.purchase_date, buy_price=p.amount_paid, person=p.employee.name if p.employee else None,
+            created_by=user.id, note=f"External purchase by {p.employee.name if p.employee else 'technician'}"
+        )
+        batch.qty_office = 0  # went straight to the technician, never sat in the office
         _upsert_employee_stock(db, p.employee_id, p.item_id, p.quantity)
+        _upsert_employee_stock_batch(db, p.employee_id, batch.id, p.quantity)
         db.add(StockLedger(
-            item_id=p.item_id, transaction_type="purchase", quantity=p.quantity,
+            item_id=p.item_id, transaction_type="purchase", batch_id=batch.id, quantity=p.quantity,
             employee_id=p.employee_id, buy_price=p.amount_paid,
             note=f"External purchase approved by {user.name}", created_by=user.id
         ))

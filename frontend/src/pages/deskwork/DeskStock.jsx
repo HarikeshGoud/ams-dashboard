@@ -5,6 +5,10 @@ import SearchableSelect from '../../components/SearchableSelect'
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
 
+function batchLabel(b) {
+  return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
+}
+
 export default function DeskStock() {
   const [items, setItems]           = useState([])
   const [employees, setEmployees]   = useState([])
@@ -17,7 +21,8 @@ export default function DeskStock() {
   const [showAdd, setShowAdd]       = useState(false)
   const [adjusting, setAdjusting]   = useState(null)
   const [distModal, setDistModal]   = useState(false)
-  const [distForm, setDistForm]     = useState({ item_id: '', employee_id: '', quantity: 1, note: '' })
+  const [distForm, setDistForm]     = useState({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' })
+  const [distBatches, setDistBatches] = useState([])
   const [ledger, setLedger]         = useState([])
   const [expandedTech, setExpandedTech] = useState(null)
   const [techProofs, setTechProofs]     = useState({})
@@ -49,6 +54,12 @@ export default function DeskStock() {
   }
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    if (distModal && distForm.item_id) {
+      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => setDistBatches(r.data))
+    } else { setDistBatches([]) }
+  }, [distModal, distForm.item_id])
+
   async function reviewPurchase(id, status, note = '') {
     await api.patch(`/api/stock-purchases/${id}`, { status, admin_note: note || null })
     setExpandedPurchase(null)
@@ -66,9 +77,11 @@ export default function DeskStock() {
   async function distribute(ev) {
     ev.preventDefault()
     if (!distForm.item_id || !distForm.employee_id) { showToast('❌ Select an item and technician'); return }
+    if (!distForm.batch_id) { showToast('❌ Select which batch to distribute from'); return }
     try {
       await api.post('/api/stock/distribute', {
         item_id: parseInt(distForm.item_id),
+        batch_id: parseInt(distForm.batch_id),
         employee_id: parseInt(distForm.employee_id),
         quantity: parseInt(distForm.quantity),
         note: distForm.note || null
@@ -119,6 +132,7 @@ export default function DeskStock() {
   }
 
   const selectedItem = items.find(i => i.id === parseInt(distForm.item_id))
+  const selectedDistBatch = distBatches.find(b => b.id === parseInt(distForm.batch_id))
 
   // Build per-technician usage summary
   const techMap = {}
@@ -149,7 +163,7 @@ export default function DeskStock() {
       <div className="section-header" style={{ marginBottom: 12 }}>
         <h3>📦 Stock Management</h3>
         <div className="flex gap-8">
-          <button className="btn btn-purple" style={{ fontSize: 12 }} onClick={() => { setDistModal(true); setDistForm({ item_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
+          <button className="btn btn-purple" style={{ fontSize: 12 }} onClick={() => { setDistModal(true); setDistForm({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
           <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>+ Add Item</button>
         </div>
       </div>
@@ -174,7 +188,7 @@ export default function DeskStock() {
         <div className="card" style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <div className="card-title" style={{ marginBottom: 0 }}>Distribution History</div>
-            <button className="btn btn-purple btn-sm" onClick={() => { setDistModal(true); setDistForm({ item_id: '', employee_id: '', quantity: 1, note: '' }) }}>+ Distribute</button>
+            <button className="btn btn-purple btn-sm" onClick={() => { setDistModal(true); setDistForm({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' }) }}>+ Distribute</button>
           </div>
           {distributions.length === 0 ? (
             <div style={{ color: 'var(--muted)', textAlign: 'center', padding: 24 }}>No distributions yet</div>
@@ -547,7 +561,7 @@ export default function DeskStock() {
             <form onSubmit={distribute}>
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Item *</label>
-                <SearchableSelect value={distForm.item_id} onChange={val => setDistForm({...distForm, item_id: val})}
+                <SearchableSelect value={distForm.item_id} onChange={val => setDistForm({...distForm, item_id: val, batch_id: ''})}
                   placeholder="Select item…"
                   options={items.filter(i => (i.office_qty || i.quantity || 0) > 0).map(i => ({ value: String(i.id), label: `${i.name} — ${i.office_qty || i.quantity} ${i.unit} in office` }))} />
               </div>
@@ -557,6 +571,12 @@ export default function DeskStock() {
                 </div>
               )}
               <div className="form-group" style={{ marginBottom: 12 }}>
+                <label>Batch *</label>
+                <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
+                  placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
+                  options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Technician *</label>
                 <SearchableSelect value={distForm.employee_id} onChange={val => setDistForm({...distForm, employee_id: val})}
                   placeholder="Select technician…"
@@ -565,7 +585,7 @@ export default function DeskStock() {
               <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label>Quantity *</label>
-                  <input required type="number" min="1" max={selectedItem?.office_qty || selectedItem?.quantity || 9999} value={distForm.quantity}
+                  <input required type="number" min="1" max={selectedDistBatch?.qty_office || 0} value={distForm.quantity}
                     onChange={e => setDistForm({...distForm, quantity: e.target.value})} />
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>
@@ -656,14 +676,28 @@ function AdjustStockModal({ item, onClose, onSaved }) {
   const [qty, setQty] = useState(0)
   const [action, setAction] = useState('add')
   const [notes, setNotes] = useState('')
+  const [batchId, setBatchId] = useState('')
+  const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    if (action === 'remove') {
+      api.get('/api/stock/batches', { params: { item_id: item.id } }).then(r => setBatches(r.data))
+    }
+  }, [action, item.id])
+
+  const selectedBatch = batches.find(b => b.id === parseInt(batchId))
+
   async function submit() {
     const delta = action === 'add' ? Number(qty) : -Number(qty)
+    if (action === 'remove' && !batchId) { setError('Select which batch this is being removed from'); return }
     try {
       setLoading(true)
-      await api.post(`/api/stock/${item.id}/adjust`, { quantity_change: delta, notes })
+      await api.post(`/api/stock/${item.id}/adjust`, {
+        quantity_change: delta, notes,
+        batch_id: action === 'remove' ? parseInt(batchId) : null
+      })
       onSaved(); onClose()
     } catch (e) { setError(e.response?.data?.detail || 'Failed') }
     setLoading(false)
@@ -682,7 +716,7 @@ function AdjustStockModal({ item, onClose, onSaved }) {
         </p>
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           {['add','remove'].map(a => (
-            <button key={a} onClick={() => setAction(a)} style={{
+            <button key={a} onClick={() => { setAction(a); setBatchId('') }} style={{
               flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
               background: action === a ? (a === 'add' ? 'rgba(52,211,153,.15)' : 'rgba(248,113,113,.15)') : 'var(--surface2)',
               border: `1.5px solid ${action === a ? (a === 'add' ? 'var(--green)' : 'var(--red)') : 'var(--border)'}`,
@@ -690,9 +724,17 @@ function AdjustStockModal({ item, onClose, onSaved }) {
             }}>{a === 'add' ? '+ Add Stock' : '- Remove Stock'}</button>
           ))}
         </div>
+        {action === 'remove' && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label>Batch *</label>
+            <SearchableSelect value={batchId} onChange={setBatchId}
+              placeholder="Select batch…"
+              options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+          </div>
+        )}
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label>Quantity</label>
-          <input type="number" min="1" value={qty} onChange={e => setQty(e.target.value)} />
+          <input type="number" min="1" max={action === 'remove' ? (selectedBatch?.qty_office || 0) : undefined} value={qty} onChange={e => setQty(e.target.value)} />
         </div>
         <div className="form-group" style={{ marginBottom: 14 }}>
           <label>Notes</label>

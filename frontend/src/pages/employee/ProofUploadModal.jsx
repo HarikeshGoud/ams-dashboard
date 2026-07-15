@@ -2,6 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import api from '../../api/axios'
 import SignaturePad from '../../components/SignaturePad'
 import CameraCapture from '../../components/CameraCapture'
+import SearchableSelect from '../../components/SearchableSelect'
+
+function batchLabel(b) {
+  return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
+}
 
 // ── Photo slot ────────────────────────────────────────────────────────────────
 function PhotoSlot({ label, desc, icon, preview, onOpen }) {
@@ -41,7 +46,10 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [selectedItems, setSelectedItems] = useState([])
   const [stockItems, setStockItems] = useState([])
   const [myStock, setMyStock]       = useState([])  // technician's in-hand items
+  const [installDetails, setInstallDetails] = useState({}) // { [selectedItems index]: { quantity, batch_id } }
+  const [itemBatches, setItemBatches] = useState({}) // { [item_id]: batches[] the technician holds }
   const [stockDeducted, setStockDeducted] = useState([]) // items auto-deducted on submit
+  const [stockFailed, setStockFailed] = useState([]) // items that had a batch picked but the deduction call failed
   const [activeCat, setActiveCat] = useState(null) // null = not chosen yet
   const [gps, setGps] = useState(null)
   const [gpsError, setGpsError] = useState('')
@@ -123,6 +131,18 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       setMyStock(ms.data?.in_hand || [])
     }).catch(() => { setStockItems([]); setMyStock([]) })
   }, [])
+
+  // Fetch the batches the technician actually holds for each selected item they have in hand
+  useEffect(() => {
+    selectedItems.forEach(item => {
+      const held = myStock.find(m => m.item_id === item.id)
+      if (held && !(item.id in itemBatches)) {
+        api.get('/api/stock/employee-batches', { params: { item_id: item.id } })
+          .then(r => setItemBatches(prev => ({ ...prev, [item.id]: r.data })))
+          .catch(() => setItemBatches(prev => ({ ...prev, [item.id]: [] })))
+      }
+    })
+  }, [selectedItems, myStock])
 
   function captureGPS() {
     setGpsLoading(true); setGpsError('')
@@ -207,23 +227,31 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         setLastReportId(res.data?.id || null)
         setError('')
 
-        // Auto-deduct stock: match by exact item_id to avoid cross-category confusion
+        // Auto-deduct stock: match by exact item_id, using the technician's chosen quantity + batch
         const deducted = []
-        for (const selItem of selectedItems) {
+        const failed = []
+        for (let i = 0; i < selectedItems.length; i++) {
+          const selItem = selectedItems[i]
           const inHand = myStock.find(s => s.item_id === selItem.id)
-          if (inHand && inHand.qty_in_hand > 0) {
+          const details = installDetails[i]
+          if (inHand && inHand.qty_in_hand > 0 && details?.batch_id) {
+            const qty = parseInt(details.quantity) || 1
             try {
               await api.post('/api/stock/install', {
                 item_id: inHand.item_id,
-                quantity: 1,
+                batch_id: parseInt(details.batch_id),
+                quantity: qty,
                 school_dest: task.school_name || null,
                 note: `Auto-deducted on proof submission for ${task.title}`
               })
-              deducted.push(`${selItem.name} (1 ${inHand.unit})`)
-            } catch (_) {}
+              deducted.push(`${selItem.name} (${qty} ${inHand.unit})`)
+            } catch (e) {
+              failed.push(`${selItem.name}: ${e.response?.data?.detail || 'could not update stock'}`)
+            }
           }
         }
         setStockDeducted(deducted)
+        setStockFailed(failed)
         setStep(3)
         setSubmitting(false)
         return
@@ -472,6 +500,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
               {/* Per-item photo groups */}
               {selectedItems.map((item, i) => {
                 const itemDone = photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
+                const inHandEntry = myStock.find(m => m.item_id === item.id)
+                const batches = itemBatches[item.id] || []
+                const details = installDetails[i] || {}
                 return (
                   <div key={i} style={{
                     border: `1.5px solid ${itemDone ? 'var(--green)' : 'var(--border)'}`,
@@ -489,6 +520,24 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                       </span>
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{item.name}</span>
                     </div>
+
+                    {inHandEntry && (
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                        <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                          <label style={{ fontSize: 10 }}>Qty Used</label>
+                          <input type="number" min="1" max={inHandEntry.qty_in_hand} value={details.quantity ?? 1}
+                            onChange={e => setInstallDetails(prev => ({ ...prev, [i]: { ...prev[i], quantity: e.target.value } }))}
+                            style={{ fontSize: 12 }} />
+                        </div>
+                        <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
+                          <label style={{ fontSize: 10 }}>From Batch {batches.length > 0 ? '(so stock stays traceable)' : ''}</label>
+                          <SearchableSelect value={details.batch_id ?? ''}
+                            onChange={val => setInstallDetails(prev => ({ ...prev, [i]: { ...prev[i], batch_id: val } }))}
+                            placeholder={batches.length ? 'Select batch…' : 'No batch in hand'}
+                            options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                        </div>
+                      </div>
+                    )}
 
                     <PhotoSlot
                       label="Before"
@@ -619,6 +668,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   <div style={{ fontWeight: 700, color: 'var(--green)', marginBottom: 4 }}>🎒 Stock Updated Automatically</div>
                   <div style={{ color: 'var(--text)' }}>The following items were deducted from your stock:</div>
                   {stockDeducted.map((s, i) => <div key={i} style={{ color: 'var(--green)', fontWeight: 600, fontSize: 11, marginTop: 2 }}>✓ {s}</div>)}
+                </div>
+              )}
+              {stockFailed.length > 0 && (
+                <div style={{ background: 'rgba(251,191,36,.1)', border: '1px solid var(--yellow)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--yellow)', marginBottom: 4 }}>⚠️ Stock Not Updated</div>
+                  <div style={{ color: 'var(--text)' }}>These items weren't deducted — sort them out with admin/deskwork manually:</div>
+                  {stockFailed.map((s, i) => <div key={i} style={{ color: 'var(--yellow)', fontWeight: 600, fontSize: 11, marginTop: 2 }}>✗ {s}</div>)}
                 </div>
               )}
 
