@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { sendReorderSummaryWhatsApp } from '../utils/reorderSummary'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -41,6 +42,9 @@ export default function Stock() {
   const [lookupItem, setLookupItem]       = useState('')
   const [lookupBatches, setLookupBatches] = useState([])
   const [lookupTrace, setLookupTrace]     = useState(null)
+  const [reorders, setReorders]           = useState([])
+  const [reorderModal, setReorderModal]   = useState(null) // item being requested
+  const [reorderForm, setReorderForm]     = useState({ quantity: 1, note: '' })
   const [toast, setToast]             = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -54,7 +58,8 @@ export default function Stock() {
       api.get('/api/employees/'),
       api.get('/api/schools/?limit=200'),
       api.get('/api/stock-purchases/'),
-    ]).then(([it, lg, dist, es, emp, sch, pu]) => {
+      api.get('/api/reorder/'),
+    ]).then(([it, lg, dist, es, emp, sch, pu, ro]) => {
       setItems(it.data)
       setLedger(lg.data)
       setDist(dist.data)
@@ -62,8 +67,26 @@ export default function Stock() {
       setEmployees(emp.data || [])
       setSchools(sch.data?.items || sch.data || [])
       setPurchases(pu.data || [])
+      setReorders(ro.data || [])
       setLoading(false)
     }).catch(() => setLoading(false))
+  }
+
+  async function requestReorder(ev) {
+    ev.preventDefault()
+    try {
+      await api.post('/api/reorder/', {
+        item_id: reorderModal.id, requested_qty: parseInt(reorderForm.quantity), note: reorderForm.note || null
+      })
+      setReorderModal(null); load(); showToast('✅ Reorder requested')
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function updateReorder(id, status) {
+    try {
+      await api.patch(`/api/reorder/${id}`, { status })
+      load(); showToast(`Marked as ${status}`)
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
   }
 
   async function reviewPurchase(id, status, note = '') {
@@ -218,6 +241,11 @@ export default function Stock() {
 
   const pendingPurchases = purchases.filter(p => p.status === 'pending')
 
+  const openReorders = reorders.filter(r => r.status === 'pending' || r.status === 'ordered')
+  const openReorderItemIds = new Set(openReorders.map(r => r.item_id))
+  const needsReorder = items.filter(i => i.min_qty > 0 && i.office_qty <= i.min_qty && !openReorderItemIds.has(i.id))
+  const resolvedReorders = reorders.filter(r => r.status === 'received' || r.status === 'cancelled').slice(0, 20)
+
   const TABS = [
     { key: 'inventory',  label: '📦 Inventory' },
     { key: 'distribute', label: '📤 Distribute' },
@@ -225,6 +253,7 @@ export default function Stock() {
     { key: 'purchases',  label: `🛒 Purchased Stock${pendingPurchases.length ? ` (${pendingPurchases.length})` : ''}` },
     { key: 'ledger',     label: '📋 Ledger' },
     { key: 'batches',    label: '🔍 Batch Lookup' },
+    { key: 'reorder',    label: `🔄 Reorder${needsReorder.length + openReorders.length ? ` (${needsReorder.length + openReorders.length})` : ''}` },
   ]
 
   return (
@@ -727,6 +756,117 @@ export default function Stock() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── REORDER TAB ──────────────────────────────────────────── */}
+      {tab === 'reorder' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => sendReorderSummaryWhatsApp(reorders)}>📤 Send Reorder List</button>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">⚠️ Needs Reorder ({needsReorder.length})</div>
+            {needsReorder.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>Nothing currently below its threshold without an open request.</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Office Qty</th><th>Min Qty</th><th></th></tr></thead>
+                  <tbody>
+                    {needsReorder.map(i => (
+                      <tr key={i.id}>
+                        <td style={{ fontWeight: 500 }}>{i.name}</td>
+                        <td style={{ color: 'var(--red)', fontWeight: 700 }}>{i.office_qty}</td>
+                        <td>{i.min_qty}</td>
+                        <td><button className="btn btn-primary btn-sm" onClick={() => { setReorderModal(i); setReorderForm({ quantity: Math.max(i.min_qty - i.office_qty, 1), note: '' }) }}>+ Request Reorder</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">🔄 Open Requests ({openReorders.length})</div>
+            {openReorders.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No open reorder requests</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Qty</th><th>Requested By</th><th>When</th><th>Note</th><th>Status</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {openReorders.map(r => (
+                      <tr key={r.id}>
+                        <td style={{ fontWeight: 500 }}>{r.item_name}</td>
+                        <td><b>{r.requested_qty}</b> {r.item_unit}</td>
+                        <td>{r.requester_name || '—'}</td>
+                        <td style={{ fontSize: 11 }}>{r.requested_at?.slice(0, 10)}</td>
+                        <td style={{ fontSize: 12, color: 'var(--muted)' }}>{r.note || '—'}</td>
+                        <td><span className={`pill ${r.status === 'ordered' ? 'pill-blue' : 'pill-yellow'}`}>{r.status === 'ordered' ? '🚚 Ordered' : '🆕 Pending'}</span></td>
+                        <td style={{ display: 'flex', gap: 6 }}>
+                          {r.status === 'pending' && <button className="btn btn-outline btn-sm" onClick={() => updateReorder(r.id, 'ordered')}>Mark Ordered</button>}
+                          <button className="btn btn-green btn-sm" onClick={() => updateReorder(r.id, 'received')}>✅ Received</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => updateReorder(r.id, 'cancelled')}>✕ Cancel</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {resolvedReorders.length > 0 && (
+            <div className="card">
+              <div className="card-title">Recently Resolved</div>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Qty</th><th>Status</th><th>Resolved By</th><th>When</th></tr></thead>
+                  <tbody>
+                    {resolvedReorders.map(r => (
+                      <tr key={r.id}>
+                        <td>{r.item_name}</td>
+                        <td>{r.requested_qty} {r.item_unit}</td>
+                        <td><span className={`pill ${r.status === 'received' ? 'pill-green' : 'pill-gray'}`}>{r.status === 'received' ? '✅ Received' : '✕ Cancelled'}</span></td>
+                        <td>{r.resolver_name || '—'}</td>
+                        <td style={{ fontSize: 11 }}>{r.resolved_at?.slice(0, 10)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Request Reorder */}
+      {reorderModal && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: 380 }}>
+            <button className="modal-close" onClick={() => setReorderModal(null)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🔄 Request Reorder</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              {reorderModal.name} · currently <b style={{ color: 'var(--red)' }}>{reorderModal.office_qty}</b>, threshold {reorderModal.min_qty}
+            </p>
+            <form onSubmit={requestReorder}>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Quantity to Order</label>
+                <input required type="number" min="1" value={reorderForm.quantity} onChange={e => setReorderForm({ ...reorderForm, quantity: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label>Note</label>
+                <input value={reorderForm.note} onChange={e => setReorderForm({ ...reorderForm, note: e.target.value })} placeholder="Supplier, urgency, etc…" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Request Reorder</button>
+                <button type="button" className="btn btn-outline" onClick={() => setReorderModal(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

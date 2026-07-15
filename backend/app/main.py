@@ -15,6 +15,7 @@ from .routers import amc_reports
 from .routers import service_reports
 from .routers import locations
 from .routers import stock_purchases
+from .routers import reorder_requests
 
 
 def _auto_generate_daily_tasks():
@@ -120,6 +121,7 @@ app.include_router(amc_reports.router)
 app.include_router(service_reports.router)
 app.include_router(locations.router)
 app.include_router(stock_purchases.router)
+app.include_router(reorder_requests.router)
 
 @app.get("/")
 def root():
