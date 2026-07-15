@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 export default function Complaints() {
   const [complaints, setComplaints] = useState([])
@@ -22,6 +23,7 @@ export default function Complaints() {
 
   async function save(ev) {
     ev.preventDefault()
+    if (!form.school_id) { showToast('❌ Select a school'); return }
     await api.post('/api/complaints/', { ...form, school_id: parseInt(form.school_id) })
     load(); setModal(false); showToast('Complaint raised!')
   }
@@ -83,10 +85,8 @@ export default function Complaints() {
             <form onSubmit={save}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>School *</label>
-                  <select required value={form.school_id} onChange={f('school_id')}>
-                    <option value="">Select...</option>
-                    {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <SearchableSelect value={form.school_id} onChange={val => setForm({ ...form, school_id: val })}
+                    placeholder="Select…" options={schools.map(s => ({ value: String(s.id), label: s.name }))} />
                 </div>
                 <div className="form-group"><label>Reported By</label><input value={form.reported_by} onChange={f('reported_by')} /></div>
                 <div className="form-group"><label>Phone</label><input value={form.phone} onChange={f('phone')} /></div>

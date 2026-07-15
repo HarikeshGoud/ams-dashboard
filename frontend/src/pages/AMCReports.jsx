@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import SearchableSelect from '../components/SearchableSelect'
 
 const CONDITION_OPTS = ['OK', 'Not OK', 'NA']
 const UNIT_TYPES = ['AMC', 'Warranty', 'Chargeable', 'Others']
@@ -371,11 +372,9 @@ export default function AMCReports() {
             {section('SCHOOL / SITE')}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 11, color: 'var(--muted)' }}>School (from list)</label>
-              <select name="school_id" value={form.school_id} onChange={handleChange}
-                style={{ padding: '7px 10px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 13 }}>
-                <option value="">— Select School —</option>
-                {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <SearchableSelect value={form.school_id} onChange={val => handleChange({ target: { name: 'school_id', value: val } })}
+                placeholder="— Select School —"
+                options={schools.map(s => ({ value: String(s.id), label: s.name }))} />
             </div>
             <Field label="Or Type School Name" name="school_name_manual" value={form.school_name_manual} onChange={handleChange} />
 
@@ -418,11 +417,9 @@ export default function AMCReports() {
             <Field label="Customer Mobile" name="customer_mobile" value={form.customer_mobile} onChange={handleChange} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <label style={{ fontSize: 11, color: 'var(--muted)' }}>Service Engineer</label>
-              <select name="service_engineer_id" value={form.service_engineer_id} onChange={handleChange}
-                style={{ padding: '7px 10px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 13 }}>
-                <option value="">— Select Engineer —</option>
-                {employees.map(e => <option key={e.id} value={e.id}>{e.name} ({e.employee_code})</option>)}
-              </select>
+              <SearchableSelect value={form.service_engineer_id} onChange={val => handleChange({ target: { name: 'service_engineer_id', value: val } })}
+                placeholder="— Select Engineer —"
+                options={employees.map(e => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` }))} />
             </div>
             <Field label="Or Type Engineer Name" name="service_engineer_name" value={form.service_engineer_name} onChange={handleChange} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

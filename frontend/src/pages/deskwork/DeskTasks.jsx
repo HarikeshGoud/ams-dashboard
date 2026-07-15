@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
+import SearchableSelect from '../../components/SearchableSelect'
+import { sendDailySummaryWhatsApp } from '../../utils/dailySummary'
 
 const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' }
 
@@ -10,6 +12,7 @@ export default function DeskTasks() {
   const [employees, setEmployees] = useState([])
   const [tasks, setTasks] = useState([])
   const [rotationMap, setRotationMap] = useState({})
+  const [fieldReports, setFieldReports] = useState([])
   const [pendingReports, setPendingReports] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [filterEmp, setFilterEmp] = useState('')
@@ -29,6 +32,7 @@ export default function DeskTasks() {
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(techs)
       setTasks(t.data)
+      setFieldReports(r.data)
       // Only reports awaiting review
       setPendingReports(r.data.filter(rp => rp.verification_status === 'pending'))
       // Load rotation info for each technician
@@ -91,6 +95,10 @@ export default function DeskTasks() {
               onClick={generateDaily} disabled={generating}>
               {generating ? '⏳ Generating…' : '⚡ Generate Daily Tasks (5 each)'}
             </button>
+            <button className="btn btn-outline" style={{ fontSize: 12 }}
+              onClick={() => sendDailySummaryWhatsApp(taskDate, tasks, employees, fieldReports)}>
+              📤 Send Daily Summary
+            </button>
             <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Assign Task</button>
           </>}
         </div>
@@ -133,10 +141,13 @@ export default function DeskTasks() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="date" value={taskDate} onChange={e => setTaskDate(e.target.value)}
           style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }} />
-        <select value={filterEmp} onChange={e => setFilterEmp(e.target.value)}>
-          <option value="">All Employees</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
-        </select>
+        <SearchableSelect
+          value={filterEmp}
+          onChange={setFilterEmp}
+          placeholder="All Employees"
+          options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
+          style={{ minWidth: 200 }}
+        />
         <button className="btn btn-outline" style={{ fontSize: 12 }} onClick={() => {
           api.post('/api/tasks/auto-attendance', null, { params: { task_date: taskDate } })
             .then(r => showToast(`✅ Attendance calculated for ${r.data.processed} employees`))
@@ -351,8 +362,11 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!empId) return
     api.get('/api/schools/', { params: { limit: 300 } }).then(r => setSchools(r.data?.items || []))
+  }, [])
+
+  useEffect(() => {
+    if (!empId) return
     api.get('/api/tasks/daily-count', { params: { employee_id: empId, task_date: form.due_date } })
       .then(r => setDailyCount(r.data))
     api.get('/api/tasks/suggested-schools', { params: { employee_id: empId, task_date: form.due_date } })
@@ -381,10 +395,11 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   }
 
   const emp = employees.find(e => String(e.id) === String(empId))
-  // Use rotation-eligible schools for the dropdown (enforced by backend too)
-  const eligibleSchoolIds = new Set(suggested.schools.map(s => s.id))
+  // Full list of schools in the technician's mandal — rotation eligibility is
+  // enforced server-side and shown via the suggestion chips above, not by
+  // hiding schools here (that made the dropdown look empty in edge cases).
   const mandalSchools = emp?.mandal_id
-    ? schools.filter(s => s.mandal_id === emp.mandal_id && (eligibleSchoolIds.size === 0 || eligibleSchoolIds.has(s.id)))
+    ? schools.filter(s => s.mandal_id === emp.mandal_id)
     : schools
 
   return (
@@ -396,10 +411,12 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <div className="form-group" style={{ flex: 2 }}>
             <label>Assign To *</label>
-            <select value={empId} onChange={e => setEmpId(e.target.value)}>
-              <option value="">Select employee…</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name} [{e.employee_code}]</option>)}
-            </select>
+            <SearchableSelect
+              value={empId}
+              onChange={setEmpId}
+              placeholder="Select employee…"
+              options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
+            />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
             <label>Date</label>
@@ -469,10 +486,12 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
           <div className="form-group" style={{ flex: 2 }}>
             <label>School (optional)</label>
-            <select value={form.school_id} onChange={e => set('school_id', e.target.value)}>
-              <option value="">Select school…</option>
-              {mandalSchools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.school_id}
+              onChange={val => set('school_id', val)}
+              placeholder="Select school…"
+              options={mandalSchools.map(s => ({ value: String(s.id), label: s.name }))}
+            />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
             <label>Priority</label>

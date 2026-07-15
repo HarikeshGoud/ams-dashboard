@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import CameraCapture from '../../components/CameraCapture'
+import SearchableSelect from '../../components/SearchableSelect'
 
 const STATUS_CFG = {
   pending:  { label: '⏳ Pending Review', color: 'var(--yellow)', bg: 'rgba(251,191,36,.1)' },
@@ -78,11 +79,11 @@ function LogPurchaseModal({ onClose, onSaved }) {
 
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label>Item *</label>
-          <select value={itemId} onChange={e => setItemId(e.target.value)}>
-            <option value="">Select item…</option>
-            {stockItems.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            <option value="__other__">Other (type manually)</option>
-          </select>
+          <SearchableSelect value={itemId} onChange={setItemId} placeholder="Select item…"
+            options={[
+              ...stockItems.map(s => ({ value: String(s.id), label: s.name })),
+              { value: '__other__', label: 'Other (type manually)' },
+            ]} />
         </div>
 
         {itemId === '__other__' && (

@@ -1,14 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, date
 from ..database import get_db
 from ..models.task import Task
+from ..models.school import School
 from ..models.employee import Employee
 from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+# Eager-load relationships used by _fmt to avoid N+1 queries
+def _with_relations(q):
+    return q.options(
+        joinedload(Task.school).joinedload(School.mandal),
+        joinedload(Task.assigned_to),
+    )
 
 DAILY_DEFAULT = 5
 DAILY_MAX     = 7
@@ -58,7 +66,7 @@ def _count_today_tasks(db: Session, employee_id: int, task_date: date) -> int:
 
 @router.get("/my-tasks")
 def my_tasks(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    tasks = db.query(Task).filter(
+    tasks = _with_relations(db.query(Task)).filter(
         Task.assigned_to_id == user.id,
         Task.status.in_(["pending", "in_progress"])
     ).order_by(Task.due_date).all()
@@ -66,7 +74,7 @@ def my_tasks(db: Session = Depends(get_db), user=Depends(get_current_user)):
 
 @router.get("/my-tasks/all")
 def my_tasks_all(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    tasks = db.query(Task).filter(
+    tasks = _with_relations(db.query(Task)).filter(
         Task.assigned_to_id == user.id
     ).order_by(Task.due_date.desc()).all()
     return [_fmt(t) for t in tasks]
@@ -287,7 +295,7 @@ def reset_all_tasks(db: Session = Depends(get_db), user=Depends(get_current_user
 
 @router.get("/")
 def list_tasks(employee_id: int = None, task_date: str = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    q = db.query(Task)
+    q = _with_relations(db.query(Task))
     if employee_id: q = q.filter(Task.assigned_to_id == employee_id)
     if task_date:
         d = date.fromisoformat(task_date)

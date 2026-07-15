@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from pydantic import BaseModel
 from typing import Optional
 from ..database import get_db
@@ -21,7 +21,10 @@ class EmployeeUpdate(EmployeeCreate):
 
 @router.get("/")
 def list_employees(db: Session = Depends(get_db), _=Depends(require_admin_or_deskwork)):
-    emps = db.query(Employee).filter(Employee.is_active == True).order_by(Employee.employee_code).all()
+    emps = db.query(Employee).options(
+        joinedload(Employee.mandal),
+        selectinload(Employee.mandals),
+    ).filter(Employee.is_active == True).order_by(Employee.employee_code).all()
     return [{"id": e.id, "employee_code": e.employee_code, "name": e.name,
              "phone": e.phone, "role": e.role,
              "designation": e.designation, "mandal_id": e.mandal_id,

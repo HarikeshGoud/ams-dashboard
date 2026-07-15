@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import SearchableSelect from '../components/SearchableSelect'
 
 const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
 const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red' }
@@ -84,6 +85,7 @@ export default function Stock() {
 
   async function saveLedger(ev) {
     ev.preventDefault()
+    if (!ledgerForm.item_id) { showToast('❌ Select an item'); return }
     try {
       await api.post('/api/stock/ledger', {
         ...ledgerForm, item_id: parseInt(ledgerForm.item_id), quantity: parseInt(ledgerForm.quantity),
@@ -98,6 +100,7 @@ export default function Stock() {
 
   async function distribute(ev) {
     ev.preventDefault()
+    if (!distForm.item_id || !distForm.employee_id) { showToast('❌ Select an item and technician'); return }
     try {
       await api.post('/api/stock/distribute', {
         item_id: parseInt(distForm.item_id),
@@ -591,17 +594,15 @@ export default function Stock() {
             <form onSubmit={saveLedger}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <select required value={ledgerForm.item_id} onChange={e => setLedgerForm({...ledgerForm, item_id: e.target.value})}>
-                    <option value="">Select item...</option>
-                    {items.map(i => <option key={i.id} value={i.id}>{i.name} (in office: {i.office_qty})</option>)}
-                  </select>
+                  <SearchableSelect value={ledgerForm.item_id} onChange={val => setLedgerForm({...ledgerForm, item_id: val})}
+                    placeholder="Select item…"
+                    options={items.map(i => ({ value: String(i.id), label: `${i.name} (in office: ${i.office_qty})` }))} />
                 </div>
                 <div className="form-group"><label>Quantity *</label><input required type="number" min="1" value={ledgerForm.quantity} onChange={e => setLedgerForm({...ledgerForm, quantity: e.target.value})} /></div>
                 <div className="form-group"><label>Person</label>
-                  <select value={ledgerForm.person} onChange={e => setLedgerForm({...ledgerForm, person: e.target.value})}>
-                    <option value="">— Select —</option>
-                    {employees.map(e => <option key={e.id} value={e.name}>{e.name} ({e.employee_code})</option>)}
-                  </select>
+                  <SearchableSelect value={ledgerForm.person} onChange={val => setLedgerForm({...ledgerForm, person: val})}
+                    placeholder="— Select —"
+                    options={employees.map(e => ({ value: e.name, label: `${e.name} (${e.employee_code})` }))} />
                 </div>
                 {modal === 'receive' && <>
                   <div className="form-group"><label>Buy Price (₹)</label><input type="number" value={ledgerForm.buy_price} onChange={e => setLedgerForm({...ledgerForm, buy_price: e.target.value})} /></div>
@@ -610,10 +611,9 @@ export default function Stock() {
                 </>}
                 {modal === 'issue' && (
                   <div className="form-group form-full"><label>School / Destination</label>
-                    <select value={ledgerForm.school_dest} onChange={e => setLedgerForm({...ledgerForm, school_dest: e.target.value})}>
-                      <option value="">— Select School —</option>
-                      {schools.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                    </select>
+                    <SearchableSelect value={ledgerForm.school_dest} onChange={val => setLedgerForm({...ledgerForm, school_dest: val})}
+                      placeholder="— Select School —"
+                      options={schools.map(s => ({ value: s.name, label: s.name }))} />
                   </div>
                 )}
                 <div className="form-group form-full"><label>Note</label><input value={ledgerForm.note} onChange={e => setLedgerForm({...ledgerForm, note: e.target.value})} /></div>
@@ -637,12 +637,9 @@ export default function Stock() {
             <form onSubmit={distribute}>
               <div className="form-grid">
                 <div className="form-group form-full"><label>Item *</label>
-                  <select required value={distForm.item_id} onChange={e => setDistForm({...distForm, item_id: e.target.value})}>
-                    <option value="">Select item...</option>
-                    {items.filter(i => i.office_qty > 0).map(i => (
-                      <option key={i.id} value={i.id}>{i.name} — {i.office_qty} {i.unit} in office</option>
-                    ))}
-                  </select>
+                  <SearchableSelect value={distForm.item_id} onChange={val => setDistForm({...distForm, item_id: val})}
+                    placeholder="Select item…"
+                    options={items.filter(i => i.office_qty > 0).map(i => ({ value: String(i.id), label: `${i.name} — ${i.office_qty} ${i.unit} in office` }))} />
                 </div>
                 {selectedItem && (
                   <div className="form-group form-full">
@@ -652,12 +649,9 @@ export default function Stock() {
                   </div>
                 )}
                 <div className="form-group form-full"><label>Technician *</label>
-                  <select required value={distForm.employee_id} onChange={e => setDistForm({...distForm, employee_id: e.target.value})}>
-                    <option value="">Select technician...</option>
-                    {employees.filter(e => e.role === 'technician').map(e => (
-                      <option key={e.id} value={e.id}>{e.name} ({e.employee_code})</option>
-                    ))}
-                  </select>
+                  <SearchableSelect value={distForm.employee_id} onChange={val => setDistForm({...distForm, employee_id: val})}
+                    placeholder="Select technician…"
+                    options={employees.filter(e => e.role === 'technician').map(e => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` }))} />
                 </div>
                 <div className="form-group"><label>Quantity *</label>
                   <input required type="number" min="1" max={selectedItem?.office_qty || 9999} value={distForm.quantity}
