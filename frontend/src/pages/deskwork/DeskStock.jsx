@@ -4,6 +4,8 @@ import SearchableSelect from '../../components/SearchableSelect'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
+const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red', purchase: 'pill-blue' }
+const TYPE_LABEL = { receive: '⬇ Receive', transfer: '↔ Transfer', issue: '↑ Issue', distribute: '📦 Distribute', return: '↩ Return', install: '🔧 Install', purchase: '🛒 Purchase' }
 
 function batchLabel(b) {
   return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
@@ -30,6 +32,9 @@ export default function DeskStock() {
   const [purchases, setPurchases]       = useState([])
   const [expandedPurchase, setExpandedPurchase] = useState(null)
   const [purchaseNotes, setPurchaseNotes]       = useState({})
+  const [lookupItem, setLookupItem]       = useState('')
+  const [lookupBatches, setLookupBatches] = useState([])
+  const [lookupTrace, setLookupTrace]     = useState(null)
   const [toast, setToast]           = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -59,6 +64,18 @@ export default function DeskStock() {
       api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => setDistBatches(r.data))
     } else { setDistBatches([]) }
   }, [distModal, distForm.item_id])
+
+  useEffect(() => {
+    if (lookupItem) {
+      api.get('/api/stock/batches', { params: { item_id: lookupItem, include_depleted: true } }).then(r => setLookupBatches(r.data))
+      setLookupTrace(null)
+    } else { setLookupBatches([]); setLookupTrace(null) }
+  }, [lookupItem])
+
+  async function openTrace(batchId) {
+    const r = await api.get(`/api/stock/batches/${batchId}/trace`)
+    setLookupTrace(r.data)
+  }
 
   async function reviewPurchase(id, status, note = '') {
     await api.patch(`/api/stock-purchases/${id}`, { status, admin_note: note || null })
@@ -175,6 +192,8 @@ export default function DeskStock() {
           { key: 'distribute', label: '📤 Distribute' },
           { key: 'emp-stock',  label: `👁 Usage Monitor${techList.length ? ` (${techList.length})` : ''}` },
           { key: 'purchases',  label: `🛒 Purchased Stock${purchases.filter(p => p.status === 'pending').length ? ` (${purchases.filter(p => p.status === 'pending').length})` : ''}` },
+          { key: 'ledger',     label: '📋 Ledger' },
+          { key: 'batches',    label: '🔍 Batch Lookup' },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', fontWeight: 600, fontSize: 12,
@@ -467,6 +486,151 @@ export default function DeskStock() {
                 </div>
               )
             })
+          )}
+        </div>
+      )}
+
+      {/* ── LEDGER TAB ── */}
+      {tab === 'ledger' && (
+        <div className="card">
+          <div className="card-title">Stock Ledger</div>
+          <div style={{ overflowX: 'auto', maxHeight: 500, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>Date</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>Type</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>Item</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>Batch</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>Person/Tech</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>School/Site</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.map(e => (
+                  <tr key={e.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '8px 10px' }}>{e.created_at?.slice(0, 10)}</td>
+                    <td style={{ padding: '8px 10px' }}><span className={`pill ${TYPE_COLOR[e.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[e.transaction_type] || e.transaction_type}</span></td>
+                    <td style={{ padding: '8px 10px' }}>{e.item_name}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)' }}>{e.batch_no || '—'}</td>
+                    <td style={{ padding: '8px 10px' }}><b>{e.quantity}</b></td>
+                    <td style={{ padding: '8px 10px' }}>{e.employee_name || e.person || '—'}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 11 }}>{e.school_dest || '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>{e.note || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── BATCH LOOKUP TAB ── */}
+      {tab === 'batches' && (
+        <div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">🔍 Batch Lookup</div>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Pick an item to see every batch received, how much is left, and (by clicking a batch) exactly which technicians and schools it went to.</p>
+            <div className="form-group form-full">
+              <label>Item</label>
+              <SearchableSelect value={lookupItem} onChange={setLookupItem}
+                placeholder="Select item…"
+                options={items.map(i => ({ value: String(i.id), label: i.name || i.item_name }))} />
+            </div>
+          </div>
+
+          {lookupItem && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-title">Batches</div>
+              {lookupBatches.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No batches received for this item yet</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Batch No</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Source</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Received</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty Received</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>In Office Now</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lookupBatches.map(b => (
+                        <tr key={b.id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: lookupTrace?.batch?.id === b.id ? 'var(--surface2)' : 'transparent' }} onClick={() => openTrace(b.id)}>
+                          <td style={{ padding: '8px 10px', fontWeight: 600 }}>{b.batch_no}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{b.source}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 12 }}>{b.received_date}</td>
+                          <td style={{ padding: '8px 10px' }}>{b.qty_received}</td>
+                          <td style={{ padding: '8px 10px' }}><b style={{ color: b.qty_office > 0 ? 'var(--green)' : 'var(--muted)' }}>{b.qty_office}</b></td>
+                          <td style={{ padding: '8px 10px' }}><button className="btn btn-outline btn-sm" onClick={() => openTrace(b.id)}>🔍 Trace</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {lookupTrace && (
+            <div className="card">
+              <div className="card-title">📍 {lookupTrace.batch.batch_no} — Movement History</div>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                {lookupTrace.item_name} · received {lookupTrace.batch.received_date} · {lookupTrace.batch.qty_received} units · <b>{lookupTrace.batch.qty_office}</b> still in office
+                {lookupTrace.batch.person && <> · from {lookupTrace.batch.person}</>}
+              </p>
+
+              {lookupTrace.holders && lookupTrace.holders.length > 0 && (
+                <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 8, background: 'rgba(251,191,36,.08)', border: '1px solid var(--yellow)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', marginBottom: 4 }}>🎒 Currently Held By</div>
+                  {lookupTrace.holders.map(h => (
+                    <div key={h.employee_id} style={{ fontSize: 12 }}>{h.employee_name} — <b>{h.qty_in_hand}</b> units</div>
+                  ))}
+                </div>
+              )}
+
+              {lookupTrace.movements.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>
+                  {lookupTrace.batch.qty_office === lookupTrace.batch.qty_received
+                    ? 'No movements yet — still fully in office'
+                    : lookupTrace.holders?.length > 0
+                      ? 'No ledger movements recorded — this batch predates batch tracking, but current holders are shown above.'
+                      : "No recorded movements, and no one currently holds this batch — it likely left the system before batch tracking existed."}
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Date</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Action</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Technician</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>School / Site</th>
+                        <th style={{ padding: '7px 10px', textAlign: 'left' }}>Note</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lookupTrace.movements.map(m => (
+                        <tr key={m.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '8px 10px', fontSize: 11 }}>{m.created_at?.slice(0, 10)}</td>
+                          <td style={{ padding: '8px 10px' }}><span className={`pill ${TYPE_COLOR[m.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[m.transaction_type] || m.transaction_type}</span></td>
+                          <td style={{ padding: '8px 10px' }}><b>{m.quantity}</b></td>
+                          <td style={{ padding: '8px 10px' }}>{m.employee_name || m.person || '—'}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 12 }}>{m.school_dest || '—'}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--muted)' }}>{m.note || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
