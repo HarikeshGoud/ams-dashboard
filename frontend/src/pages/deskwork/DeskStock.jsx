@@ -682,7 +682,8 @@ export default function DeskStock() {
                   {grouped[cat].map((item, idx) => {
                     const qty    = item.quantity || 0
                     const minQty = item.min_quantity || 0
-                    const isLow  = minQty > 0 && qty <= minQty
+                    const hasThreshold = minQty > 0
+                    const isLow  = hasThreshold && qty <= minQty
                     return (
                       <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: '9px 10px', color: 'var(--muted)', fontSize: 11 }}>{idx + 1}</td>
@@ -696,10 +697,10 @@ export default function DeskStock() {
                         <td style={{ padding: '9px 10px' }}>
                           <span style={{
                             fontSize: 10, padding: '2px 8px', borderRadius: 6, fontWeight: 700,
-                            background: isLow ? 'rgba(248,113,113,.15)' : 'rgba(52,211,153,.15)',
-                            color: isLow ? 'var(--red)' : 'var(--green)'
+                            background: isLow ? 'rgba(248,113,113,.15)' : hasThreshold ? 'rgba(52,211,153,.15)' : 'rgba(148,163,184,.15)',
+                            color: isLow ? 'var(--red)' : hasThreshold ? 'var(--green)' : 'var(--muted)'
                           }}>
-                            {isLow ? 'Low' : 'OK'}
+                            {isLow ? 'Low' : hasThreshold ? 'OK' : 'No threshold'}
                           </span>
                         </td>
                         <td style={{ padding: '9px 10px' }}>

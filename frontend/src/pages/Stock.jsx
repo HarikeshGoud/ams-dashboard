@@ -174,7 +174,7 @@ export default function Stock() {
 
   if (loading) return <div className="spinner" />
 
-  const lowStock = items.filter(i => i.office_qty <= i.min_qty)
+  const lowStock = items.filter(i => i.min_qty > 0 && i.office_qty <= i.min_qty)
   const selectedItem = items.find(i => i.id === parseInt(distForm.item_id))
   const selectedDistBatch = distBatches.find(b => b.id === parseInt(distForm.batch_id))
   const selectedLedgerBatch = ledgerBatches.find(b => b.id === parseInt(ledgerForm.batch_id))
@@ -288,21 +288,25 @@ export default function Stock() {
                     <tr><th>#</th><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
-                    {grouped[cat].map((i, idx) => (
+                    {grouped[cat].map((i, idx) => {
+                      const hasThreshold = i.min_qty > 0
+                      const isLow = hasThreshold && i.office_qty <= i.min_qty
+                      return (
                       <tr key={i.id}>
                         <td style={{ color: 'var(--muted)', fontSize: 11 }}>{idx + 1}</td>
                         <td style={{ fontWeight: 500 }}>{i.name}</td>
                         <td>{i.unit}</td>
-                        <td style={{ fontWeight: 700, color: i.office_qty <= i.min_qty ? 'var(--red)' : 'var(--green)' }}>{i.office_qty}</td>
-                        <td>{i.min_qty}</td>
+                        <td style={{ fontWeight: 700, color: isLow ? 'var(--red)' : 'var(--text)' }}>{i.office_qty}</td>
+                        <td>{hasThreshold ? i.min_qty : '—'}</td>
                         <td>₹{i.unit_cost}</td>
-                        <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? '⚠ Low' : '✓ OK'}</span></td>
+                        <td><span className={`pill ${isLow ? 'pill-red' : hasThreshold ? 'pill-green' : 'pill-gray'}`}>{isLow ? '⚠ Low' : hasThreshold ? '✓ OK' : '— No threshold'}</span></td>
                         <td style={{ display: 'flex', gap: 6 }}>
                           <button className="btn btn-outline btn-sm" onClick={() => setAdjusting(i)}>± Adjust</button>
                           <button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

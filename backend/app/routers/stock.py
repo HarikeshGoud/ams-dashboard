@@ -66,7 +66,7 @@ class InstallStock(BaseModel):
 
 def _item_fmt(i: StockItem):
     qty = i.office_qty or 0
-    min_q = i.min_qty or 5
+    min_q = i.min_qty if i.min_qty is not None else 0  # 0 is a real, valid "no threshold set" value — don't clobber it
     price = float(i.unit_cost or 0)
     return {"id": i.id, "name": i.name, "category": i.category, "unit": i.unit,
             "office_qty": qty, "min_qty": min_q,
