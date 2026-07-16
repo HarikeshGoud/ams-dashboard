@@ -488,6 +488,12 @@ def create_service_report(request: Request, req: CreateServiceReport, db: Sessio
             customer_remarks=req.customer_remarks, status=req.status or "PROBLEM RESOLVED",
         )
         db.add(report)
+
+        if req.school_id:
+            school = db.query(School).filter(School.id == req.school_id).first()
+            if school:
+                school.plant_condition = "working" if report.status == "PROBLEM RESOLVED" else "not_working"
+
         db.flush()
 
         sig_dir = os.path.join(UPLOADS_DIR, "signatures", str(today.year), str(today.month))

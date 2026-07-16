@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import api from '../api/axios'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { isOverdue } from '../utils/visitStatus'
 
 const UNIT_META = {
   '1': { label: 'Unit 1', state: 'Telangana',       color: '#2563eb', bg: 'rgba(37,99,235,0.08)'  },
@@ -32,13 +33,12 @@ function condColor(c) {
   if (!c)                  return '#6c757d'
   if (c === 'working')     return '#198754'
   if (c === 'not_working') return '#dc3545'
-  return '#fd7e14'
+  return '#6c757d'
 }
 function condLabel(c) {
-  if (!c)                return 'Not Visited'
-  if (c === 'working')   return 'Working'
-  if (c === 'not_working') return 'Not Working'
-  if (c === 'under_repair' || c === 'repair') return 'Under Repair'
+  if (!c)                  return 'Not Visited'
+  if (c === 'working')     return 'Resolved'
+  if (c === 'not_working') return 'Unresolved'
   return c
 }
 function contractColor(s) {
@@ -412,12 +412,13 @@ export default function UnitPage() {
 
   const statCards = [
     ['Total Sites',   sites.length,                                                          meta.color],
-    ['Working',       sites.filter(s => s.plant_condition === 'working').length,             '#198754' ],
-    ['Not Working',   sites.filter(s => s.plant_condition === 'not_working').length,         '#dc3545' ],
+    ['Resolved',      sites.filter(s => s.plant_condition === 'working').length,             '#198754' ],
+    ['Unresolved',    sites.filter(s => s.plant_condition === 'not_working').length,         '#dc3545' ],
     ['Not Visited',   sites.filter(s => !s.plant_condition).length,                          '#6c757d' ],
     ['AMC',           sites.filter(s => s.amc_status === 'amc').length,                     '#fd7e14' ],
     ['Warranty',      sites.filter(s => s.amc_status === 'warranty').length,                '#7c3aed' ],
     ['Chargeable',    sites.filter(s => s.amc_status === 'chargeable').length,              '#0891b2' ],
+    ['Overdue (3mo+)', sites.filter(s => isOverdue(s.last_visit_date)).length,               '#dc3545' ],
   ]
 
   return (
@@ -531,7 +532,16 @@ export default function UnitPage() {
                   <td style={{ padding: '10px 12px' }} onClick={() => setSelectedSite(s)}>
                     <span style={{ background: condColor(s.plant_condition), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{condLabel(s.plant_condition)}</span>
                   </td>
-                  <td style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }} onClick={() => setSelectedSite(s)}>{s.last_visit_date || '—'}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }} onClick={() => setSelectedSite(s)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>{s.last_visit_date || 'Never'}</span>
+                      {isOverdue(s.last_visit_date) && (
+                        <span style={{ background: '#dc3545', color: '#fff', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          ⚠ Overdue
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td style={{ padding: '10px 12px' }}>
                     <button onClick={() => setSelectedSite(s)} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
                       View

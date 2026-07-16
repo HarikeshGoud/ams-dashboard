@@ -472,10 +472,13 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
                     style={{
                       fontSize: 11, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
                       background: String(form.school_id) === String(s.id) ? 'rgba(56,189,248,.2)' : 'var(--surface2)',
-                      border: `1px solid ${String(form.school_id) === String(s.id) ? 'var(--accent)' : 'var(--border)'}`,
+                      border: `1px solid ${s.plant_condition === 'not_working' ? 'var(--red)' : String(form.school_id) === String(s.id) ? 'var(--accent)' : 'var(--border)'}`,
                       color: String(form.school_id) === String(s.id) ? 'var(--accent)' : 'var(--text)'
                     }}>
                     🏫 {s.name}
+                    {s.plant_condition === 'not_working' && (
+                      <span style={{ color: 'var(--red)', marginLeft: 4, fontWeight: 700 }}>⚠ Unresolved</span>
+                    )}
                     {s.last_visit_date
                       ? <span style={{ color: 'var(--muted)', marginLeft: 4 }}>({s.last_visit_date})</span>
                       : <span style={{ color: 'var(--yellow)', marginLeft: 4, fontWeight: 700 }}>(never visited)</span>

@@ -14,7 +14,7 @@ class Visit(Base):
     tds_reading         = Column(Float, nullable=True)
     ph_reading          = Column(Float, nullable=True)
     filters_used        = Column(Integer, default=0)
-    plant_condition     = Column(String(20), default="working")  # working / not_working / under_repair
+    plant_condition     = Column(String(20), default="working")  # working / not_working
     not_working_reason  = Column(Text, nullable=True)
     mcf_used            = Column(Integer, default=0)   # MCF filters used this visit
     antiscalant_used    = Column(Float, default=0)     # Antiscalant litres used

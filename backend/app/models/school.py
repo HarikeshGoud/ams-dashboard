@@ -20,7 +20,7 @@ class School(Base):
     model             = Column(String(20), default="normal")  # normal / temple / village
     capacity          = Column(String(50), nullable=True)
     plant_model       = Column(String(100), nullable=True)
-    plant_condition   = Column(String(20), default="working")  # working / not_working / under_repair
+    plant_condition   = Column(String(20), default="working")  # working / not_working
     total_purifiers   = Column(Integer, default=1)
     working_purifiers = Column(Integer, default=1)
     amc_status        = Column(String(20), default="active")
