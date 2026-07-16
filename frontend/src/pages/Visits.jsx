@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { todayIST } from '../utils/istTime'
 
 export default function Visits() {
   const [visits, setVisits] = useState([])
@@ -8,7 +9,7 @@ export default function Visits() {
   const [schools, setSchools] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ school_id: '', employee_id: '', visit_date: new Date().toISOString().slice(0,10), visit_type: 'routine', tds_reading: '', ph_reading: '', filters_used: 0, work_done: '', remarks: '' })
+  const [form, setForm] = useState({ school_id: '', employee_id: '', visit_date: todayIST(), visit_type: 'routine', tds_reading: '', ph_reading: '', filters_used: 0, work_done: '', remarks: '' })
   const [toast, setToast] = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }

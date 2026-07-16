@@ -3,13 +3,14 @@ import api from '../api/axios'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import SearchableSelect from '../components/SearchableSelect'
+import { todayIST } from '../utils/istTime'
 
 const CONDITION_OPTS = ['OK', 'Not OK', 'NA']
 const UNIT_TYPES = ['AMC', 'Warranty', 'Chargeable', 'Others']
 
 const EMPTY = {
   report_no: '', complaint_no: '', school_id: '', school_name_manual: '',
-  visit_date: new Date().toISOString().slice(0, 10),
+  visit_date: todayIST(),
   unit_type: 'AMC', problem_reported: '', observation_action: '',
   spares_required: '', plant_location: '', plant_capacity: '',
   design_rw_tds: '', free_chlorine_rw: '', hours_running: '',

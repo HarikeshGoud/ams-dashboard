@@ -3,9 +3,10 @@ import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
 import ProofUploadModal from './ProofUploadModal'
 import SearchableSelect from '../../components/SearchableSelect'
+import { todayIST } from '../../utils/istTime'
 
 function StartVisitModal({ onClose, onStarted, employeeId }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIST()
   const [schools, setSchools] = useState([])
   const [schoolId, setSchoolId] = useState('')
   const [note, setNote] = useState('')

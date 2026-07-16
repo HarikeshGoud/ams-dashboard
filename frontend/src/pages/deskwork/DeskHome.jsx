@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
+import { todayIST } from '../../utils/istTime'
 
 export default function DeskHome() {
   const { user } = useAuthStore()
   const [stats, setStats] = useState(null)
   const [employees, setEmployees] = useState([])
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIST()
 
   useEffect(() => {
     Promise.all([

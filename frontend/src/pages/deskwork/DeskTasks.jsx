@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import SearchableSelect from '../../components/SearchableSelect'
 import SendSummaryModal from '../../components/SendSummaryModal'
 import { buildDailyTaskSummary } from '../../utils/dailySummary'
+import { todayIST } from '../../utils/istTime'
 
 const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' }
 
@@ -20,7 +21,7 @@ export default function DeskTasks() {
   const [generating, setGenerating] = useState(false)
   const [toast, setToast] = useState('')
   const [summaryModal, setSummaryModal] = useState(false)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIST()
   const [taskDate, setTaskDate] = useState(today)
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }

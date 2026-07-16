@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
 import { sendReorderSummaryWhatsApp } from '../utils/reorderSummary'
+import { formatISTDate } from '../utils/istTime'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -388,7 +389,7 @@ export default function Stock() {
                   <tbody>
                     {distributions.map(d => (
                       <tr key={d.id}>
-                        <td>{d.created_at?.slice(0, 10)}</td>
+                        <td>{formatISTDate(d.created_at)}</td>
                         <td style={{ fontWeight: 500 }}>{d.item_name}</td>
                         <td><b>{d.quantity}</b> {d.item_unit}</td>
                         <td>{d.employee_name || d.person || '—'}</td>
@@ -487,7 +488,7 @@ export default function Stock() {
                             <tbody>
                               {tech.distHistory.map(d => (
                                 <tr key={d.id}>
-                                  <td style={{ fontSize: 11 }}>{d.created_at?.slice(0, 10)}</td>
+                                  <td style={{ fontSize: 11 }}>{formatISTDate(d.created_at)}</td>
                                   <td style={{ fontWeight: 500 }}>{d.item_name}</td>
                                   <td><b>{d.quantity}</b> {d.item_unit}</td>
                                   <td style={{ fontSize: 11, color: 'var(--muted)' }}>{d.note || '—'}</td>
@@ -514,7 +515,7 @@ export default function Stock() {
                               <tbody>
                                 {techLedger.map(e => (
                                   <tr key={e.id}>
-                                    <td style={{ fontSize: 11 }}>{e.created_at?.slice(0, 10)}</td>
+                                    <td style={{ fontSize: 11 }}>{formatISTDate(e.created_at)}</td>
                                     <td><span className={`pill ${e.transaction_type === 'install' ? 'pill-green' : 'pill-blue'}`}>{e.transaction_type === 'install' ? '🔧 Installed' : '↩ Returned'}</span></td>
                                     <td style={{ fontWeight: 500 }}>{e.item_name}</td>
                                     <td><b>{e.quantity}</b></td>
@@ -672,7 +673,7 @@ export default function Stock() {
               <tbody>
                 {ledger.map(e => (
                   <tr key={e.id}>
-                    <td>{e.created_at?.slice(0,10)}</td>
+                    <td>{formatISTDate(e.created_at)}</td>
                     <td><span className={`pill ${TYPE_COLOR[e.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[e.transaction_type] || e.transaction_type}</span></td>
                     <td>{e.item_name}</td>
                     <td style={{ fontSize: 11, color: 'var(--muted)' }}>{e.batch_no || '—'}</td>
@@ -767,7 +768,7 @@ export default function Stock() {
                     <tbody>
                       {lookupTrace.movements.map(m => (
                         <tr key={m.id}>
-                          <td style={{ fontSize: 11 }}>{m.created_at?.slice(0, 10)}</td>
+                          <td style={{ fontSize: 11 }}>{formatISTDate(m.created_at)}</td>
                           <td><span className={`pill ${TYPE_COLOR[m.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[m.transaction_type] || m.transaction_type}</span></td>
                           <td><b>{m.quantity}</b></td>
                           <td>{m.employee_name || m.person || '—'}</td>
@@ -828,7 +829,7 @@ export default function Stock() {
                         <td style={{ fontWeight: 500 }}>{r.item_name}</td>
                         <td><b>{r.requested_qty}</b> {r.item_unit}</td>
                         <td>{r.requester_name || '—'}</td>
-                        <td style={{ fontSize: 11 }}>{r.requested_at?.slice(0, 10)}</td>
+                        <td style={{ fontSize: 11 }}>{formatISTDate(r.requested_at)}</td>
                         <td style={{ fontSize: 12, color: 'var(--muted)' }}>{r.note || '—'}</td>
                         <td><span className={`pill ${r.status === 'ordered' ? 'pill-blue' : 'pill-yellow'}`}>{r.status === 'ordered' ? '🚚 Ordered' : '🆕 Pending'}</span></td>
                         <td style={{ display: 'flex', gap: 6 }}>
@@ -857,7 +858,7 @@ export default function Stock() {
                         <td>{r.requested_qty} {r.item_unit}</td>
                         <td><span className={`pill ${r.status === 'received' ? 'pill-green' : 'pill-gray'}`}>{r.status === 'received' ? '✅ Received' : '✕ Cancelled'}</span></td>
                         <td>{r.resolver_name || '—'}</td>
-                        <td style={{ fontSize: 11 }}>{r.resolved_at?.slice(0, 10)}</td>
+                        <td style={{ fontSize: 11 }}>{formatISTDate(r.resolved_at)}</td>
                       </tr>
                     ))}
                   </tbody>

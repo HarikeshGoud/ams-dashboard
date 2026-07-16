@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '../api/axios'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { formatISTDate, todayIST } from '../utils/istTime'
 
-const TODAY = new Date().toISOString().slice(0, 10)
+const TODAY = todayIST()
 const THIS_YEAR = new Date().getFullYear()
 const THIS_MONTH = new Date().getMonth() + 1
 
@@ -206,7 +207,7 @@ function StockUsedTable({ movements }) {
           <tbody>
             {movements.map((m, i) => (
               <tr key={i} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                <td style={td}>{m.date?.slice(0, 10)}</td>
+                <td style={td}>{formatISTDate(m.date)}</td>
                 <td style={{ ...td, fontWeight: 600 }}>{m.item_name}</td>
                 <td style={td}>{m.quantity} {m.unit}</td>
                 <td style={td}>{m.employee_name}</td>

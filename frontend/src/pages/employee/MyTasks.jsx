@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import ProofUploadModal from './ProofUploadModal'
+import { todayIST } from '../../utils/istTime'
 
 const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' }
 
@@ -13,7 +14,7 @@ export default function MyTasks() {
   const [selectedTask, setSelectedTask] = useState(null)
   const [toast, setToast] = useState('')
 
-  const todayIso = new Date().toISOString().slice(0, 10)
+  const todayIso = todayIST()
 
   function load() {
     Promise.all([

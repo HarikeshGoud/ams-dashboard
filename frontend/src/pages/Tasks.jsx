@@ -3,6 +3,7 @@ import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
 import SendSummaryModal from '../components/SendSummaryModal'
 import { buildDailyTaskSummary } from '../utils/dailySummary'
+import { todayIST, yesterdayIST } from '../utils/istTime'
 
 const PRIORITY_PILL = { low: 'pill-blue', medium: 'pill-yellow', high: 'pill-red' }
 const STATUS_PILL   = { pending: 'pill-yellow', in_progress: 'pill-orange', submitted: 'pill-yellow', completed: 'pill-green', cancelled: 'pill-gray' }
@@ -27,8 +28,8 @@ export default function Tasks() {
   const [taskSearch, setTaskSearch] = useState('')    // task search within technician
   const [statusFilter, setStatusFilter] = useState('')  // status filter
   const [priorityFilter, setPriorityFilter] = useState('')  // priority filter
-  const today     = new Date().toISOString().slice(0, 10)
-  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10)
+  const today     = todayIST()
+  const yesterday = yesterdayIST()
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }

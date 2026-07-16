@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import api from '../api/axios'
 import { exportAttendanceExcel, exportAttendancePDF } from '../utils/exportReports'
+import { todayIST } from '../utils/istTime'
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"]
 const SHORT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
@@ -18,7 +19,7 @@ const CYCLE = ['present', 'absent', 'half_day', 'leave', null]
 
 export default function Attendance() {
   const now = new Date()
-  const todayStr = now.toISOString().slice(0, 10)
+  const todayStr = todayIST()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [technicians, setTechnicians] = useState([])

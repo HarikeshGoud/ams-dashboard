@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import CameraCapture from '../../components/CameraCapture'
 import SearchableSelect from '../../components/SearchableSelect'
+import { todayIST } from '../../utils/istTime'
 
 const STATUS_CFG = {
   pending:  { label: '⏳ Pending Review', color: 'var(--yellow)', bg: 'rgba(251,191,36,.1)' },
@@ -19,7 +20,7 @@ function reimbursementLabel(p) {
 }
 
 function LogPurchaseModal({ onClose, onSaved }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIST()
   const [stockItems, setStockItems] = useState([])
   const [itemId, setItemId] = useState('')
   const [customName, setCustomName] = useState('')

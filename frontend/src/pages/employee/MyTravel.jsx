@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import { useAuthStore } from '../../store/authStore'
 import MapPicker from '../../components/MapPicker'
+import { todayIST } from '../../utils/istTime'
 
 const STATUS_COLOR = { pending: 'var(--yellow)', approved: 'var(--green)', rejected: 'var(--red)' }
 
@@ -35,7 +36,7 @@ async function geocode(text) {
 
 // ── Log Trip Modal ─────────────────────────────────────────────────────────────
 function LogTripModal({ onClose, onSaved }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIST()
   const [step, setStep] = useState(1)         // 1=setup, 2=route calc, 3=confirm
   const [profile, setProfile] = useState({ bike_mileage: 45, home_location: '' })
   const [fuelPrice, setFuelPrice] = useState(105)
@@ -410,7 +411,7 @@ export default function MyTravel() {
   async function calcToday() {
     setCalculating(true)
     try {
-      const today = new Date().toISOString().slice(0, 10)
+      const today = todayIST()
       const r = await api.post('/api/travel/auto-from-reports', null, { params: { trip_date: today } })
       if (r.data.ok === false) {
         showToast('⚠️ ' + r.data.message)

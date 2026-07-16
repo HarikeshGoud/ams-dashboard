@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { formatISTDate } from '../utils/istTime'
 
 export default function Complaints() {
   const [complaints, setComplaints] = useState([])
@@ -64,7 +65,7 @@ export default function Complaints() {
                   <td>{c.reported_by || '—'}</td>
                   <td><span className={`pill ${priorityPill[c.priority] || 'pill-gray'}`}>{c.priority}</span></td>
                   <td><span className={`pill ${statusPill[c.status] || 'pill-gray'}`}>{c.status}</span></td>
-                  <td>{c.reported_at?.slice(0,10)}</td>
+                  <td>{formatISTDate(c.reported_at)}</td>
                   <td>
                     {c.status !== 'resolved' && <button className="btn btn-green btn-sm" onClick={() => resolve(c.id)}>Resolve</button>}{' '}
                     <button className="btn btn-danger btn-sm" onClick={() => del(c.id)}>Del</button>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
+import { todayIST } from '../../utils/istTime'
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 const STATUS_BADGE = {
@@ -18,7 +19,7 @@ export default function MyAttendance() {
   const [tab, setTab] = useState('attendance')
 
   // Allowance request form
-  const [form, setForm] = useState({ amount: '', reason: '', date: new Date().toISOString().slice(0, 10) })
+  const [form, setForm] = useState({ amount: '', reason: '', date: todayIST() })
   const [submitting, setSubmitting] = useState(false)
   const [allowances, setAllowances] = useState([])
   const [allowMsg, setAllowMsg] = useState('')
@@ -48,7 +49,7 @@ export default function MyAttendance() {
     try {
       await api.post('/api/allowances/', form)
       setAllowMsg('✅ Request submitted successfully!')
-      setForm({ amount: '', reason: '', date: new Date().toISOString().slice(0, 10) })
+      setForm({ amount: '', reason: '', date: todayIST() })
       loadAllowances()
     } catch {
       setAllowMsg('❌ Failed to submit. Please try again.')

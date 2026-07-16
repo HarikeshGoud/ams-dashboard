@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import ProofUploadModal from './ProofUploadModal'
 import { useAuthStore } from '../../store/authStore'
+import { todayIST } from '../../utils/istTime'
 
 export default function EmployeeDashboard() {
   const [tasks, setTasks] = useState([])
@@ -17,7 +18,7 @@ export default function EmployeeDashboard() {
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3500) }
 
   function load() {
-    const todayIso = new Date().toISOString().slice(0, 10)
+    const todayIso = todayIST()
     Promise.all([
       api.get('/api/tasks/my-tasks/all'),
       api.get('/api/field-reports/'),
@@ -45,7 +46,7 @@ export default function EmployeeDashboard() {
     showToast('✅ Proof submitted! Under review by admin.')
   }
 
-  const todayIso = new Date().toISOString().slice(0, 10)
+  const todayIso = todayIST()
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   // tasks holds every status (needed to resume Step 3 on already-submitted tasks) —
   // the "My Tasks" list itself only shows actionable ones.
@@ -128,7 +129,7 @@ export default function EmployeeDashboard() {
       {activeTasks.map(task => {
         const accepted  = acceptedTaskIds.has(task.id)
         const submitted = !accepted && submittedTaskIds.has(task.id)
-        const overdue   = !accepted && task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
+        const overdue   = !accepted && task.due_date && task.due_date < todayIST()
         const borderColor = accepted ? 'var(--green)' : submitted ? 'var(--yellow)' : overdue ? 'var(--red)' : 'var(--border)'
         return (
           <div key={task.id} style={{

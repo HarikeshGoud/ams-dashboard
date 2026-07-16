@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { todayIST } from '../utils/istTime'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -11,7 +12,7 @@ export default function Billing() {
   const [stockItems, setStockItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ client_id: '', invoice_date: new Date().toISOString().slice(0,10), due_date: '', invoice_type: 'amc', gst_percent: 18, notes: '' })
+  const [form, setForm] = useState({ client_id: '', invoice_date: todayIST(), due_date: '', invoice_type: 'amc', gst_percent: 18, notes: '' })
   const [lines, setLines] = useState([{ description: '', quantity: 1, unit_price: '' }])
   const [toast, setToast] = useState('')
 

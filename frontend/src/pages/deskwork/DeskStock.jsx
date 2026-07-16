@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import SearchableSelect from '../../components/SearchableSelect'
 import { sendReorderSummaryWhatsApp } from '../../utils/reorderSummary'
+import { formatISTDate } from '../../utils/istTime'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -285,7 +286,7 @@ export default function DeskStock() {
                 <tbody>
                   {distributions.map(d => (
                     <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '8px 10px', fontSize: 12 }}>{d.created_at?.slice(0, 10)}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 12 }}>{formatISTDate(d.created_at)}</td>
                       <td style={{ padding: '8px 10px', fontWeight: 600 }}>{d.item_name}</td>
                       <td style={{ padding: '8px 10px' }}><b>{d.quantity}</b> {d.item_unit}</td>
                       <td style={{ padding: '8px 10px' }}>{d.employee_name || d.person || '—'}</td>
@@ -369,7 +370,7 @@ export default function DeskStock() {
                           <tbody>
                             {tech.distHistory.map(d => (
                               <tr key={d.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '6px 8px', fontSize: 11 }}>{d.created_at?.slice(0, 10)}</td>
+                                <td style={{ padding: '6px 8px', fontSize: 11 }}>{formatISTDate(d.created_at)}</td>
                                 <td style={{ padding: '6px 8px', fontWeight: 600 }}>{d.item_name}</td>
                                 <td style={{ padding: '6px 8px' }}><b>{d.quantity}</b> {d.item_unit}</td>
                               </tr>
@@ -395,7 +396,7 @@ export default function DeskStock() {
                             <tbody>
                               {techLedger.map(e => (
                                 <tr key={e.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                  <td style={{ padding: '6px 8px', fontSize: 11 }}>{e.created_at?.slice(0, 10)}</td>
+                                  <td style={{ padding: '6px 8px', fontSize: 11 }}>{formatISTDate(e.created_at)}</td>
                                   <td style={{ padding: '6px 8px' }}>
                                     <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
                                       background: e.transaction_type === 'install' ? 'rgba(52,211,153,.15)' : 'rgba(96,165,250,.15)',
@@ -570,7 +571,7 @@ export default function DeskStock() {
               <tbody>
                 {ledger.map(e => (
                   <tr key={e.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '8px 10px' }}>{e.created_at?.slice(0, 10)}</td>
+                    <td style={{ padding: '8px 10px' }}>{formatISTDate(e.created_at)}</td>
                     <td style={{ padding: '8px 10px' }}><span className={`pill ${TYPE_COLOR[e.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[e.transaction_type] || e.transaction_type}</span></td>
                     <td style={{ padding: '8px 10px' }}>{e.item_name}</td>
                     <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)' }}>{e.batch_no || '—'}</td>
@@ -677,7 +678,7 @@ export default function DeskStock() {
                     <tbody>
                       {lookupTrace.movements.map(m => (
                         <tr key={m.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '8px 10px', fontSize: 11 }}>{m.created_at?.slice(0, 10)}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 11 }}>{formatISTDate(m.created_at)}</td>
                           <td style={{ padding: '8px 10px' }}><span className={`pill ${TYPE_COLOR[m.transaction_type] || 'pill-blue'}`}>{TYPE_LABEL[m.transaction_type] || m.transaction_type}</span></td>
                           <td style={{ padding: '8px 10px' }}><b>{m.quantity}</b></td>
                           <td style={{ padding: '8px 10px' }}>{m.employee_name || m.person || '—'}</td>
@@ -757,7 +758,7 @@ export default function DeskStock() {
                         <td style={{ padding: '8px 10px', fontWeight: 600 }}>{r.item_name}</td>
                         <td style={{ padding: '8px 10px' }}><b>{r.requested_qty}</b> {r.item_unit}</td>
                         <td style={{ padding: '8px 10px' }}>{r.requester_name || '—'}</td>
-                        <td style={{ padding: '8px 10px', fontSize: 11 }}>{r.requested_at?.slice(0, 10)}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11 }}>{formatISTDate(r.requested_at)}</td>
                         <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--muted)' }}>{r.note || '—'}</td>
                         <td style={{ padding: '8px 10px' }}><span className={`pill ${r.status === 'ordered' ? 'pill-blue' : 'pill-yellow'}`}>{r.status === 'ordered' ? '🚚 Ordered' : '🆕 Pending'}</span></td>
                         <td style={{ padding: '8px 10px', display: 'flex', gap: 6 }}>
@@ -794,7 +795,7 @@ export default function DeskStock() {
                         <td style={{ padding: '8px 10px' }}>{r.requested_qty} {r.item_unit}</td>
                         <td style={{ padding: '8px 10px' }}><span className={`pill ${r.status === 'received' ? 'pill-green' : 'pill-gray'}`}>{r.status === 'received' ? '✅ Received' : '✕ Cancelled'}</span></td>
                         <td style={{ padding: '8px 10px' }}>{r.resolver_name || '—'}</td>
-                        <td style={{ padding: '8px 10px', fontSize: 11 }}>{r.resolved_at?.slice(0, 10)}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11 }}>{formatISTDate(r.resolved_at)}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -4,6 +4,7 @@ import { useThemeStore } from '../../store/themeStore'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ChangePasswordModal from '../ChangePasswordModal'
 import api from '../../api/axios'
+import { formatISTDateTime } from '../../utils/istTime'
 
 const TITLES = {
   '/': 'Dashboard', '/employees': 'Employees', '/clients': 'Clients',
@@ -159,7 +160,7 @@ export default function Header({ onMenuClick }) {
                     }}>
                       <div style={{ fontSize: 12, fontWeight: n.is_read ? 400 : 600 }}>{n.message}</div>
                       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>
-                        {new Date(n.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        {formatISTDateTime(n.created_at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         {!n.is_read && <span style={{ marginLeft: 8, color: 'var(--accent)', fontWeight: 700 }}>● new</span>}
                       </div>
                     </div>

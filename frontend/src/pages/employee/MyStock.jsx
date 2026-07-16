@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import SearchableSelect from '../../components/SearchableSelect'
+import { formatISTDate, formatISTTime } from '../../utils/istTime'
 
 function batchLabel(b) {
   return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
@@ -182,7 +183,7 @@ export default function MyStock() {
                 <tbody>
                   {received.map(e => (
                     <tr key={e.id}>
-                      <td>{e.created_at?.slice(0,10)}</td>
+                      <td>{formatISTDate(e.created_at)}</td>
                       <td style={{ fontWeight: 500 }}>{e.item_name}</td>
                       <td><b style={{ color: 'var(--green)' }}>+{e.quantity}</b> {e.item_unit}</td>
                       <td style={{ fontSize: 12, color: 'var(--muted)' }}>{e.note || '—'}</td>
@@ -210,8 +211,8 @@ export default function MyStock() {
                   {installed.map(e => (
                     <tr key={e.id}>
                       <td>
-                        <div style={{ fontSize: 12 }}>{e.created_at?.slice(0,10)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{e.created_at ? new Date(e.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}</div>
+                        <div style={{ fontSize: 12 }}>{formatISTDate(e.created_at)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{formatISTTime(e.created_at)}</div>
                       </td>
                       <td style={{ fontWeight: 500 }}>{e.item_name}</td>
                       <td><b style={{ color: 'var(--accent2)' }}>{e.quantity}</b> {e.item_unit}</td>
