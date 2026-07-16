@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { formatISTDate, formatISTDateTime } from '../utils/istTime'
 
 const STATUS_CONFIG = {
   pending:  { label: 'Awaiting Verification', color: 'var(--yellow)',  bg: 'rgba(251,191,36,.12)',  icon: '⏳' },
@@ -85,7 +86,7 @@ export default function ProofReview() {
     const emp = employees.find(e => e.id === r.employee_id)
     const phone = r.school_phone?.replace(/\D/g, '')
     const date = r.report_date
-    const time = r.submitted_at?.slice(11, 16)
+    const time = formatISTDateTime(r.submitted_at, { hour: '2-digit', minute: '2-digit', hour12: true })
     const gps  = r.latitude ? `${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}` : 'not captured'
     const work = r.item_installed || 'Maintenance visit'
     const school = r.school_name || 'your location'
@@ -183,7 +184,7 @@ export default function ProofReview() {
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                  📅 {r.report_date} &nbsp;·&nbsp; ⏰ {r.submitted_at?.slice(11, 16)}
+                  📅 {r.report_date} &nbsp;·&nbsp; ⏰ {formatISTDateTime(r.submitted_at, { hour: '2-digit', minute: '2-digit', hour12: true })}
                   {r.school_name && <span> &nbsp;·&nbsp; 🏫 {r.school_name}</span>}
                 </div>
                 {r.item_installed && (
@@ -246,7 +247,7 @@ export default function ProofReview() {
                 background: vs.bg, color: vs.color
               }}>
                 📝 {r.verification_note}
-                {r.verified_at && <span style={{ marginLeft: 8, opacity: 0.7 }}>— {r.verified_at.slice(0, 16).replace('T', ' ')}</span>}
+                {r.verified_at && <span style={{ marginLeft: 8, opacity: 0.7 }}>— {formatISTDate(r.verified_at)} {formatISTDateTime(r.verified_at, { hour: '2-digit', minute: '2-digit', hour12: true })}</span>}
               </div>
             )}
 
@@ -263,7 +264,7 @@ export default function ProofReview() {
               </button>
               {r.whatsapp_sent_at && (
                 <span style={{ fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>
-                  Sent {r.whatsapp_sent_at.slice(0, 16).replace('T', ' ')}
+                  Sent {formatISTDate(r.whatsapp_sent_at)} {formatISTDateTime(r.whatsapp_sent_at, { hour: '2-digit', minute: '2-digit', hour12: true })}
                 </span>
               )}
 
