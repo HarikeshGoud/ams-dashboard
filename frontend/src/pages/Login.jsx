@@ -25,7 +25,7 @@ export default function Login() {
       const r = await api.post('/api/auth/login', {
         employee_code: code.trim().toUpperCase(),
         password
-      })
+      }, { timeout: 30000 })
       const user = {
         id: r.data.employee_id,
         employee_code: r.data.employee_code,
@@ -36,7 +36,16 @@ export default function Login() {
       setAuth(user, r.data.access_token)
       navigate(user.role === 'admin' ? '/' : user.role === 'deskwork' ? '/deskwork' : '/employee')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid Employee ID or password')
+      if (err.response?.status === 401) {
+        // Genuine bad credentials — the only case this message should ever show.
+        setError(err.response.data?.detail || 'Invalid Employee ID or password')
+      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Server is taking a while to respond (it may be waking up) — please try again.')
+      } else if (!err.response) {
+        setError('Could not reach the server. Check your connection and try again.')
+      } else {
+        setError('Something went wrong on our end — please try again in a few seconds.')
+      }
     }
     setLoading(false)
   }

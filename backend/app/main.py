@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+import logging
 import os
 from datetime import date
+
+logger = logging.getLogger("ams")
 
 from .database import engine, Base, SessionLocal
 from . import models  # ensure all models are registered
@@ -93,6 +97,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    # Without this, Starlette's default handler returns a plain-text "Internal Server Error"
+    # body — the frontend reads err.response.data.detail on every failure, so a non-JSON body
+    # silently looks identical to "no detail provided" and gets mislabeled by generic catch
+    # blocks (e.g. login showing "Invalid Employee ID or password" for what was really a 500).
+    logger.exception(f"Unhandled error on {request.method} {request.url.path}")
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong on our end — please try again."})
 
 # Serve uploaded files
 uploads_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
