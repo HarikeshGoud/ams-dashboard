@@ -5,9 +5,10 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import os
-from datetime import date
 
 logger = logging.getLogger("ams")
+
+from .ist_time import today_ist
 
 from .database import engine, Base, SessionLocal
 from . import models  # ensure all models are registered
@@ -31,7 +32,7 @@ def _auto_generate_daily_tasks():
 
     db = SessionLocal()
     try:
-        today = date.today()
+        today = today_ist()
         technicians = db.query(Employee).filter(
             Employee.role == "technician", Employee.is_active == True
         ).all()

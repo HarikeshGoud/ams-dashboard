@@ -4,11 +4,12 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from ..database import get_db
 from ..models.stock import StockItem, StockLedger, EmployeeStock, StockBatch, EmployeeStockBatch
 from ..models.employee import Employee
 from ..dependencies import get_current_user, require_admin_or_deskwork
+from ..ist_time import today_ist
 
 router = APIRouter(prefix="/api/stock", tags=["stock"])
 
@@ -143,7 +144,7 @@ def _create_batch(db: Session, item_id: int, quantity: int, source: str,
         item_id=item_id, batch_no=f"BATCH-{str(count + 1).zfill(6)}", source=source,
         source_ref_id=source_ref_id, qty_received=quantity, qty_office=quantity,
         unit_cost=unit_cost, buy_price=buy_price, logistics1=logistics1, logistics2=logistics2,
-        person=person, received_date=received_date or date.today(), note=note, created_by=created_by
+        person=person, received_date=received_date or today_ist(), note=note, created_by=created_by
     )
     db.add(batch)
     db.flush()  # surfaces a clear error on the rare batch_no collision instead of silently duplicating
@@ -207,7 +208,7 @@ def create_item(data: ItemCreate, db: Session = Depends(get_db), user=Depends(ge
     db.add(item); db.flush()
     if data.quantity and data.quantity > 0:
         batch = _create_batch(db, item_id=item.id, quantity=data.quantity, source="receive",
-                              received_date=date.today(), unit_cost=price, created_by=user.id,
+                              received_date=today_ist(), unit_cost=price, created_by=user.id,
                               note="Initial stock on item creation")
         db.add(StockLedger(item_id=item.id, transaction_type="receive", quantity=data.quantity,
                            batch_id=batch.id, note="Initial stock on item creation", created_by=user.id))
@@ -231,7 +232,7 @@ def adjust_stock(item_id: int, data: AdjustStock, db: Session = Depends(get_db),
 
     if data.quantity_change > 0:
         batch = _create_batch(db, item_id=item.id, quantity=data.quantity_change, source="receive",
-                              received_date=date.today(), unit_cost=item.unit_cost, created_by=user.id,
+                              received_date=today_ist(), unit_cost=item.unit_cost, created_by=user.id,
                               note=data.notes)
         item.office_qty = (item.office_qty or 0) + data.quantity_change
         db.add(StockLedger(item_id=item.id, transaction_type="receive", quantity=data.quantity_change,
@@ -266,7 +267,7 @@ def add_ledger(data: LedgerCreate, db: Session = Depends(get_db), user=Depends(g
     payload = data.model_dump()
     if data.transaction_type == "receive":
         batch = _create_batch(db, item_id=item.id, quantity=data.quantity, source="receive",
-                              received_date=date.today(), buy_price=data.buy_price,
+                              received_date=today_ist(), buy_price=data.buy_price,
                               logistics1=data.logistics1, logistics2=data.logistics2, person=data.person,
                               created_by=user.id, note=data.note)
         payload["batch_id"] = batch.id

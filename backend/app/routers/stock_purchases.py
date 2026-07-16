@@ -10,6 +10,7 @@ from ..models.stock import StockItem, StockLedger
 from ..models.employee import Employee
 from ..dependencies import get_current_user, require_admin_or_deskwork
 from .stock import _upsert_employee_stock, _upsert_employee_stock_batch, _create_batch
+from ..ist_time import today_ist
 
 router = APIRouter(prefix="/api/stock-purchases", tags=["stock-purchases"])
 
@@ -71,7 +72,7 @@ async def submit_purchase(request: Request, db: Session = Depends(get_db), user=
         if not item_name:
             raise HTTPException(400, "Item name is required")
 
-        purchase_date = date.fromisoformat(purchase_date_raw) if purchase_date_raw else date.today()
+        purchase_date = date.fromisoformat(purchase_date_raw) if purchase_date_raw else today_ist()
 
         purchase = StockPurchase(
             employee_id=user.id,
@@ -86,7 +87,7 @@ async def submit_purchase(request: Request, db: Session = Depends(get_db), user=
 
         bill_photo = form.get("bill_photo")
         if bill_photo is not None and hasattr(bill_photo, "filename") and bill_photo.filename:
-            today = date.today()
+            today = today_ist()
             os.makedirs(os.path.join(UPLOADS_DIR, "purchases", str(today.year), str(today.month)), exist_ok=True)
             ext = bill_photo.filename.rsplit(".", 1)[-1] if "." in bill_photo.filename else "jpg"
             fname = f"purchases/{today.year}/{today.month}/emp{user.id}_purchase{purchase.id}.{ext}"

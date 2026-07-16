@@ -2,13 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime
 from ..database import get_db
 from ..models.reorder_request import ReorderRequest
 from ..models.stock import StockItem, StockLedger
 from ..models.employee import Employee
 from ..dependencies import get_current_user
 from .stock import _create_batch
+from ..ist_time import today_ist
 
 router = APIRouter(prefix="/api/reorder", tags=["reorder"])
 
@@ -104,7 +105,7 @@ def update_reorder(reorder_id: int, data: ReorderUpdate, db: Session = Depends(g
 
         batch = _create_batch(
             db, item_id=r.item_id, quantity=qty, source="reorder", source_ref_id=r.id,
-            received_date=date.today(), buy_price=data.buy_price,
+            received_date=today_ist(), buy_price=data.buy_price,
             logistics1=data.logistics1, logistics2=data.logistics2, person=data.person,
             created_by=user.id, note=f"Received against reorder request #{r.id}"
         )

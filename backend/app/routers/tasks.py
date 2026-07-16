@@ -8,6 +8,7 @@ from ..models.task import Task
 from ..models.school import School
 from ..models.employee import Employee
 from ..dependencies import get_current_user
+from ..ist_time import today_ist
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -82,7 +83,7 @@ def my_tasks_all(db: Session = Depends(get_db), user=Depends(get_current_user)):
 @router.get("/daily-count")
 def daily_task_count(employee_id: int, task_date: str = None, db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Return today's task count for an employee (used for cap validation UI)."""
-    d = date.fromisoformat(task_date) if task_date else date.today()
+    d = date.fromisoformat(task_date) if task_date else today_ist()
     count = _count_today_tasks(db, employee_id, d)
     return {"count": count, "default_limit": DAILY_DEFAULT, "max_limit": DAILY_MAX, "can_add": count < DAILY_MAX}
 
@@ -182,7 +183,7 @@ def _rotation_eligible_schools(db, mandal_id: int, exclude_school_ids: set = Non
 @router.get("/suggested-schools")
 def suggested_schools(employee_id: int = None, task_date: str = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Return next schools to visit for a technician based on their personal rotation queue."""
-    d = date.fromisoformat(task_date) if task_date else date.today()
+    d = date.fromisoformat(task_date) if task_date else today_ist()
     employee_id = employee_id or user.id
 
     already_assigned_today = {
@@ -220,7 +221,7 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
     if user.role not in ("admin", "deskwork"):
         raise HTTPException(403, "Not authorized")
 
-    d = date.fromisoformat(task_date) if task_date else date.today()
+    d = date.fromisoformat(task_date) if task_date else today_ist()
 
     if employee_id:
         technicians = db.query(Employee).filter(
@@ -314,7 +315,7 @@ def list_tasks(employee_id: int = None, task_date: str = None, db: Session = Dep
 @router.post("/")
 def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     from ..models.school import School
-    task_date = date.fromisoformat(data.due_date) if data.due_date else date.today()
+    task_date = date.fromisoformat(data.due_date) if data.due_date else today_ist()
 
     # ── Daily cap enforcement ──────────────────────────────────────────────────
     current_count = _count_today_tasks(db, data.assigned_to_id, task_date)
@@ -409,7 +410,7 @@ def auto_attendance(task_date: str = None, db: Session = Depends(get_db), user=D
     if user.role not in ("admin", "deskwork"):
         raise HTTPException(403, "Not authorized")
     from ..models.attendance import Attendance
-    d = date.fromisoformat(task_date) if task_date else date.today()
+    d = date.fromisoformat(task_date) if task_date else today_ist()
     technicians = db.query(Employee).filter(
         Employee.role.in_(["technician"]), Employee.is_active == True
     ).all()
