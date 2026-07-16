@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { sendReorderSummaryWhatsApp } from '../utils/reorderSummary'
 
-const STOCK_CATEGORIES = ['Filter', 'Chemical', 'Membrane', 'Pump', 'Electrical', 'Fittings', 'Housings', 'UV', 'Other']
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
+// Matches the exact category strings actually in use in the data — picking one here
+// should never create a new, slightly-different-spelled category by accident.
+const STOCK_CATEGORIES = [CAT_A, CAT_B, 'ATW Parts', 'Consumables', 'Electrical', 'Filter', 'Fittings', 'Membranes', 'Pumps', 'Chemical', 'Housings', 'UV', 'Other']
 const TYPE_COLOR = { receive: 'pill-green', transfer: 'pill-blue', issue: 'pill-orange', distribute: 'pill-purple', return: 'pill-yellow', install: 'pill-red', purchase: 'pill-blue' }
 const TYPE_LABEL = { receive: '⬇ Receive', transfer: '↔ Transfer', issue: '↑ Issue', distribute: '📦 Distribute', return: '↩ Return', install: '🔧 Install', purchase: '🛒 Purchase' }
 
@@ -30,6 +33,7 @@ export default function Stock() {
   const [purchaseNotes, setPurchaseNotes]       = useState({})
   const [modal, setModal]             = useState(null)
   const [editItem, setEditItem]       = useState(null)
+  const [adjusting, setAdjusting]     = useState(null)
   const [itemForm, setItemForm]       = useState({ name: '', category: '', unit: 'pcs', min_qty: 5, unit_cost: 0 })
   const [ledgerForm, setLedgerForm]   = useState({ item_id: '', batch_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', school_dest: '', note: '' })
   const [distForm, setDistForm]       = useState({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' })
@@ -38,6 +42,12 @@ export default function Stock() {
   const [lookupItem, setLookupItem]       = useState('')
   const [lookupBatches, setLookupBatches] = useState([])
   const [lookupTrace, setLookupTrace]     = useState(null)
+  const [reorders, setReorders]           = useState([])
+  const [reorderModal, setReorderModal]   = useState(null) // item being requested
+  const [reorderForm, setReorderForm]     = useState({ quantity: 1, note: '' })
+  const [receiveModal, setReceiveModal]   = useState(null) // reorder request being marked received
+  const [receiveForm, setReceiveForm]     = useState({ quantity: 1, buy_price: '', person: '' })
+  const [accounts, setAccounts]           = useState({ batches: [], monthly: [], grand_total: 0 })
   const [toast, setToast]             = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -51,7 +61,9 @@ export default function Stock() {
       api.get('/api/employees/'),
       api.get('/api/schools/?limit=200'),
       api.get('/api/stock-purchases/'),
-    ]).then(([it, lg, dist, es, emp, sch, pu]) => {
+      api.get('/api/reorder/'),
+      api.get('/api/stock/accounts'),
+    ]).then(([it, lg, dist, es, emp, sch, pu, ro, ac]) => {
       setItems(it.data)
       setLedger(lg.data)
       setDist(dist.data)
@@ -59,8 +71,40 @@ export default function Stock() {
       setEmployees(emp.data || [])
       setSchools(sch.data?.items || sch.data || [])
       setPurchases(pu.data || [])
+      setReorders(ro.data || [])
+      setAccounts(ac.data || { batches: [], monthly: [], grand_total: 0 })
       setLoading(false)
     }).catch(() => setLoading(false))
+  }
+
+  async function requestReorder(ev) {
+    ev.preventDefault()
+    try {
+      await api.post('/api/reorder/', {
+        item_id: reorderModal.id, requested_qty: parseInt(reorderForm.quantity), note: reorderForm.note || null
+      })
+      setReorderModal(null); load(); showToast('✅ Reorder requested')
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function updateReorder(id, status) {
+    try {
+      await api.patch(`/api/reorder/${id}`, { status })
+      load(); showToast(`Marked as ${status}`)
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function confirmReceive(ev) {
+    ev.preventDefault()
+    try {
+      await api.patch(`/api/reorder/${receiveModal.id}`, {
+        status: 'received',
+        received_qty: parseInt(receiveForm.quantity),
+        buy_price: parseFloat(receiveForm.buy_price) || null,
+        person: receiveForm.person || null,
+      })
+      setReceiveModal(null); load(); showToast('✅ Stock received — added to office inventory as a new batch')
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
   }
 
   async function reviewPurchase(id, status, note = '') {
@@ -81,13 +125,19 @@ export default function Stock() {
 
   useEffect(() => {
     if (modal === 'issue' && ledgerForm.item_id) {
-      api.get('/api/stock/batches', { params: { item_id: ledgerForm.item_id } }).then(r => setLedgerBatches(r.data))
+      api.get('/api/stock/batches', { params: { item_id: ledgerForm.item_id } }).then(r => {
+        setLedgerBatches(r.data)
+        if (r.data.length === 1) setLedgerForm(f => ({ ...f, batch_id: String(r.data[0].id) }))
+      })
     } else { setLedgerBatches([]) }
   }, [modal, ledgerForm.item_id])
 
   useEffect(() => {
     if (modal === 'distribute' && distForm.item_id) {
-      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => setDistBatches(r.data))
+      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => {
+        setDistBatches(r.data)
+        if (r.data.length === 1) setDistForm(f => ({ ...f, batch_id: String(r.data[0].id) }))
+      })
     } else { setDistBatches([]) }
   }, [modal, distForm.item_id])
 
@@ -171,7 +221,7 @@ export default function Stock() {
 
   if (loading) return <div className="spinner" />
 
-  const lowStock = items.filter(i => i.office_qty <= i.min_qty)
+  const lowStock = items.filter(i => i.min_qty > 0 && i.office_qty <= i.min_qty)
   const selectedItem = items.find(i => i.id === parseInt(distForm.item_id))
   const selectedDistBatch = distBatches.find(b => b.id === parseInt(distForm.batch_id))
   const selectedLedgerBatch = ledgerBatches.find(b => b.id === parseInt(ledgerForm.batch_id))
@@ -215,6 +265,11 @@ export default function Stock() {
 
   const pendingPurchases = purchases.filter(p => p.status === 'pending')
 
+  const openReorders = reorders.filter(r => r.status === 'pending' || r.status === 'ordered')
+  const openReorderItemIds = new Set(openReorders.map(r => r.item_id))
+  const needsReorder = items.filter(i => i.min_qty > 0 && i.office_qty <= i.min_qty && !openReorderItemIds.has(i.id))
+  const resolvedReorders = reorders.filter(r => r.status === 'received' || r.status === 'cancelled').slice(0, 20)
+
   const TABS = [
     { key: 'inventory',  label: '📦 Inventory' },
     { key: 'distribute', label: '📤 Distribute' },
@@ -222,6 +277,8 @@ export default function Stock() {
     { key: 'purchases',  label: `🛒 Purchased Stock${pendingPurchases.length ? ` (${pendingPurchases.length})` : ''}` },
     { key: 'ledger',     label: '📋 Ledger' },
     { key: 'batches',    label: '🔍 Batch Lookup' },
+    { key: 'reorder',    label: `🔄 Reorder${needsReorder.length + openReorders.length ? ` (${needsReorder.length + openReorders.length})` : ''}` },
+    { key: 'accounts',   label: '💰 Accounts' },
   ]
 
   return (
@@ -282,21 +339,28 @@ export default function Stock() {
               <div className="table-wrap">
                 <table>
                   <thead>
-                    <tr><th>#</th><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Edit</th></tr>
+                    <tr><th>#</th><th>Item</th><th>Unit</th><th>Office Qty</th><th>Min Qty</th><th>Cost/Unit</th><th>Status</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
-                    {grouped[cat].map((i, idx) => (
+                    {grouped[cat].map((i, idx) => {
+                      const hasThreshold = i.min_qty > 0
+                      const isLow = hasThreshold && i.office_qty <= i.min_qty
+                      return (
                       <tr key={i.id}>
                         <td style={{ color: 'var(--muted)', fontSize: 11 }}>{idx + 1}</td>
                         <td style={{ fontWeight: 500 }}>{i.name}</td>
                         <td>{i.unit}</td>
-                        <td style={{ fontWeight: 700, color: i.office_qty <= i.min_qty ? 'var(--red)' : 'var(--green)' }}>{i.office_qty}</td>
-                        <td>{i.min_qty}</td>
+                        <td style={{ fontWeight: 700, color: isLow ? 'var(--red)' : 'var(--text)' }}>{i.office_qty}</td>
+                        <td>{hasThreshold ? i.min_qty : '—'}</td>
                         <td>₹{i.unit_cost}</td>
-                        <td><span className={`pill ${i.office_qty <= i.min_qty ? 'pill-red' : 'pill-green'}`}>{i.office_qty <= i.min_qty ? '⚠ Low' : '✓ OK'}</span></td>
-                        <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button></td>
+                        <td><span className={`pill ${isLow ? 'pill-red' : hasThreshold ? 'pill-green' : 'pill-gray'}`}>{isLow ? '⚠ Low' : hasThreshold ? '✓ OK' : '— No threshold'}</span></td>
+                        <td style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => setAdjusting(i)}>± Adjust</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button>
+                        </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -720,6 +784,218 @@ export default function Stock() {
         </div>
       )}
 
+      {/* ── REORDER TAB ──────────────────────────────────────────── */}
+      {tab === 'reorder' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => sendReorderSummaryWhatsApp(reorders)}>📤 Send Reorder List</button>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">⚠️ Needs Reorder ({needsReorder.length})</div>
+            {needsReorder.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>Nothing currently below its threshold without an open request.</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Office Qty</th><th>Min Qty</th><th></th></tr></thead>
+                  <tbody>
+                    {needsReorder.map(i => (
+                      <tr key={i.id}>
+                        <td style={{ fontWeight: 500 }}>{i.name}</td>
+                        <td style={{ color: 'var(--red)', fontWeight: 700 }}>{i.office_qty}</td>
+                        <td>{i.min_qty}</td>
+                        <td><button className="btn btn-primary btn-sm" onClick={() => { setReorderModal(i); setReorderForm({ quantity: Math.max(i.min_qty - i.office_qty, 1), note: '' }) }}>+ Request Reorder</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">🔄 Open Requests ({openReorders.length})</div>
+            {openReorders.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No open reorder requests</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Qty</th><th>Requested By</th><th>When</th><th>Note</th><th>Status</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {openReorders.map(r => (
+                      <tr key={r.id}>
+                        <td style={{ fontWeight: 500 }}>{r.item_name}</td>
+                        <td><b>{r.requested_qty}</b> {r.item_unit}</td>
+                        <td>{r.requester_name || '—'}</td>
+                        <td style={{ fontSize: 11 }}>{r.requested_at?.slice(0, 10)}</td>
+                        <td style={{ fontSize: 12, color: 'var(--muted)' }}>{r.note || '—'}</td>
+                        <td><span className={`pill ${r.status === 'ordered' ? 'pill-blue' : 'pill-yellow'}`}>{r.status === 'ordered' ? '🚚 Ordered' : '🆕 Pending'}</span></td>
+                        <td style={{ display: 'flex', gap: 6 }}>
+                          {r.status === 'pending' && <button className="btn btn-outline btn-sm" onClick={() => updateReorder(r.id, 'ordered')}>Mark Ordered</button>}
+                          <button className="btn btn-green btn-sm" onClick={() => { setReceiveModal(r); setReceiveForm({ quantity: r.requested_qty, buy_price: '', person: '' }) }}>✅ Received</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => updateReorder(r.id, 'cancelled')}>✕ Cancel</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {resolvedReorders.length > 0 && (
+            <div className="card">
+              <div className="card-title">Recently Resolved</div>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Qty</th><th>Status</th><th>Resolved By</th><th>When</th></tr></thead>
+                  <tbody>
+                    {resolvedReorders.map(r => (
+                      <tr key={r.id}>
+                        <td>{r.item_name}</td>
+                        <td>{r.requested_qty} {r.item_unit}</td>
+                        <td><span className={`pill ${r.status === 'received' ? 'pill-green' : 'pill-gray'}`}>{r.status === 'received' ? '✅ Received' : '✕ Cancelled'}</span></td>
+                        <td>{r.resolver_name || '—'}</td>
+                        <td style={{ fontSize: 11 }}>{r.resolved_at?.slice(0, 10)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ACCOUNTS TAB ──────────────────────────────────────────── */}
+      {tab === 'accounts' && (
+        <div>
+          <div className="kpi-grid" style={{ marginBottom: 16 }}>
+            <div className="kpi-card green">
+              <div className="kpi-label">Total Spent on Stock</div>
+              <div className="kpi-value">₹{accounts.grand_total.toLocaleString('en-IN')}</div>
+              <div className="kpi-sub">{accounts.batches.length} batch{accounts.batches.length !== 1 ? 'es' : ''} with cost data</div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">📅 Monthly Breakdown</div>
+            {accounts.monthly.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No cost data recorded yet</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Month</th><th>Total Spent</th></tr></thead>
+                  <tbody>
+                    {accounts.monthly.map(m => (
+                      <tr key={m.month}>
+                        <td style={{ fontWeight: 600 }}>{m.month}</td>
+                        <td><b>₹{m.total.toLocaleString('en-IN')}</b></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-title">🧾 Per-Batch Cost Breakdown</div>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Money spent per batch received — purchase price plus logistics (manufacturer → office, office → technician).</p>
+            {accounts.batches.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No batches with cost data yet</div>
+            ) : (
+              <div className="table-wrap scroll-table" style={{ maxHeight: 500 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Batch No</th><th>Item</th><th>Source</th><th>Received</th><th>Qty</th>
+                      <th>Buy Price</th><th>Logistics 1 (Mfr→Office)</th><th>Logistics 2 (Office→Tech)</th>
+                      <th>Total Cost</th><th>Supplier</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.batches.map(b => (
+                      <tr key={b.batch_id}>
+                        <td style={{ fontWeight: 600 }}>{b.batch_no}</td>
+                        <td>{b.item_name}</td>
+                        <td style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{b.source}</td>
+                        <td style={{ fontSize: 12 }}>{b.received_date}</td>
+                        <td>{b.qty_received} {b.item_unit}</td>
+                        <td>{b.buy_price ? `₹${b.buy_price.toLocaleString('en-IN')}` : '—'}</td>
+                        <td>{b.logistics1 ? `₹${b.logistics1.toLocaleString('en-IN')}` : '—'}</td>
+                        <td>{b.logistics2 ? `₹${b.logistics2.toLocaleString('en-IN')}` : '—'}</td>
+                        <td><b style={{ color: 'var(--green)' }}>₹{b.total_cost.toLocaleString('en-IN')}</b></td>
+                        <td style={{ fontSize: 12 }}>{b.person || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Request Reorder */}
+      {reorderModal && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: 380 }}>
+            <button className="modal-close" onClick={() => setReorderModal(null)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🔄 Request Reorder</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              {reorderModal.name} · currently <b style={{ color: 'var(--red)' }}>{reorderModal.office_qty}</b>, threshold {reorderModal.min_qty}
+            </p>
+            <form onSubmit={requestReorder}>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Quantity to Order</label>
+                <input required type="number" min="1" value={reorderForm.quantity} onChange={e => setReorderForm({ ...reorderForm, quantity: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label>Note</label>
+                <input value={reorderForm.note} onChange={e => setReorderForm({ ...reorderForm, note: e.target.value })} placeholder="Supplier, urgency, etc…" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Request Reorder</button>
+                <button type="button" className="btn btn-outline" onClick={() => setReorderModal(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Received — actually adds stock as a new batch */}
+      {receiveModal && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: 380 }}>
+            <button className="modal-close" onClick={() => setReceiveModal(null)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>✅ Confirm Stock Received</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              {receiveModal.item_name} · requested {receiveModal.requested_qty} {receiveModal.item_unit}. This creates a new batch and adds to office stock — confirm the actual quantity that arrived.
+            </p>
+            <form onSubmit={confirmReceive}>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Quantity Received</label>
+                <input required type="number" min="1" value={receiveForm.quantity} onChange={e => setReceiveForm({ ...receiveForm, quantity: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Buy Price (₹, optional)</label>
+                <input type="number" value={receiveForm.buy_price} onChange={e => setReceiveForm({ ...receiveForm, buy_price: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label>Supplier (optional)</label>
+                <input value={receiveForm.person} onChange={e => setReceiveForm({ ...receiveForm, person: e.target.value })} placeholder="Who supplied it…" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Confirm Received</button>
+                <button type="button" className="btn btn-outline" onClick={() => setReceiveModal(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── MODALS ─────────────────────────────────────────────────── */}
 
       {/* Add / Edit Item */}
@@ -769,9 +1045,15 @@ export default function Stock() {
                 </div>
                 {modal === 'issue' && (
                   <div className="form-group form-full"><label>Batch *</label>
-                    <SearchableSelect value={ledgerForm.batch_id} onChange={val => setLedgerForm({...ledgerForm, batch_id: val})}
-                      placeholder={ledgerForm.item_id ? 'Select batch…' : 'Select an item first'}
-                      options={ledgerBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                    {ledgerBatches.length === 1 ? (
+                      <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                        {batchLabel(ledgerBatches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+                      </div>
+                    ) : (
+                      <SearchableSelect value={ledgerForm.batch_id} onChange={val => setLedgerForm({...ledgerForm, batch_id: val})}
+                        placeholder={ledgerForm.item_id ? 'Select batch…' : 'Select an item first'}
+                        options={ledgerBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                    )}
                   </div>
                 )}
                 <div className="form-group"><label>Quantity *</label><input required type="number" min="1" max={modal === 'issue' ? (selectedLedgerBatch?.qty_office || 0) : undefined} value={ledgerForm.quantity} onChange={e => setLedgerForm({...ledgerForm, quantity: e.target.value})} /></div>
@@ -825,9 +1107,15 @@ export default function Stock() {
                   </div>
                 )}
                 <div className="form-group form-full"><label>Batch *</label>
-                  <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
-                    placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
-                    options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                  {distBatches.length === 1 ? (
+                    <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                      {batchLabel(distBatches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+                    </div>
+                  ) : (
+                    <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
+                      placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
+                      options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                  )}
                 </div>
                 <div className="form-group form-full"><label>Technician *</label>
                   <SearchableSelect value={distForm.employee_id} onChange={val => setDistForm({...distForm, employee_id: val})}
@@ -862,7 +1150,96 @@ export default function Stock() {
         </div>
       )}
 
+      {adjusting && <AdjustStockModal item={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { load(); showToast('Stock updated!') }} />}
+
       {toast && <div className="toast">{toast}</div>}
+    </div>
+  )
+}
+
+function AdjustStockModal({ item, onClose, onSaved }) {
+  const [qty, setQty] = useState(0)
+  const [action, setAction] = useState('add')
+  const [notes, setNotes] = useState('')
+  const [batchId, setBatchId] = useState('')
+  const [batches, setBatches] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (action === 'remove') {
+      api.get('/api/stock/batches', { params: { item_id: item.id } }).then(r => {
+        setBatches(r.data)
+        if (r.data.length === 1) setBatchId(String(r.data[0].id))
+      })
+    }
+  }, [action, item.id])
+
+  const selectedBatch = batches.find(b => b.id === parseInt(batchId))
+
+  async function submit() {
+    const delta = action === 'add' ? Number(qty) : -Number(qty)
+    if (action === 'remove' && !batchId) { setError('Select which batch this is being removed from'); return }
+    try {
+      setLoading(true)
+      await api.post(`/api/stock/${item.id}/adjust`, {
+        quantity_change: delta, notes,
+        batch_id: action === 'remove' ? parseInt(batchId) : null
+      })
+      onSaved(); onClose()
+    } catch (e) { setError(e.response?.data?.detail || 'Failed') }
+    setLoading(false)
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => e.target.className === 'modal-backdrop' && onClose()}>
+      <div className="modal-box" style={{ maxWidth: 380 }}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>± Adjust Stock</h3>
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+          {item.name} · <b>₹{(item.unit_cost ?? 0).toLocaleString('en-IN')}/{item.unit || 'pcs'}</b>
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+          Current stock: <b>{item.office_qty || 0} {item.unit || 'pcs'}</b>
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          {['add','remove'].map(a => (
+            <button key={a} onClick={() => { setAction(a); setBatchId('') }} style={{
+              flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
+              background: action === a ? (a === 'add' ? 'rgba(52,211,153,.15)' : 'rgba(248,113,113,.15)') : 'var(--surface2)',
+              border: `1.5px solid ${action === a ? (a === 'add' ? 'var(--green)' : 'var(--red)') : 'var(--border)'}`,
+              color: action === a ? (a === 'add' ? 'var(--green)' : 'var(--red)') : 'var(--muted)'
+            }}>{a === 'add' ? '+ Add Stock' : '- Remove Stock'}</button>
+          ))}
+        </div>
+        {action === 'remove' && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label>Batch *</label>
+            {batches.length === 1 ? (
+              <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                {batchLabel(batches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+              </div>
+            ) : (
+              <SearchableSelect value={batchId} onChange={setBatchId}
+                placeholder="Select batch…"
+                options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+            )}
+          </div>
+        )}
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label>Quantity</label>
+          <input type="number" min="1" max={action === 'remove' ? (selectedBatch?.qty_office || 0) : undefined} value={qty} onChange={e => setQty(e.target.value)} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 14 }}>
+          <label>Notes</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Reason / reference…" />
+        </div>
+        {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit} disabled={loading}>{loading ? '⏳…' : 'Update Stock'}</button>
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
     </div>
   )
 }

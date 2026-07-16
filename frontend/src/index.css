@@ -253,16 +253,17 @@ tr:hover td { background: var(--surface2); }
    ============================================================ */
 .layout-root { display: flex; height: 100vh; overflow: hidden; }
 
-/* Sidebar overlay (mobile) */
+/* Sidebar overlay (mobile) — above Leaflet's own chrome (map panes/controls go up to
+   z-index 1000 by default), so an open map on the page can't render on top of the drawer. */
 .sidebar-overlay {
-  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 299;
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1499;
 }
 .sidebar-overlay.open { display: block; }
 
 .sidebar {
   width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto;
-  transition: transform .25s ease; z-index: 300;
+  transition: transform .25s ease; z-index: 1500;
 }
 
 .layout-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }

@@ -36,7 +36,10 @@ export default function MyStock() {
 
   useEffect(() => {
     if (modal && form.item_id) {
-      api.get('/api/stock/employee-batches', { params: { item_id: form.item_id } }).then(r => setMyBatches(r.data))
+      api.get('/api/stock/employee-batches', { params: { item_id: form.item_id } }).then(r => {
+        setMyBatches(r.data)
+        if (r.data.length === 1) setForm(f => ({ ...f, batch_id: String(r.data[0].id) }))
+      })
     } else { setMyBatches([]) }
   }, [modal, form.item_id])
 
@@ -247,9 +250,15 @@ export default function MyStock() {
                   </div>
                 )}
                 <div className="form-group form-full"><label>Batch *</label>
-                  <SearchableSelect value={form.batch_id} onChange={val => setForm({...form, batch_id: val})}
-                    placeholder={form.item_id ? 'Select batch…' : 'Select an item first'}
-                    options={myBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                  {myBatches.length === 1 ? (
+                    <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                      {batchLabel(myBatches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+                    </div>
+                  ) : (
+                    <SearchableSelect value={form.batch_id} onChange={val => setForm({...form, batch_id: val})}
+                      placeholder={form.item_id ? 'Select batch…' : 'Select an item first'}
+                      options={myBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                  )}
                 </div>
                 <div className="form-group"><label>Quantity to Return *</label>
                   <input required type="number" min="1" max={selectedBatch?.qty_office || 0} value={form.quantity}
@@ -290,9 +299,15 @@ export default function MyStock() {
                   </div>
                 )}
                 <div className="form-group form-full"><label>Batch *</label>
-                  <SearchableSelect value={form.batch_id} onChange={val => setForm({...form, batch_id: val})}
-                    placeholder={form.item_id ? 'Select batch…' : 'Select an item first'}
-                    options={myBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                  {myBatches.length === 1 ? (
+                    <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                      {batchLabel(myBatches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+                    </div>
+                  ) : (
+                    <SearchableSelect value={form.batch_id} onChange={val => setForm({...form, batch_id: val})}
+                      placeholder={form.item_id ? 'Select batch…' : 'Select an item first'}
+                      options={myBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                  )}
                 </div>
                 <div className="form-group"><label>Quantity Installed *</label>
                   <input required type="number" min="1" max={selectedBatch?.qty_office || 0} value={form.quantity}

@@ -1,9 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+import logging
 import os
 from datetime import date
+
+logger = logging.getLogger("ams")
 
 from .database import engine, Base, SessionLocal
 from . import models  # ensure all models are registered
@@ -15,6 +19,8 @@ from .routers import amc_reports
 from .routers import service_reports
 from .routers import locations
 from .routers import stock_purchases
+from .routers import reorder_requests
+from .routers import reports as reports_router
 
 
 def _auto_generate_daily_tasks():
@@ -92,6 +98,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    # Without this, Starlette's default handler returns a plain-text "Internal Server Error"
+    # body — the frontend reads err.response.data.detail on every failure, so a non-JSON body
+    # silently looks identical to "no detail provided" and gets mislabeled by generic catch
+    # blocks (e.g. login showing "Invalid Employee ID or password" for what was really a 500).
+    logger.exception(f"Unhandled error on {request.method} {request.url.path}")
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong on our end — please try again."})
+
 # Serve uploaded files
 uploads_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
 os.makedirs(uploads_dir, exist_ok=True)
@@ -120,6 +135,8 @@ app.include_router(amc_reports.router)
 app.include_router(service_reports.router)
 app.include_router(locations.router)
 app.include_router(stock_purchases.router)
+app.include_router(reorder_requests.router)
+app.include_router(reports_router.router)
 
 @app.get("/")
 def root():

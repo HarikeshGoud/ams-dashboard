@@ -123,9 +123,11 @@ export default function DeskworkLayout() {
         <Outlet />
       </div>
 
-      {/* Bottom nav — mobile only */}
+      {/* Bottom nav — mobile only. z-index above Leaflet's own chrome (map panes/controls
+          go up to 1000 by default) so an inline map further up the page — e.g. Live Tracking —
+          can't render on top of this fixed bar when scrolled into view. */}
       <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1500,
         background: 'var(--surface)', borderTop: '1px solid var(--border)',
         display: 'flex', padding: '4px 0'
       }} className="deskwork-bottomnav">

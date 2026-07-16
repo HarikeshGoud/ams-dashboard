@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import SearchableSelect from '../../components/SearchableSelect'
+import { sendReorderSummaryWhatsApp } from '../../utils/reorderSummary'
 
 const CAT_A = '50/100 LPH RO Units'
 const CAT_B = '1000/1500/2000 LPH RO Units'
@@ -35,6 +36,12 @@ export default function DeskStock() {
   const [lookupItem, setLookupItem]       = useState('')
   const [lookupBatches, setLookupBatches] = useState([])
   const [lookupTrace, setLookupTrace]     = useState(null)
+  const [reorders, setReorders]           = useState([])
+  const [reorderModal, setReorderModal]   = useState(null)
+  const [reorderForm, setReorderForm]     = useState({ quantity: 1, note: '' })
+  const [receiveModal, setReceiveModal]   = useState(null)
+  const [receiveForm, setReceiveForm]     = useState({ quantity: 1, buy_price: '', person: '' })
+  const [accounts, setAccounts]           = useState({ batches: [], monthly: [], grand_total: 0 })
   const [toast, setToast]           = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -47,21 +54,58 @@ export default function DeskStock() {
       api.get('/api/stock/employee-stock'),
       api.get('/api/stock/ledger'),
       api.get('/api/stock-purchases/'),
-    ]).then(([it, emp, dist, es, lg, pu]) => {
+      api.get('/api/reorder/'),
+      api.get('/api/stock/accounts'),
+    ]).then(([it, emp, dist, es, lg, pu, ro, ac]) => {
       setItems(it.data || [])
       setEmployees(emp.data || [])
       setDist(dist.data || [])
       setEmpStock(es.data || [])
       setLedger(lg.data || [])
       setPurchases(pu.data || [])
+      setReorders(ro.data || [])
+      setAccounts(ac.data || { batches: [], monthly: [], grand_total: 0 })
       setLoading(false)
     }).catch(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
 
+  async function requestReorder(ev) {
+    ev.preventDefault()
+    try {
+      await api.post('/api/reorder/', {
+        item_id: reorderModal.id, requested_qty: parseInt(reorderForm.quantity), note: reorderForm.note || null
+      })
+      setReorderModal(null); load(); showToast('✅ Reorder requested')
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function updateReorder(id, status) {
+    try {
+      await api.patch(`/api/reorder/${id}`, { status })
+      load(); showToast(`Marked as ${status}`)
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  async function confirmReceive(ev) {
+    ev.preventDefault()
+    try {
+      await api.patch(`/api/reorder/${receiveModal.id}`, {
+        status: 'received',
+        received_qty: parseInt(receiveForm.quantity),
+        buy_price: parseFloat(receiveForm.buy_price) || null,
+        person: receiveForm.person || null,
+      })
+      setReceiveModal(null); load(); showToast('✅ Stock received — added to office inventory as a new batch')
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
   useEffect(() => {
     if (distModal && distForm.item_id) {
-      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => setDistBatches(r.data))
+      api.get('/api/stock/batches', { params: { item_id: distForm.item_id } }).then(r => {
+        setDistBatches(r.data)
+        if (r.data.length === 1) setDistForm(f => ({ ...f, batch_id: String(r.data[0].id) }))
+      })
     } else { setDistBatches([]) }
   }, [distModal, distForm.item_id])
 
@@ -175,6 +219,11 @@ export default function DeskStock() {
   })
   const techList = Object.values(techMap)
 
+  const openReorders = reorders.filter(r => r.status === 'pending' || r.status === 'ordered')
+  const openReorderItemIds = new Set(openReorders.map(r => r.item_id))
+  const needsReorder = items.filter(i => (i.min_quantity || 0) > 0 && (i.quantity || 0) <= (i.min_quantity || 0) && !openReorderItemIds.has(i.id))
+  const resolvedReorders = reorders.filter(r => r.status === 'received' || r.status === 'cancelled').slice(0, 20)
+
   return (
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
@@ -183,6 +232,14 @@ export default function DeskStock() {
           <button className="btn btn-purple" style={{ fontSize: 12 }} onClick={() => { setDistModal(true); setDistForm({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
           <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>+ Add Item</button>
         </div>
+      </div>
+
+      {/* KPI */}
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        <div className="kpi-card red"><div className="kpi-label">Low Stock</div><div className="kpi-value">{lowStock.length}</div><div className="kpi-sub">Items below threshold</div></div>
+        <div className="kpi-card yellow"><div className="kpi-label">Items Tracked</div><div className="kpi-value">{items.length}</div></div>
+        <div className="kpi-card blue"><div className="kpi-label">Total Distributed</div><div className="kpi-value">{distributions.length}</div><div className="kpi-sub">Distribution events</div></div>
+        <div className="kpi-card green"><div className="kpi-label">Techs with Stock</div><div className="kpi-value">{techList.length}</div></div>
       </div>
 
       {/* Tabs */}
@@ -194,6 +251,8 @@ export default function DeskStock() {
           { key: 'purchases',  label: `🛒 Purchased Stock${purchases.filter(p => p.status === 'pending').length ? ` (${purchases.filter(p => p.status === 'pending').length})` : ''}` },
           { key: 'ledger',     label: '📋 Ledger' },
           { key: 'batches',    label: '🔍 Batch Lookup' },
+          { key: 'reorder',    label: `🔄 Reorder${needsReorder.length + openReorders.length ? ` (${needsReorder.length + openReorders.length})` : ''}` },
+          { key: 'accounts',   label: '💰 Accounts' },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', fontWeight: 600, fontSize: 12,
@@ -635,6 +694,257 @@ export default function DeskStock() {
         </div>
       )}
 
+      {/* ── REORDER TAB ── */}
+      {tab === 'reorder' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => sendReorderSummaryWhatsApp(reorders)}>📤 Send Reorder List</button>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">⚠️ Needs Reorder ({needsReorder.length})</div>
+            {needsReorder.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>Nothing currently below its threshold without an open request.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Item</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Office Qty</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Min Qty</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {needsReorder.map(i => (
+                      <tr key={i.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{i.name || i.item_name}</td>
+                        <td style={{ padding: '8px 10px', color: 'var(--red)', fontWeight: 700 }}>{i.quantity}</td>
+                        <td style={{ padding: '8px 10px' }}>{i.min_quantity}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <button className="btn btn-primary btn-sm" onClick={() => { setReorderModal(i); setReorderForm({ quantity: Math.max((i.min_quantity || 0) - (i.quantity || 0), 1), note: '' }) }}>+ Request Reorder</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">🔄 Open Requests ({openReorders.length})</div>
+            {openReorders.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No open reorder requests</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Item</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Requested By</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>When</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Note</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Status</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openReorders.map(r => (
+                      <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{r.item_name}</td>
+                        <td style={{ padding: '8px 10px' }}><b>{r.requested_qty}</b> {r.item_unit}</td>
+                        <td style={{ padding: '8px 10px' }}>{r.requester_name || '—'}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11 }}>{r.requested_at?.slice(0, 10)}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--muted)' }}>{r.note || '—'}</td>
+                        <td style={{ padding: '8px 10px' }}><span className={`pill ${r.status === 'ordered' ? 'pill-blue' : 'pill-yellow'}`}>{r.status === 'ordered' ? '🚚 Ordered' : '🆕 Pending'}</span></td>
+                        <td style={{ padding: '8px 10px', display: 'flex', gap: 6 }}>
+                          {r.status === 'pending' && <button className="btn btn-outline btn-sm" onClick={() => updateReorder(r.id, 'ordered')}>Mark Ordered</button>}
+                          <button className="btn btn-green btn-sm" onClick={() => { setReceiveModal(r); setReceiveForm({ quantity: r.requested_qty, buy_price: '', person: '' }) }}>✅ Received</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => updateReorder(r.id, 'cancelled')}>✕ Cancel</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {resolvedReorders.length > 0 && (
+            <div className="card">
+              <div className="card-title">Recently Resolved</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Item</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Status</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Resolved By</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resolvedReorders.map(r => (
+                      <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px' }}>{r.item_name}</td>
+                        <td style={{ padding: '8px 10px' }}>{r.requested_qty} {r.item_unit}</td>
+                        <td style={{ padding: '8px 10px' }}><span className={`pill ${r.status === 'received' ? 'pill-green' : 'pill-gray'}`}>{r.status === 'received' ? '✅ Received' : '✕ Cancelled'}</span></td>
+                        <td style={{ padding: '8px 10px' }}>{r.resolver_name || '—'}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11 }}>{r.resolved_at?.slice(0, 10)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ACCOUNTS TAB ── */}
+      {tab === 'accounts' && (
+        <div>
+          <div className="kpi-grid" style={{ marginBottom: 16 }}>
+            <div className="kpi-card green">
+              <div className="kpi-label">Total Spent on Stock</div>
+              <div className="kpi-value">₹{accounts.grand_total.toLocaleString('en-IN')}</div>
+              <div className="kpi-sub">{accounts.batches.length} batch{accounts.batches.length !== 1 ? 'es' : ''} with cost data</div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">📅 Monthly Breakdown</div>
+            {accounts.monthly.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No cost data recorded yet</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Month</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Total Spent</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.monthly.map(m => (
+                      <tr key={m.month} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{m.month}</td>
+                        <td style={{ padding: '8px 10px' }}><b>₹{m.total.toLocaleString('en-IN')}</b></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-title">🧾 Per-Batch Cost Breakdown</div>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Money spent per batch received — purchase price plus logistics (manufacturer → office, office → technician).</p>
+            {accounts.batches.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No batches with cost data yet</div>
+            ) : (
+              <div style={{ overflowX: 'auto', maxHeight: 500, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Batch No</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Item</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Source</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Received</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Buy Price</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Logistics 1 (Mfr→Office)</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Logistics 2 (Office→Tech)</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Total Cost</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Supplier</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.batches.map(b => (
+                      <tr key={b.batch_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{b.batch_no}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.item_name}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{b.source}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 12 }}>{b.received_date}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.qty_received} {b.item_unit}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.buy_price ? `₹${b.buy_price.toLocaleString('en-IN')}` : '—'}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.logistics1 ? `₹${b.logistics1.toLocaleString('en-IN')}` : '—'}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.logistics2 ? `₹${b.logistics2.toLocaleString('en-IN')}` : '—'}</td>
+                        <td style={{ padding: '8px 10px' }}><b style={{ color: 'var(--green)' }}>₹{b.total_cost.toLocaleString('en-IN')}</b></td>
+                        <td style={{ padding: '8px 10px', fontSize: 12 }}>{b.person || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Request Reorder */}
+      {reorderModal && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: 380 }}>
+            <button className="modal-close" onClick={() => setReorderModal(null)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🔄 Request Reorder</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              {reorderModal.name || reorderModal.item_name} · currently <b style={{ color: 'var(--red)' }}>{reorderModal.quantity}</b>, threshold {reorderModal.min_quantity}
+            </p>
+            <form onSubmit={requestReorder}>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Quantity to Order</label>
+                <input required type="number" min="1" value={reorderForm.quantity} onChange={e => setReorderForm({ ...reorderForm, quantity: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label>Note</label>
+                <input value={reorderForm.note} onChange={e => setReorderForm({ ...reorderForm, note: e.target.value })} placeholder="Supplier, urgency, etc…" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Request Reorder</button>
+                <button type="button" className="btn btn-outline" onClick={() => setReorderModal(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Received — actually adds stock as a new batch */}
+      {receiveModal && (
+        <div className="modal-backdrop">
+          <div className="modal-box" style={{ maxWidth: 380 }}>
+            <button className="modal-close" onClick={() => setReceiveModal(null)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>✅ Confirm Stock Received</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
+              {receiveModal.item_name} · requested {receiveModal.requested_qty} {receiveModal.item_unit}. This creates a new batch and adds to office stock — confirm the actual quantity that arrived.
+            </p>
+            <form onSubmit={confirmReceive}>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Quantity Received</label>
+                <input required type="number" min="1" value={receiveForm.quantity} onChange={e => setReceiveForm({ ...receiveForm, quantity: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 10 }}>
+                <label>Buy Price (₹, optional)</label>
+                <input type="number" value={receiveForm.buy_price} onChange={e => setReceiveForm({ ...receiveForm, buy_price: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label>Supplier (optional)</label>
+                <input value={receiveForm.person} onChange={e => setReceiveForm({ ...receiveForm, person: e.target.value })} placeholder="Who supplied it…" />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Confirm Received</button>
+                <button type="button" className="btn btn-outline" onClick={() => setReceiveModal(null)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── INVENTORY TAB ── */}
       {tab === 'inventory' && <>
       <input value={search} onChange={e => setSearch(e.target.value)}
@@ -674,7 +984,8 @@ export default function DeskStock() {
                   {grouped[cat].map((item, idx) => {
                     const qty    = item.quantity || 0
                     const minQty = item.min_quantity || 0
-                    const isLow  = minQty > 0 && qty <= minQty
+                    const hasThreshold = minQty > 0
+                    const isLow  = hasThreshold && qty <= minQty
                     return (
                       <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: '9px 10px', color: 'var(--muted)', fontSize: 11 }}>{idx + 1}</td>
@@ -688,10 +999,10 @@ export default function DeskStock() {
                         <td style={{ padding: '9px 10px' }}>
                           <span style={{
                             fontSize: 10, padding: '2px 8px', borderRadius: 6, fontWeight: 700,
-                            background: isLow ? 'rgba(248,113,113,.15)' : 'rgba(52,211,153,.15)',
-                            color: isLow ? 'var(--red)' : 'var(--green)'
+                            background: isLow ? 'rgba(248,113,113,.15)' : hasThreshold ? 'rgba(52,211,153,.15)' : 'rgba(148,163,184,.15)',
+                            color: isLow ? 'var(--red)' : hasThreshold ? 'var(--green)' : 'var(--muted)'
                           }}>
-                            {isLow ? 'Low' : 'OK'}
+                            {isLow ? 'Low' : hasThreshold ? 'OK' : 'No threshold'}
                           </span>
                         </td>
                         <td style={{ padding: '9px 10px' }}>
@@ -736,9 +1047,15 @@ export default function DeskStock() {
               )}
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Batch *</label>
-                <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
-                  placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
-                  options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                {distBatches.length === 1 ? (
+                  <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                    {batchLabel(distBatches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+                  </div>
+                ) : (
+                  <SearchableSelect value={distForm.batch_id} onChange={val => setDistForm({...distForm, batch_id: val})}
+                    placeholder={distForm.item_id ? 'Select batch…' : 'Select an item first'}
+                    options={distBatches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+                )}
               </div>
               <div className="form-group" style={{ marginBottom: 12 }}>
                 <label>Technician *</label>
@@ -815,6 +1132,13 @@ function AddStockModal({ onClose, onSaved }) {
             <option value="">-- Select category --</option>
             <option value={CAT_A}>{CAT_A}</option>
             <option value={CAT_B}>{CAT_B}</option>
+            <option value="ATW Parts">ATW Parts</option>
+            <option value="Consumables">Consumables</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Filter">Filter</option>
+            <option value="Fittings">Fittings</option>
+            <option value="Membranes">Membranes</option>
+            <option value="Pumps">Pumps</option>
             <option value="Other">Other</option>
           </select>
         </div>
@@ -847,7 +1171,10 @@ function AdjustStockModal({ item, onClose, onSaved }) {
 
   useEffect(() => {
     if (action === 'remove') {
-      api.get('/api/stock/batches', { params: { item_id: item.id } }).then(r => setBatches(r.data))
+      api.get('/api/stock/batches', { params: { item_id: item.id } }).then(r => {
+        setBatches(r.data)
+        if (r.data.length === 1) setBatchId(String(r.data[0].id))
+      })
     }
   }, [action, item.id])
 
@@ -891,9 +1218,15 @@ function AdjustStockModal({ item, onClose, onSaved }) {
         {action === 'remove' && (
           <div className="form-group" style={{ marginBottom: 10 }}>
             <label>Batch *</label>
-            <SearchableSelect value={batchId} onChange={setBatchId}
-              placeholder="Select batch…"
-              options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+            {batches.length === 1 ? (
+              <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                {batchLabel(batches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+              </div>
+            ) : (
+              <SearchableSelect value={batchId} onChange={setBatchId}
+                placeholder="Select batch…"
+                options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+            )}
           </div>
         )}
         <div className="form-group" style={{ marginBottom: 10 }}>

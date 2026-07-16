@@ -56,6 +56,8 @@ class StockBatch(Base):
     qty_office    = Column(Integer, default=0)  # remaining, unconsumed, sitting in central office
     unit_cost     = Column(Numeric(10, 2), nullable=True)
     buy_price     = Column(Numeric(10, 2), nullable=True)
+    logistics1    = Column(Numeric(10, 2), nullable=True)  # Manufacturer → Office
+    logistics2    = Column(Numeric(10, 2), nullable=True)  # Office → Technician
     person        = Column(String(100), nullable=True)
     received_date = Column(Date, nullable=False)
     note          = Column(Text, nullable=True)
