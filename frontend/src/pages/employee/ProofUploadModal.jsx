@@ -239,8 +239,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           const selItem = selectedItems[i]
           const inHand = myStock.find(s => s.item_id === selItem.id)
           const details = installDetails[i]
-          if (inHand && inHand.qty_in_hand > 0 && details?.batch_id) {
-            const qty = parseInt(details.quantity) || 1
+          const qty = (details?.quantity === undefined || details.quantity === '') ? 1 : parseInt(details.quantity)
+          if (inHand && inHand.qty_in_hand > 0 && details?.batch_id && qty > 0) {
             try {
               await api.post('/api/stock/install', {
                 item_id: inHand.item_id,
