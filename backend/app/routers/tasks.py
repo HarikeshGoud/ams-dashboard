@@ -140,11 +140,19 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
 
     if new_round:
         # All schools visited — start fresh, prioritise least-recently visited
-        eligible = sorted(all_schools, key=lambda s: s.last_visit_date or date.min)
+        rest = sorted(all_schools, key=lambda s: s.last_visit_date or date.min)
     else:
-        eligible = sorted(unvisited, key=lambda s: s.name)
+        rest = sorted(unvisited, key=lambda s: s.name)
 
-    eligible = [s for s in eligible if s.id not in exclude_ids and s.id not in pending_school_ids]
+    rest = [s for s in rest if s.id not in exclude_ids and s.id not in pending_school_ids]
+
+    # Unresolved sites jump the queue regardless of rotation state — they need a
+    # follow-up visit sooner than the normal cycle would otherwise reach them.
+    unresolved = [s for s in all_schools
+                  if s.plant_condition == 'not_working' and s.id not in exclude_ids and s.id not in pending_school_ids]
+    unresolved_ids = {s.id for s in unresolved}
+
+    eligible = unresolved + [s for s in rest if s.id not in unresolved_ids]
     return eligible, all_schools, new_round, visited_count
 
 
@@ -200,6 +208,7 @@ def suggested_schools(employee_id: int = None, task_date: str = None, db: Sessio
             "id": s.id, "name": s.name,
             "mandal_name": s.mandal.name if s.mandal else None,
             "last_visit_date": s.last_visit_date.isoformat() if s.last_visit_date else None,
+            "plant_condition": s.plant_condition,
         } for s in eligible[:remaining_slots]]
     }
 

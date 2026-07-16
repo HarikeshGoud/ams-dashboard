@@ -13,7 +13,7 @@ function pad(n) { return String(n).padStart(2, '0') }
 function monthLabel(y, m) { return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y}` }
 
 function condBadge(c) {
-  const map = { working: ['#198754', 'Working'], not_working: ['#dc3545', 'Not Working'], under_repair: ['#fd7e14', 'Under Repair'] }
+  const map = { working: ['#198754', 'Resolved'], not_working: ['#dc3545', 'Unresolved'] }
   const [color, label] = map[c] || ['#6c757d', c || '-']
   return <span style={{ background: color, color: '#fff', borderRadius: 4, padding: '1px 7px', fontSize: 11 }}>{label}</span>
 }
@@ -288,8 +288,8 @@ function DailyReport() {
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
             <Stat label="Total Visits" value={visits.length} color="var(--accent)" />
-            <Stat label="Working" value={visits.filter(v => v.plant_condition === 'working').length} color="#198754" />
-            <Stat label="Not Working" value={visits.filter(v => v.plant_condition === 'not_working').length} color="#dc3545" />
+            <Stat label="Resolved" value={visits.filter(v => v.plant_condition === 'working').length} color="#198754" />
+            <Stat label="Unresolved" value={visits.filter(v => v.plant_condition === 'not_working').length} color="#dc3545" />
             <Stat label="MCF Used" value={visits.reduce((s, v) => s + (v.mcf_used || 0), 0)} color="#fd7e14" />
             <Stat label="Antiscalant (L)" value={visits.reduce((s, v) => s + (v.antiscalant_used || 0), 0).toFixed(1)} color="#6f42c1" />
           </div>
@@ -365,8 +365,8 @@ function MonthlyReport({ months }) {
         <>
           <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
             <Stat label="Total Visits" value={visits.length} color="var(--accent)" />
-            <Stat label="Working" value={visits.filter(v => v.plant_condition === 'working').length} color="#198754" />
-            <Stat label="Not Working" value={visits.filter(v => v.plant_condition === 'not_working').length} color="#dc3545" />
+            <Stat label="Resolved" value={visits.filter(v => v.plant_condition === 'working').length} color="#198754" />
+            <Stat label="Unresolved" value={visits.filter(v => v.plant_condition === 'not_working').length} color="#dc3545" />
             <Stat label="MCF Used" value={visits.reduce((s, v) => s + (v.mcf_used || 0), 0)} color="#fd7e14" />
             <Stat label="Antiscalant (L)" value={visits.reduce((s, v) => s + (v.antiscalant_used || 0), 0).toFixed(1)} color="#6f42c1" />
           </div>

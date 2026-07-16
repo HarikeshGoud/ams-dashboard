@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
+import { isOverdue } from '../utils/visitStatus'
 
 export default function Schools() {
   const [data, setData] = useState({ items: [], total: 0 })
@@ -133,7 +134,16 @@ export default function Schools() {
                     <td><span className={`pill ${s.amc_status === 'amc' ? 'pill-green' : s.amc_status === 'warranty' ? 'pill-orange' : 'pill-red'}`}>{(s.amc_status || '—').toUpperCase()}</span></td>
                     <td>{s.mandal_name || '—'}</td>
                     <td>{s.technician_name || '—'}</td>
-                    <td>{s.last_visit_date || '—'}</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{s.last_visit_date || 'Never'}</span>
+                        {isOverdue(s.last_visit_date) && (
+                          <span style={{ background: '#dc3545', color: '#fff', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            ⚠ Overdue
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       <button className="btn btn-outline btn-sm" onClick={() => openEdit(s)}>Edit</button>{' '}
                       <button className="btn btn-danger btn-sm" onClick={() => del(s.id)}>Del</button>

@@ -793,10 +793,16 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label style={{ fontSize: 10 }}>Status</label>
-                      <select value={status} onChange={e => setStatus(e.target.value)} style={{ fontSize: 12, color: status.includes('UNRESOLVED') ? '#ef4444' : '#22c55e', fontWeight: 700 }}>
-                        <option value="PROBLEM RESOLVED">✅ PROBLEM RESOLVED</option>
-                        <option value="PROBLEM UNRESOLVED">❌ PROBLEM UNRESOLVED</option>
-                      </select>
+                      <div style={{ display: 'flex', gap: 14, marginTop: 6 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#22c55e', cursor: 'pointer' }}>
+                          <input type="radio" name="status" value="PROBLEM RESOLVED" checked={status === 'PROBLEM RESOLVED'} onChange={e => setStatus(e.target.value)} />
+                          ✅ RESOLVED
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: '#ef4444', cursor: 'pointer' }}>
+                          <input type="radio" name="status" value="PROBLEM UNRESOLVED" checked={status === 'PROBLEM UNRESOLVED'} onChange={e => setStatus(e.target.value)} />
+                          ❌ UNRESOLVED
+                        </label>
+                      </div>
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label style={{ fontSize: 10 }}>Customer Remarks</label>
