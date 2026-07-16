@@ -41,6 +41,7 @@ export default function DeskStock() {
   const [reorderForm, setReorderForm]     = useState({ quantity: 1, note: '' })
   const [receiveModal, setReceiveModal]   = useState(null)
   const [receiveForm, setReceiveForm]     = useState({ quantity: 1, buy_price: '', person: '' })
+  const [accounts, setAccounts]           = useState({ batches: [], monthly: [], grand_total: 0 })
   const [toast, setToast]           = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -54,7 +55,8 @@ export default function DeskStock() {
       api.get('/api/stock/ledger'),
       api.get('/api/stock-purchases/'),
       api.get('/api/reorder/'),
-    ]).then(([it, emp, dist, es, lg, pu, ro]) => {
+      api.get('/api/stock/accounts'),
+    ]).then(([it, emp, dist, es, lg, pu, ro, ac]) => {
       setItems(it.data || [])
       setEmployees(emp.data || [])
       setDist(dist.data || [])
@@ -62,6 +64,7 @@ export default function DeskStock() {
       setLedger(lg.data || [])
       setPurchases(pu.data || [])
       setReorders(ro.data || [])
+      setAccounts(ac.data || { batches: [], monthly: [], grand_total: 0 })
       setLoading(false)
     }).catch(() => setLoading(false))
   }
@@ -249,6 +252,7 @@ export default function DeskStock() {
           { key: 'ledger',     label: '📋 Ledger' },
           { key: 'batches',    label: '🔍 Batch Lookup' },
           { key: 'reorder',    label: `🔄 Reorder${needsReorder.length + openReorders.length ? ` (${needsReorder.length + openReorders.length})` : ''}` },
+          { key: 'accounts',   label: '💰 Accounts' },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', fontWeight: 600, fontSize: 12,
@@ -798,6 +802,88 @@ export default function DeskStock() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── ACCOUNTS TAB ── */}
+      {tab === 'accounts' && (
+        <div>
+          <div className="kpi-grid" style={{ marginBottom: 16 }}>
+            <div className="kpi-card green">
+              <div className="kpi-label">Total Spent on Stock</div>
+              <div className="kpi-value">₹{accounts.grand_total.toLocaleString('en-IN')}</div>
+              <div className="kpi-sub">{accounts.batches.length} batch{accounts.batches.length !== 1 ? 'es' : ''} with cost data</div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">📅 Monthly Breakdown</div>
+            {accounts.monthly.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No cost data recorded yet</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Month</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Total Spent</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.monthly.map(m => (
+                      <tr key={m.month} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{m.month}</td>
+                        <td style={{ padding: '8px 10px' }}><b>₹{m.total.toLocaleString('en-IN')}</b></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-title">🧾 Per-Batch Cost Breakdown</div>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Money spent per batch received — purchase price plus logistics (manufacturer → office, office → technician).</p>
+            {accounts.batches.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No batches with cost data yet</div>
+            ) : (
+              <div style={{ overflowX: 'auto', maxHeight: 500, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)', fontSize: 11 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Batch No</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Item</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Source</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Received</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Qty</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Buy Price</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Logistics 1 (Mfr→Office)</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Logistics 2 (Office→Tech)</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Total Cost</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>Supplier</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.batches.map(b => (
+                      <tr key={b.batch_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{b.batch_no}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.item_name}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{b.source}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 12 }}>{b.received_date}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.qty_received} {b.item_unit}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.buy_price ? `₹${b.buy_price.toLocaleString('en-IN')}` : '—'}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.logistics1 ? `₹${b.logistics1.toLocaleString('en-IN')}` : '—'}</td>
+                        <td style={{ padding: '8px 10px' }}>{b.logistics2 ? `₹${b.logistics2.toLocaleString('en-IN')}` : '—'}</td>
+                        <td style={{ padding: '8px 10px' }}><b style={{ color: 'var(--green)' }}>₹{b.total_cost.toLocaleString('en-IN')}</b></td>
+                        <td style={{ padding: '8px 10px', fontSize: 12 }}>{b.person || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

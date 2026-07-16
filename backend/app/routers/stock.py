@@ -102,6 +102,7 @@ def _batch_fmt(b: StockBatch):
         "id": b.id, "item_id": b.item_id, "batch_no": b.batch_no,
         "source": b.source, "qty_received": b.qty_received, "qty_office": b.qty_office,
         "unit_cost": float(b.unit_cost or 0), "buy_price": float(b.buy_price or 0),
+        "logistics1": float(b.logistics1 or 0), "logistics2": float(b.logistics2 or 0),
         "person": b.person, "received_date": b.received_date.isoformat() if b.received_date else None,
         "note": b.note, "created_at": b.created_at.isoformat() if b.created_at else None,
     }
@@ -134,14 +135,15 @@ def _upsert_employee_stock_batch(db: Session, employee_id: int, batch_id: int, d
 
 def _create_batch(db: Session, item_id: int, quantity: int, source: str,
                    received_date, source_ref_id: int = None, unit_cost: float = None,
-                   buy_price: float = None, person: str = None, note: str = None,
+                   buy_price: float = None, logistics1: float = None, logistics2: float = None,
+                   person: str = None, note: str = None,
                    created_by: int = None) -> StockBatch:
     count = db.query(StockBatch).count()
     batch = StockBatch(
         item_id=item_id, batch_no=f"BATCH-{str(count + 1).zfill(6)}", source=source,
         source_ref_id=source_ref_id, qty_received=quantity, qty_office=quantity,
-        unit_cost=unit_cost, buy_price=buy_price, person=person,
-        received_date=received_date or date.today(), note=note, created_by=created_by
+        unit_cost=unit_cost, buy_price=buy_price, logistics1=logistics1, logistics2=logistics2,
+        person=person, received_date=received_date or date.today(), note=note, created_by=created_by
     )
     db.add(batch)
     db.flush()  # surfaces a clear error on the rare batch_no collision instead of silently duplicating
@@ -264,7 +266,8 @@ def add_ledger(data: LedgerCreate, db: Session = Depends(get_db), user=Depends(g
     payload = data.model_dump()
     if data.transaction_type == "receive":
         batch = _create_batch(db, item_id=item.id, quantity=data.quantity, source="receive",
-                              received_date=date.today(), buy_price=data.buy_price, person=data.person,
+                              received_date=date.today(), buy_price=data.buy_price,
+                              logistics1=data.logistics1, logistics2=data.logistics2, person=data.person,
                               created_by=user.id, note=data.note)
         payload["batch_id"] = batch.id
         item.office_qty += data.quantity
@@ -540,3 +543,37 @@ def trace_batch(batch_id: int, db: Session = Depends(get_db), user=Depends(get_c
             "qty_in_hand": h.qty_in_hand,
         } for h in holders],
     }
+
+# ── Accounts (money spent on stock) ─────────────────────────────────────────
+
+@router.get("/accounts")
+def stock_accounts(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if user.role not in ("admin", "deskwork"):
+        raise HTTPException(403, "Access denied")
+    batches = db.query(StockBatch).filter(StockBatch.source != "legacy").order_by(StockBatch.received_date.desc(), StockBatch.id.desc()).all()
+
+    rows = []
+    monthly = {}
+    grand_total = 0.0
+    for b in batches:
+        buy = float(b.buy_price or 0)
+        log1 = float(b.logistics1 or 0)
+        log2 = float(b.logistics2 or 0)
+        total = buy + log1 + log2
+        grand_total += total
+        month_key = b.received_date.strftime("%Y-%m") if b.received_date else "unknown"
+        monthly[month_key] = monthly.get(month_key, 0) + total
+        rows.append({
+            "batch_id": b.id, "batch_no": b.batch_no, "item_id": b.item_id,
+            "item_name": b.item.name if b.item else None, "item_unit": b.item.unit if b.item else None,
+            "source": b.source, "qty_received": b.qty_received,
+            "buy_price": buy, "logistics1": log1, "logistics2": log2, "total_cost": total,
+            "person": b.person, "received_date": b.received_date.isoformat() if b.received_date else None,
+            "note": b.note,
+        })
+
+    monthly_list = sorted(
+        [{"month": k, "total": v} for k, v in monthly.items()],
+        key=lambda x: x["month"], reverse=True
+    )
+    return {"batches": rows, "monthly": monthly_list, "grand_total": grand_total}

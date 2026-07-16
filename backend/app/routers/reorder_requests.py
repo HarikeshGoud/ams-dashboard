@@ -22,6 +22,8 @@ class ReorderUpdate(BaseModel):
     note: Optional[str] = None
     received_qty: Optional[int] = None  # actual qty received, if different from what was requested
     buy_price: Optional[float] = None
+    logistics1: Optional[float] = None  # Manufacturer -> Office
+    logistics2: Optional[float] = None  # Office -> Technician
     person: Optional[str] = None  # supplier name, optional
 
 def _fmt(r: ReorderRequest):
@@ -102,13 +104,15 @@ def update_reorder(reorder_id: int, data: ReorderUpdate, db: Session = Depends(g
 
         batch = _create_batch(
             db, item_id=r.item_id, quantity=qty, source="reorder", source_ref_id=r.id,
-            received_date=date.today(), buy_price=data.buy_price, person=data.person,
+            received_date=date.today(), buy_price=data.buy_price,
+            logistics1=data.logistics1, logistics2=data.logistics2, person=data.person,
             created_by=user.id, note=f"Received against reorder request #{r.id}"
         )
         item.office_qty = (item.office_qty or 0) + qty
         db.add(StockLedger(
             item_id=r.item_id, transaction_type="receive", batch_id=batch.id,
             quantity=qty, person=data.person, buy_price=data.buy_price,
+            logistics1=data.logistics1, logistics2=data.logistics2,
             note=f"Reorder #{r.id} received" + (f" — {data.note}" if data.note else ""),
             created_by=user.id
         ))

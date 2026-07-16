@@ -47,6 +47,7 @@ export default function Stock() {
   const [reorderForm, setReorderForm]     = useState({ quantity: 1, note: '' })
   const [receiveModal, setReceiveModal]   = useState(null) // reorder request being marked received
   const [receiveForm, setReceiveForm]     = useState({ quantity: 1, buy_price: '', person: '' })
+  const [accounts, setAccounts]           = useState({ batches: [], monthly: [], grand_total: 0 })
   const [toast, setToast]             = useState('')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
@@ -61,7 +62,8 @@ export default function Stock() {
       api.get('/api/schools/?limit=200'),
       api.get('/api/stock-purchases/'),
       api.get('/api/reorder/'),
-    ]).then(([it, lg, dist, es, emp, sch, pu, ro]) => {
+      api.get('/api/stock/accounts'),
+    ]).then(([it, lg, dist, es, emp, sch, pu, ro, ac]) => {
       setItems(it.data)
       setLedger(lg.data)
       setDist(dist.data)
@@ -70,6 +72,7 @@ export default function Stock() {
       setSchools(sch.data?.items || sch.data || [])
       setPurchases(pu.data || [])
       setReorders(ro.data || [])
+      setAccounts(ac.data || { batches: [], monthly: [], grand_total: 0 })
       setLoading(false)
     }).catch(() => setLoading(false))
   }
@@ -275,6 +278,7 @@ export default function Stock() {
     { key: 'ledger',     label: '📋 Ledger' },
     { key: 'batches',    label: '🔍 Batch Lookup' },
     { key: 'reorder',    label: `🔄 Reorder${needsReorder.length + openReorders.length ? ` (${needsReorder.length + openReorders.length})` : ''}` },
+    { key: 'accounts',   label: '💰 Accounts' },
   ]
 
   return (
@@ -861,6 +865,76 @@ export default function Stock() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── ACCOUNTS TAB ──────────────────────────────────────────── */}
+      {tab === 'accounts' && (
+        <div>
+          <div className="kpi-grid" style={{ marginBottom: 16 }}>
+            <div className="kpi-card green">
+              <div className="kpi-label">Total Spent on Stock</div>
+              <div className="kpi-value">₹{accounts.grand_total.toLocaleString('en-IN')}</div>
+              <div className="kpi-sub">{accounts.batches.length} batch{accounts.batches.length !== 1 ? 'es' : ''} with cost data</div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">📅 Monthly Breakdown</div>
+            {accounts.monthly.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No cost data recorded yet</div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Month</th><th>Total Spent</th></tr></thead>
+                  <tbody>
+                    {accounts.monthly.map(m => (
+                      <tr key={m.month}>
+                        <td style={{ fontWeight: 600 }}>{m.month}</td>
+                        <td><b>₹{m.total.toLocaleString('en-IN')}</b></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-title">🧾 Per-Batch Cost Breakdown</div>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>Money spent per batch received — purchase price plus logistics (manufacturer → office, office → technician).</p>
+            {accounts.batches.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--muted)' }}>No batches with cost data yet</div>
+            ) : (
+              <div className="table-wrap scroll-table" style={{ maxHeight: 500 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Batch No</th><th>Item</th><th>Source</th><th>Received</th><th>Qty</th>
+                      <th>Buy Price</th><th>Logistics 1 (Mfr→Office)</th><th>Logistics 2 (Office→Tech)</th>
+                      <th>Total Cost</th><th>Supplier</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.batches.map(b => (
+                      <tr key={b.batch_id}>
+                        <td style={{ fontWeight: 600 }}>{b.batch_no}</td>
+                        <td>{b.item_name}</td>
+                        <td style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'capitalize' }}>{b.source}</td>
+                        <td style={{ fontSize: 12 }}>{b.received_date}</td>
+                        <td>{b.qty_received} {b.item_unit}</td>
+                        <td>{b.buy_price ? `₹${b.buy_price.toLocaleString('en-IN')}` : '—'}</td>
+                        <td>{b.logistics1 ? `₹${b.logistics1.toLocaleString('en-IN')}` : '—'}</td>
+                        <td>{b.logistics2 ? `₹${b.logistics2.toLocaleString('en-IN')}` : '—'}</td>
+                        <td><b style={{ color: 'var(--green)' }}>₹{b.total_cost.toLocaleString('en-IN')}</b></td>
+                        <td style={{ fontSize: 12 }}>{b.person || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
