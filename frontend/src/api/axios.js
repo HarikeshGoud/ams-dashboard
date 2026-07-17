@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const BASE = window.location.hostname === 'localhost'
   ? 'http://localhost:8000'
-  : 'https://ams-dashboard-twu7.onrender.com'
+  : 'https://shc-dashboard-api.azurewebsites.net'
 
 const api = axios.create({ baseURL: BASE })
 
@@ -26,9 +26,4 @@ api.interceptors.response.use(
 
 export default api
 
-// Ping backend every 4 mins to prevent Render free tier sleep (sleeps after 15 mins)
-const BACKEND = 'https://ams-dashboard-twu7.onrender.com'
-fetch(BACKEND + '/').catch(() => {}) // immediate ping on page load
-setInterval(() => {
-  fetch(BACKEND + '/').catch(() => {})
-}, 240000)
+// Backend runs on Azure App Service with "Always On" enabled — no keep-alive ping needed.
