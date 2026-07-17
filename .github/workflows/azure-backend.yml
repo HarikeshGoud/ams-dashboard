@@ -1,0 +1,29 @@
+name: Deploy Backend to Azure
+
+# Auto-deploys the FastAPI backend to Azure App Service on every push to master
+# that touches backend/. Also runnable manually from the Actions tab.
+on:
+  push:
+    branches: [master]
+    paths: ['backend/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package backend
+        run: |
+          cd backend
+          zip -r ../backend.zip . \
+            -x "*.pyc" -x "__pycache__/*" -x "*/__pycache__/*" \
+            -x "venv/*" -x ".venv/*" -x "ams.db" -x "*.db" -x "uploads/*"
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: shc-dashboard-api
+          publish-profile: ${{ secrets.AZURE_BACKEND_PUBLISH_PROFILE }}
+          package: backend.zip
