@@ -62,9 +62,9 @@ export default function Login() {
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>💧</div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent2)', marginBottom: 4 }}>AMS Dashboard</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--accent2)', marginBottom: 4 }}>SHC Dashboard</h2>
           <p style={{ fontSize: 12, color: 'var(--muted)' }}>
-            Water Purifier Management System<br />Telangana Government
+            Water Purifier Management System<br />Sri Hamsini &amp; Chandra Enterprises
           </p>
         </div>
 

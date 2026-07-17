@@ -1,6 +1,6 @@
 {
-  "name": "AMS Dashboard",
-  "short_name": "AMS Dashboard",
+  "name": "SHC Dashboard",
+  "short_name": "SHC Dashboard",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

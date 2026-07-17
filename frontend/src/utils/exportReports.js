@@ -70,7 +70,7 @@ export function exportPDF({ title, subtitle, headers, rows, filename, summaryRow
     doc.setFontSize(8)
     doc.setTextColor(150)
     doc.text(
-      `Page ${i} of ${pageCount}  |  AMS - Water Purifier Management`,
+      `Page ${i} of ${pageCount}  |  SHC - Water Purifier Management`,
       14, doc.internal.pageSize.height - 8
     )
   }

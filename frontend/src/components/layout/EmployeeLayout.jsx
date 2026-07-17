@@ -109,7 +109,7 @@ export default function EmployeeLayout() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 20 }}>💧</span>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent2)' }}>AMS Dashboard</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent2)' }}>SHC Dashboard</div>
             <div style={{ fontSize: 10, color: 'var(--muted)' }}>Field Technician</div>
           </div>
         </div>

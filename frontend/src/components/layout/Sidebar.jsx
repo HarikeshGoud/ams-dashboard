@@ -39,7 +39,7 @@ export default function Sidebar({ open, onClose }) {
       <div className={`sidebar${open ? ' open' : ''}`}>
         <div style={{ padding: '16px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent2)' }}>💧 AMS Dashboard</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent2)' }}>💧 SHC Dashboard</div>
             <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>Water Purifier Management</div>
           </div>
           <button onClick={onClose} style={{

@@ -103,7 +103,7 @@ export default function ProofReview() {
       `Kindly reply *CONFIRM* if the work was completed satisfactorily, or *REJECT* with reason if not.`,
       ``,
       `Thank you,`,
-      `AMS Dashboard — Water Purifier Management`
+      `SHC Dashboard — Water Purifier Management`
     ].join('\n')
 
     const url = phone

@@ -20,7 +20,7 @@ export default function Header({ onMenuClick }) {
   const { theme, toggle: toggleTheme } = useThemeStore()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const title = TITLES[pathname] || 'AMS Dashboard'
+  const title = TITLES[pathname] || 'SHC Dashboard'
   const [showChangePw, setShowChangePw] = useState(false)
   const [unread, setUnread] = useState(0)
   const [showNotifs, setShowNotifs] = useState(false)
