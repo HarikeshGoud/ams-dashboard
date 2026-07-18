@@ -29,6 +29,7 @@ class AdjustStock(BaseModel):
     quantity_change: int
     notes: Optional[str] = None
     batch_id: Optional[int] = None  # required when quantity_change < 0
+    new_unit_cost: Optional[float] = None
 
 class LedgerCreate(BaseModel):
     item_id: int
@@ -230,6 +231,9 @@ def adjust_stock(item_id: int, data: AdjustStock, db: Session = Depends(get_db),
     item = db.query(StockItem).filter(StockItem.id == item_id).first()
     if not item: raise HTTPException(404, "Item not found")
 
+    if data.new_unit_cost is not None:
+        item.unit_cost = data.new_unit_cost
+
     if data.quantity_change > 0:
         batch = _create_batch(db, item_id=item.id, quantity=data.quantity_change, source="receive",
                               received_date=today_ist(), unit_cost=item.unit_cost, created_by=user.id,
@@ -250,7 +254,7 @@ def adjust_stock(item_id: int, data: AdjustStock, db: Session = Depends(get_db),
         db.add(StockLedger(item_id=item.id, transaction_type="issue", quantity=qty,
                            batch_id=batch.id, note=data.notes, created_by=user.id))
     db.commit()
-    return {"ok": True, "new_qty": item.office_qty, "quantity": item.office_qty}
+    return {"ok": True, "new_qty": item.office_qty, "quantity": item.office_qty, "unit_cost": item.unit_cost}
 
 # ── Ledger ───────────────────────────────────────────────────────────────────
 

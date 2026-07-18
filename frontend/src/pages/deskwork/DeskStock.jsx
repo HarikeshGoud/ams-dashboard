@@ -1162,11 +1162,13 @@ function AddStockModal({ onClose, onSaved }) {
 }
 
 function AdjustStockModal({ item, onClose, onSaved }) {
+  const currentPrice = item.unit_price ?? item.unit_cost ?? 0
   const [qty, setQty] = useState(0)
   const [action, setAction] = useState('add')
   const [notes, setNotes] = useState('')
   const [batchId, setBatchId] = useState('')
   const [batches, setBatches] = useState([])
+  const [price, setPrice] = useState(currentPrice)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -1184,11 +1186,14 @@ function AdjustStockModal({ item, onClose, onSaved }) {
   async function submit() {
     const delta = action === 'add' ? Number(qty) : -Number(qty)
     if (action === 'remove' && !batchId) { setError('Select which batch this is being removed from'); return }
+    const priceChanged = Number(price) !== Number(currentPrice)
+    if (!delta && !priceChanged) { setError('Change the quantity or the price before updating'); return }
     try {
       setLoading(true)
       await api.post(`/api/stock/${item.id}/adjust`, {
         quantity_change: delta, notes,
-        batch_id: action === 'remove' ? parseInt(batchId) : null
+        batch_id: action === 'remove' ? parseInt(batchId) : null,
+        new_unit_cost: priceChanged ? Number(price) : null
       })
       onSaved(); onClose()
     } catch (e) { setError(e.response?.data?.detail || 'Failed') }
@@ -1233,6 +1238,10 @@ function AdjustStockModal({ item, onClose, onSaved }) {
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label>Quantity</label>
           <input type="number" min="1" max={action === 'remove' ? (selectedBatch?.qty_office || 0) : undefined} value={qty} onChange={e => setQty(e.target.value)} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 10 }}>
+          <label>Price per {item.unit || 'Nos'} (₹)</label>
+          <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
         </div>
         <div className="form-group" style={{ marginBottom: 14 }}>
           <label>Notes</label>
