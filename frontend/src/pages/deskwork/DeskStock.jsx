@@ -1202,7 +1202,7 @@ function AdjustStockModal({ item, onClose, onSaved }) {
 
   return (
     <div className="modal-backdrop" onClick={e => e.target.className === 'modal-backdrop' && onClose()}>
-      <div className="modal-box" style={{ maxWidth: 380 }}>
+      <div className="modal-box">
         <button className="modal-close" onClick={onClose}>✕</button>
         <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>± Adjust Stock</h3>
         <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
@@ -1211,7 +1211,7 @@ function AdjustStockModal({ item, onClose, onSaved }) {
         <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
           Current stock: <b>{item.quantity || 0} {item.unit || 'Nos'}</b>
         </p>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {['add','remove'].map(a => (
             <button key={a} onClick={() => { setAction(a); setBatchId('') }} style={{
               flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontWeight: 700,
@@ -1221,34 +1221,32 @@ function AdjustStockModal({ item, onClose, onSaved }) {
             }}>{a === 'add' ? '+ Add Stock' : '- Remove Stock'}</button>
           ))}
         </div>
-        {action === 'remove' && (
-          <div className="form-group" style={{ marginBottom: 10 }}>
-            <label>Batch *</label>
-            {batches.length === 1 ? (
-              <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
-                {batchLabel(batches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
-              </div>
-            ) : (
-              <SearchableSelect value={batchId} onChange={setBatchId}
-                placeholder="Select batch…"
-                options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
-            )}
+        <div className="form-grid">
+          {action === 'remove' && (
+            <div className="form-group form-full"><label>Batch *</label>
+              {batches.length === 1 ? (
+                <div style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface2)', fontSize: 13, color: 'var(--muted)' }}>
+                  {batchLabel(batches[0])} <span style={{ color: 'var(--accent)' }}>(only batch — auto-selected)</span>
+                </div>
+              ) : (
+                <SearchableSelect value={batchId} onChange={setBatchId}
+                  placeholder="Select batch…"
+                  options={batches.map(b => ({ value: String(b.id), label: batchLabel(b) }))} />
+              )}
+            </div>
+          )}
+          <div className="form-group"><label>Quantity</label>
+            <input type="number" min="1" max={action === 'remove' ? (selectedBatch?.qty_office || 0) : undefined} value={qty} onChange={e => setQty(e.target.value)} />
           </div>
-        )}
-        <div className="form-group" style={{ marginBottom: 10 }}>
-          <label>Quantity</label>
-          <input type="number" min="1" max={action === 'remove' ? (selectedBatch?.qty_office || 0) : undefined} value={qty} onChange={e => setQty(e.target.value)} />
+          <div className="form-group"><label>Price per {item.unit || 'Nos'} (₹)</label>
+            <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
+          </div>
+          <div className="form-group form-full"><label>Notes</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Reason / reference…" />
+          </div>
         </div>
-        <div className="form-group" style={{ marginBottom: 10 }}>
-          <label>Price per {item.unit || 'Nos'} (₹)</label>
-          <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
-        </div>
-        <div className="form-group" style={{ marginBottom: 14 }}>
-          <label>Notes</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Reason / reference…" />
-        </div>
-        {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
-        <div style={{ display: 'flex', gap: 8 }}>
+        {error && <div className="alert alert-red" style={{ margin: '14px 0 0' }}><span>⚠️</span><div>{error}</div></div>}
+        <div className="mt-16 flex gap-8">
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit} disabled={loading}>{loading ? '⏳…' : 'Update Stock'}</button>
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         </div>
