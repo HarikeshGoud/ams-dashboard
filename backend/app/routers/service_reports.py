@@ -115,10 +115,24 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
             return "—"
         return f"{v}{unit}"
 
+    def _image_decodable(path):
+        # RLImage(path) only reads header dimensions — a corrupt/truncated file
+        # doesn't fail until reportlab actually renders it deep inside
+        # doc.build(), by which point it's too late to catch and the whole PDF
+        # build aborts. Force a full pixel decode now, while it's still inside
+        # a try/except we control.
+        try:
+            from PIL import Image as PILImage
+            with PILImage.open(path) as im:
+                im.load()
+            return True
+        except Exception:
+            return False
+
     def sig_img(path, w=55*mm, h=18*mm):
         if path:
             full = os.path.join(UPLOADS_DIR, path)
-            if os.path.exists(full):
+            if os.path.exists(full) and _image_decodable(full):
                 try:
                     img = RLImage(full)
                     r = min(w / img.imageWidth, h / img.imageHeight)
@@ -145,7 +159,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
             sp = os.path.join(UPLOADS_DIR, "stamps", f"{report.school_id}.{ext}")
             if os.path.exists(sp):
                 stamp_placeholder = "(pending verification)"
-                if field_report_verified:
+                if field_report_verified and _image_decodable(sp):
                     try:
                         img = RLImage(sp)
                         r = min(30*mm / img.imageWidth, 15*mm / img.imageHeight)
@@ -556,23 +570,6 @@ def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(g
         db.commit()
 
     return [_fmt(r, base_url=base_url) for r in reports]
-
-
-@router.get("/{report_id}/debug-regen")
-def debug_regen(report_id: int, db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
-    """Temporary diagnostic — surfaces the real exception from a failed PDF
-    regeneration instead of just logging it server-side. Remove once the
-    Azure-specific report-19 regeneration failure is understood."""
-    import traceback
-    r = db.query(ServiceReport).filter(ServiceReport.id == report_id).first()
-    if not r:
-        raise HTTPException(404, "Not found")
-    try:
-        pdf_rel = _generate_pdf(r, db)
-        exists = pdf_rel and os.path.exists(os.path.join(UPLOADS_DIR, pdf_rel))
-        return {"ok": True, "pdf_rel": pdf_rel, "file_exists_after": exists, "uploads_dir": UPLOADS_DIR}
-    except Exception as e:
-        return {"ok": False, "error": str(e), "traceback": traceback.format_exc(), "uploads_dir": UPLOADS_DIR}
 
 
 @router.get("/{report_id}/pdf")
