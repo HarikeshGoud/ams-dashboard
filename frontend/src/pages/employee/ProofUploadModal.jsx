@@ -193,6 +193,10 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const totalPhotos = selectedItems.length * 3
 
   async function handleSubmit() {
+    if (!gps) {
+      setError('GPS location is required before submitting — wait for "GPS locked" above, or tap Retry.')
+      return
+    }
     const missing = selectedItems.find((item, i) =>
       !photos[`before_${i}`] || !photos[`after_${i}`] || !photos[`photo_${i}`]
     )
@@ -648,11 +652,16 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-outline" onClick={() => { setStep(1); setError('') }} disabled={submitting}>← Back</button>
-                <button className="btn btn-primary" style={{ flex: 1, padding: 12, fontSize: 13, opacity: allPhotosDone ? 1 : 0.6 }}
+                <button className="btn btn-primary" style={{ flex: 1, padding: 12, fontSize: 13, opacity: (allPhotosDone && gps) ? 1 : 0.6 }}
                   onClick={handleSubmit} disabled={submitting}>
                   {submitting ? '⏳ Uploading… please wait' : '✅ Submit Proof & Mark Done'}
                 </button>
               </div>
+              {!gps && (
+                <div style={{ marginTop: 7, fontSize: 11, color: 'var(--red)', textAlign: 'center' }}>
+                  ⚠️ GPS must be locked before submitting
+                </div>
+              )}
               {!allPhotosDone && (
                 <div style={{ marginTop: 7, fontSize: 11, color: 'var(--yellow)', textAlign: 'center' }}>
                   ⚠️ All {totalPhotos} photos required before submitting

@@ -161,8 +161,10 @@ async def submit_field_report(
         remarks = form.get("remarks", "")
         lat_raw = form.get("latitude")
         lng_raw = form.get("longitude")
-        latitude  = float(lat_raw)  if lat_raw  else None
-        longitude = float(lng_raw) if lng_raw else None
+        if not lat_raw or not lng_raw:
+            raise HTTPException(400, "GPS location is required to submit a proof")
+        latitude  = float(lat_raw)
+        longitude = float(lng_raw)
 
         today = today_ist()
 
