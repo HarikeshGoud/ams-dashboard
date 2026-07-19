@@ -28,7 +28,7 @@ export default function ServiceReports() {
       </div>
 
       {/* Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+      <div className="grid-3" style={{ gap: 10, marginBottom: 16 }}>
         {[
           ['📄 Total Reports',  reports.length,                             'var(--accent)'],
           ['✅ With Signatures', reports.filter(r => r.pdf_url).length,     'var(--green)'],

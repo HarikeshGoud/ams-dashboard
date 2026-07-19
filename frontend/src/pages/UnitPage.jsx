@@ -457,7 +457,7 @@ export default function UnitPage() {
           <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.05em' }}>
             CONTRACT TYPE — {SEGMENTS.find(s => s.key === segment)?.label.toUpperCase()}
           </div>
-          <div style={{ display: 'flex', gap: 0, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: 0, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, width: 'fit-content', maxWidth: '100%', overflowX: 'auto' }}>
             {CONTRACT_OPTS.map(ct => (
               <button key={ct.key} onClick={() => setContract(ct.key)} style={{
                 padding: '9px 24px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,

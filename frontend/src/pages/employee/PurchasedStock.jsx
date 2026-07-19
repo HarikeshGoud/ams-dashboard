@@ -177,13 +177,13 @@ export default function PurchasedStock() {
       </div>
 
       {purchases.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           {[
             ['📋 Total Logged', purchases.length,                            'var(--accent)'],
             ['💸 Total Spent',  `₹${totalSpent.toLocaleString('en-IN')}`,     'var(--yellow)'],
             ['✅ Approved',     approvedCount,                               'var(--green)'],
           ].map(([label, val, color]) => (
-            <div key={label} style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+            <div key={label} style={{ flex: '1 1 90px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 15, fontWeight: 800, color }}>{val}</div>
               <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>{label}</div>
             </div>

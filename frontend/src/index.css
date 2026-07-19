@@ -181,6 +181,14 @@ tr:hover td { background: var(--surface2); }
 .form-group textarea { resize: vertical; min-height: 70px; }
 .form-full { grid-column: 1 / -1; }
 
+/* Invoice-style line-item row: description + a few fixed-width numeric
+   fields — collapses to a stack on phone/tablet where 200px of fixed
+   columns would otherwise crowd out the description field. */
+.line-item-grid { display: grid; grid-template-columns: 1fr 70px 100px 30px; gap: 6px; }
+@media (max-width: 1024px) {
+  .line-item-grid { grid-template-columns: 1fr; }
+}
+
 /* Alerts */
 .alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 8px; border-left: 3px solid; display: flex; align-items: flex-start; gap: 8px; }
 .alert-red    { background: rgba(248,113,113,.1); border-color: var(--red); }
@@ -191,6 +199,7 @@ tr:hover td { background: var(--surface2); }
 /* Utils */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .flex { display: flex; }
 .items-center { align-items: center; }
 .gap-8 { gap: 8px; }
@@ -276,10 +285,18 @@ tr:hover td { background: var(--surface2); }
 }
 
 /* ============================================================
-   MOBILE BREAKPOINT
+   DEVICE TIERS
+   phone:        ≤599px  (one-hand, narrowest — collapses to 1 column)
+   tablet+phone: ≤1024px (touch-primary — drawer nav, bottom-sheet
+                          modals, bigger tap targets; includes both
+                          portrait and landscape tablets)
+   laptop+:      ≥1025px (pointer-primary — sidebar always visible,
+                          centered dialogs, compact controls)
    ============================================================ */
-@media (max-width: 768px) {
-  /* Sidebar becomes a slide-in drawer */
+
+@media (max-width: 1024px) {
+  /* Sidebar becomes a slide-in drawer — a fixed 220px rail is real
+     estate a tablet can't spare the way a laptop can. */
   .sidebar {
     position: fixed; top: 0; left: 0; bottom: 0;
     transform: translateX(-100%);
@@ -291,17 +308,10 @@ tr:hover td { background: var(--surface2); }
   /* Content full width */
   .layout-content { padding: 14px 14px 80px; }
 
-  /* KPI 2 columns on mobile */
-  .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .kpi-value { font-size: 22px; }
-
-  /* Grids collapse */
-  .grid-2, .grid-3, .form-grid { grid-template-columns: 1fr; }
-
   /* Tables scroll horizontally */
   .table-wrap, table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  /* Modal full sheet from bottom */
+  /* Modal full sheet from bottom — a touch-native pattern on tablets too */
   .modal-backdrop { align-items: flex-end; padding: 0; }
   .modal-box { border-radius: 18px 18px 0 0; max-width: 100%; max-height: 92vh; }
 
@@ -315,26 +325,32 @@ tr:hover td { background: var(--surface2); }
   /* Section header stack on very small */
   .section-header { flex-direction: row; flex-wrap: wrap; }
 
-  /* Buttons touch-friendly */
+  /* Buttons and inputs sized for a fingertip, not a cursor */
   .btn { padding: 10px 16px; font-size: 13px; min-height: 40px; }
   .btn-sm { padding: 7px 12px; font-size: 12px; min-height: 34px; }
-
-  /* Form inputs bigger touch targets */
   .form-group input, .form-group select, .form-group textarea {
     padding: 12px 14px; font-size: 15px;
   }
-}
 
-/* hide-mobile helper */
-@media (max-width: 768px) {
   .hide-mobile { display: none !important; }
   /* Deskwork: hide top nav, show bottom nav */
   .deskwork-topnav { display: none !important; }
   .deskwork-bottomnav { display: flex !important; }
 }
 
-@media (min-width: 769px) {
-  /* Desktop: modal centered */
+@media (max-width: 599px) {
+  /* KPI 2 columns — phone only; tablet has room for auto-fill's
+     natural 3-4 columns via the default .kpi-grid rule. */
+  .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .kpi-value { font-size: 22px; }
+
+  /* Grids collapse to 1 column — phone only; a 768px+ tablet still
+     comfortably fits 2 side by side. */
+  .grid-2, .grid-3, .grid-4, .form-grid { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 1025px) {
+  /* Laptop/desktop: modal centered, sidebar always visible */
   .modal-backdrop { align-items: center; padding: 16px; }
   .modal-box { border-radius: 14px; max-width: 540px; animation: none; }
   /* Deskwork: show top nav, hide bottom nav */

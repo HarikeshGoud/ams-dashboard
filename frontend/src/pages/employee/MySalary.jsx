@@ -138,7 +138,7 @@ export default function MySalary() {
                 </div>
 
                 {/* Attendance breakdown */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', marginBottom: '1rem' }}>
+                <div className="grid-3" style={{ gap: '0.6rem', marginBottom: '1rem' }}>
                   <AttBox label="Present"  value={s.present}  color="#15803d" bg="#dcfce7" />
                   <AttBox label="Half Day" value={s.half_day} color="#a16207" bg="#fef9c3" />
                   <AttBox label="Absent"   value={s.absent}   color="#b91c1c" bg="#fee2e2" />

@@ -128,7 +128,7 @@ export default function Billing() {
                           label: `[${s.category === CAT_A ? CAT_A : s.category === CAT_B ? CAT_B : 'Other'}] ${s.name} — ₹${(s.unit_price ?? s.unit_cost ?? 0).toLocaleString('en-IN')}/${s.unit}`
                         }))} />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 100px 30px', gap: 6 }}>
+                    <div className="line-item-grid">
                       <input placeholder="Description (or type custom)" value={l.description}
                         onChange={e => { const n=[...lines]; n[i].description=e.target.value; setLines(n) }}
                         style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:6,padding:'6px 8px',color:'var(--text)',fontSize:12 }} />

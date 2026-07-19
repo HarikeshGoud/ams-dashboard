@@ -92,7 +92,7 @@ export default function DeskTasks() {
     <div>
       <div className="section-header" style={{ marginBottom: 12 }}>
         <h3>📋 Tasks</h3>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {mainTab === 'tasks' && <>
             <button className="btn btn-primary" style={{ background: 'var(--green)', fontSize: 12 }}
               onClick={generateDaily} disabled={generating}>

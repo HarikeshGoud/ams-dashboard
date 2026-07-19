@@ -721,7 +721,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
                     📋 Report Info
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                  <div className="grid-3" style={{ gap: 8, marginBottom: 10 }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label style={{ fontSize: 10 }}>Report No</label>
                       <input value={reportNo} onChange={e => setReportNo(e.target.value)} placeholder="e.g. SR-001" style={{ fontSize: 12 }} />

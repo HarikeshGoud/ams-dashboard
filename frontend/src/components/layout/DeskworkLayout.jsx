@@ -129,20 +129,20 @@ export default function DeskworkLayout() {
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1500,
         background: 'var(--surface)', borderTop: '1px solid var(--border)',
-        display: 'flex', padding: '4px 0'
+        display: 'flex', overflowX: 'auto', padding: '4px 0'
       }} className="deskwork-bottomnav">
         {NAV.map(n => {
           const isActive = n.path === '/deskwork' ? activePath === '/deskwork' : activePath.startsWith(n.path)
           return (
             <button key={n.path} onClick={() => navigate(n.path)} style={{
-              flex: 1, padding: '6px 4px',
+              flex: '0 0 auto', minWidth: 64, padding: '6px 8px',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
               background: 'none', border: 'none', cursor: 'pointer',
               borderTop: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
               color: isActive ? 'var(--accent)' : 'var(--muted)'
             }}>
               <span style={{ fontSize: 18 }}>{n.icon}</span>
-              <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 400 }}>{n.label}</span>
+              <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 400, whiteSpace: 'nowrap' }}>{n.label}</span>
             </button>
           )
         })}

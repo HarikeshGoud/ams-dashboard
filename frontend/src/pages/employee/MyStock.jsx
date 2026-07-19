@@ -115,7 +115,7 @@ export default function MyStock() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { key: 'in-hand',   label: `🎒 In My Hand (${inHand.length})` },
           { key: 'received',  label: `📥 Received (${received.length})` },

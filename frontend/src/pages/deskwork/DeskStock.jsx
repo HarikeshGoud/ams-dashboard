@@ -342,6 +342,7 @@ export default function DeskStock() {
                     {tech.stockItems.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', marginBottom: 6 }}>🎒 Currently In Hand</div>
+                        <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                           <thead><tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: 10 }}>
                             <th style={{ padding: '4px 8px', textAlign: 'left' }}>Item</th>
@@ -356,11 +357,13 @@ export default function DeskStock() {
                             ))}
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     )}
                     {tech.distHistory.length > 0 && (
                       <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent2)', marginBottom: 6 }}>📦 Distributions Received</div>
+                        <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                           <thead><tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: 10 }}>
                             <th style={{ padding: '4px 8px', textAlign: 'left' }}>Date</th>
@@ -377,6 +380,7 @@ export default function DeskStock() {
                             ))}
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     )}
                     {(() => {
@@ -385,6 +389,7 @@ export default function DeskStock() {
                       return (
                         <div>
                           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', marginBottom: 6 }}>🔧 Install & Return Activity</div>
+                          <div style={{ overflowX: 'auto' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                             <thead><tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)', fontSize: 10 }}>
                               <th style={{ padding: '4px 8px', textAlign: 'left' }}>Date</th>
@@ -411,6 +416,7 @@ export default function DeskStock() {
                               ))}
                             </tbody>
                           </table>
+                          </div>
                         </div>
                       )
                     })()}

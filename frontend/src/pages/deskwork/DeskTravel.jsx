@@ -98,7 +98,7 @@ export default function DeskTravel() {
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+      <div className="grid-3" style={{ gap: 10, marginBottom: 16 }}>
         {[
           ['🛣️ Total Distance', `${totalKm.toFixed(1)} km`, 'var(--accent)'],
           ['💰 Total Payout',   `Rs.${Math.round(totalAmt).toLocaleString('en-IN')}`, 'var(--green)'],
