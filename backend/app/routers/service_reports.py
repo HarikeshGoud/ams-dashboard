@@ -536,7 +536,26 @@ def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(g
     q = db.query(ServiceReport)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(ServiceReport.employee_id == user.id)
-    return [_fmt(r, base_url=base_url) for r in q.order_by(ServiceReport.created_at.desc()).limit(200).all()]
+    reports = q.order_by(ServiceReport.created_at.desc()).limit(200).all()
+
+    # Self-heal: the pdf_url below is a direct static link (so a plain <a href>
+    # download works without needing an auth header) — regenerate on the spot
+    # if the file's gone missing from disk, same as the dedicated /pdf endpoint
+    # already does, so the link is never a dead 404 by the time it's returned.
+    dirty = False
+    for r in reports:
+        if not r.pdf_path or not os.path.exists(os.path.join(UPLOADS_DIR, r.pdf_path)):
+            try:
+                pdf_rel = _generate_pdf(r, db)
+                if pdf_rel:
+                    r.pdf_path = pdf_rel
+                    dirty = True
+            except Exception as e:
+                print(f"PDF regeneration error for report {r.id} (non-fatal): {e}")
+    if dirty:
+        db.commit()
+
+    return [_fmt(r, base_url=base_url) for r in reports]
 
 
 @router.get("/{report_id}/pdf")
