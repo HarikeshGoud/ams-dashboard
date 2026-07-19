@@ -98,6 +98,22 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
   const CAT_A = '50/100 LPH RO Units'
   const CAT_B = '1000/1500/2000 LPH RO Units'
+  const CAT_META = {
+    [CAT_A]: { icon: '🔵', short: '50 / 100 LPH RO', color: 'var(--accent)', bg: 'rgba(56,189,248,.15)' },
+    [CAT_B]: { icon: '🟢', short: '1000 – 2000 LPH RO', color: 'var(--green)', bg: 'rgba(52,211,153,.15)' },
+  }
+  function catMeta(cat) {
+    return CAT_META[cat] || { icon: '📦', short: cat, color: 'var(--purple)', bg: 'rgba(167,139,250,.15)' }
+  }
+  // Every category that actually has at least one item — not just the two RO-unit
+  // categories — so parts like Fittings/Consumables/Membranes/Electrical/Pumps are
+  // reachable here too, instead of only existing in the admin/deskwork stock view.
+  const categories = [...new Set(stockItems.map(s => s.category).filter(Boolean))]
+    .sort((a, b) => {
+      if (a === CAT_A) return -1; if (b === CAT_A) return 1
+      if (a === CAT_B) return -1; if (b === CAT_B) return 1
+      return a.localeCompare(b)
+    })
 
   // Block browser back/refresh when on Step 3 and PDF not yet generated
   useEffect(() => {
@@ -410,19 +426,19 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
               </div>
 
               {/* Category picker */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                {[CAT_A, CAT_B].map(cat => {
-                  const shortLabel = cat === CAT_A ? '🔵 50 / 100 LPH RO' : '🟢 1000 – 2000 LPH RO'
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                {categories.map(cat => {
+                  const meta = catMeta(cat)
                   const active = activeCat === cat
                   return (
                     <button key={cat} onClick={() => setActiveCat(cat)} style={{
-                      flex: 1, padding: '10px 8px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      border: `2px solid ${active ? (cat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--border)'}`,
-                      background: active ? (cat === CAT_A ? 'rgba(56,189,248,.15)' : 'rgba(52,211,153,.15)') : 'var(--surface2)',
-                      color: active ? (cat === CAT_A ? 'var(--accent)' : 'var(--green)') : 'var(--muted)',
+                      flex: '1 1 auto', minWidth: 100, padding: '10px 8px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: `2px solid ${active ? meta.color : 'var(--border)'}`,
+                      background: active ? meta.bg : 'var(--surface2)',
+                      color: active ? meta.color : 'var(--muted)',
                       textAlign: 'center', lineHeight: 1.4
                     }}>
-                      {shortLabel}
+                      {meta.icon} {meta.short}
                       <div style={{ fontSize: 10, fontWeight: 500, marginTop: 2, color: 'inherit', opacity: 0.8 }}>
                         {stockItems.filter(s => s.category === cat).length} items
                       </div>
@@ -434,7 +450,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
               {/* Items for selected category */}
               {!activeCat ? (
                 <div style={{ textAlign: 'center', padding: '18px 0', color: 'var(--muted)', fontSize: 12 }}>
-                  ☝️ Select your RO unit type above to see the parts list
+                  ☝️ Select a category above to see its parts list
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14, maxHeight: 220, overflowY: 'auto', padding: '2px 0' }}>
@@ -451,12 +467,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                     .map(item => {
                       const sel = selectedItems.some(i => i.id === item.id)
                       const inHandEntry = myStock.find(m => m.item_id === item.id)
+                      const meta = catMeta(activeCat)
                       return (
                         <button key={item.id} onClick={() => toggleItem(item)} style={{
                           padding: '6px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                          border: `1.5px solid ${sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : inHandEntry ? 'var(--yellow)' : 'var(--border)'}`,
-                          background: sel ? (activeCat === CAT_A ? 'rgba(56,189,248,.15)' : 'rgba(52,211,153,.15)') : inHandEntry ? 'rgba(251,191,36,.1)' : 'var(--surface2)',
-                          color: sel ? (activeCat === CAT_A ? 'var(--accent)' : 'var(--green)') : inHandEntry ? 'var(--yellow)' : 'var(--text)',
+                          border: `1.5px solid ${sel ? meta.color : inHandEntry ? 'var(--yellow)' : 'var(--border)'}`,
+                          background: sel ? meta.bg : inHandEntry ? 'rgba(251,191,36,.1)' : 'var(--surface2)',
+                          color: sel ? meta.color : inHandEntry ? 'var(--yellow)' : 'var(--text)',
                           position: 'relative'
                         }}>
                           {sel ? '✓ ' : ''}{item.name}
