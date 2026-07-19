@@ -558,6 +558,23 @@ def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(g
     return [_fmt(r, base_url=base_url) for r in reports]
 
 
+@router.get("/{report_id}/debug-regen")
+def debug_regen(report_id: int, db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
+    """Temporary diagnostic — surfaces the real exception from a failed PDF
+    regeneration instead of just logging it server-side. Remove once the
+    Azure-specific report-19 regeneration failure is understood."""
+    import traceback
+    r = db.query(ServiceReport).filter(ServiceReport.id == report_id).first()
+    if not r:
+        raise HTTPException(404, "Not found")
+    try:
+        pdf_rel = _generate_pdf(r, db)
+        exists = pdf_rel and os.path.exists(os.path.join(UPLOADS_DIR, pdf_rel))
+        return {"ok": True, "pdf_rel": pdf_rel, "file_exists_after": exists, "uploads_dir": UPLOADS_DIR}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc(), "uploads_dir": UPLOADS_DIR}
+
+
 @router.get("/{report_id}/pdf")
 def download_pdf(report_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     r = db.query(ServiceReport).filter(ServiceReport.id == report_id).first()
