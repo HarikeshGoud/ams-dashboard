@@ -1,5 +1,5 @@
 import os, shutil
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional
@@ -159,7 +159,7 @@ def sync_coords_from_reports(db: Session = Depends(get_db), _=Depends(get_curren
 from ..storage import UPLOADS_DIR
 
 @router.post("/{sid}/stamp")
-async def upload_school_stamp(sid: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(get_current_user)):
+async def upload_school_stamp(sid: int, request: Request, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(get_current_user)):
     s = db.query(School).filter(School.id == sid).first()
     if not s:
         raise HTTPException(404, "School not found")
@@ -172,16 +172,18 @@ async def upload_school_stamp(sid: int, file: UploadFile = File(...), db: Sessio
     dest = os.path.join(stamp_dir, f"{sid}.{ext}")
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    return {"ok": True, "school_id": sid, "stamp_url": f"http://localhost:8000/uploads/stamps/{sid}.{ext}"}
+    base_url = str(request.base_url).rstrip("/")
+    return {"ok": True, "school_id": sid, "stamp_url": f"{base_url}/uploads/stamps/{sid}.{ext}"}
 
 
 @router.get("/{sid}/stamp")
-def get_school_stamp(sid: int):
+def get_school_stamp(sid: int, request: Request):
     stamp_dir = os.path.join(UPLOADS_DIR, "stamps")
+    base_url = str(request.base_url).rstrip("/")
     for ext in ("png", "jpg", "jpeg"):
         path = os.path.join(stamp_dir, f"{sid}.{ext}")
         if os.path.exists(path):
-            return {"ok": True, "stamp_url": f"http://localhost:8000/uploads/stamps/{sid}.{ext}"}
+            return {"ok": True, "stamp_url": f"{base_url}/uploads/stamps/{sid}.{ext}"}
     return {"ok": False, "stamp_url": None}
 
 
