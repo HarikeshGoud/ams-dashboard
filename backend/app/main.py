@@ -109,9 +109,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Something went wrong on our end — please try again."})
 
 # Serve uploaded files
-uploads_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")
-os.makedirs(uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+from .storage import UPLOADS_DIR
+app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 # Register routers
 app.include_router(auth.router)

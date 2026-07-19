@@ -16,7 +16,7 @@ from ..dependencies import get_current_user, require_admin_or_deskwork
 
 router = APIRouter(prefix="/api/service-reports", tags=["service-reports"])
 
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+from ..storage import UPLOADS_DIR
 
 COMPANY_NAME    = "SRI HAMSINI & CHANDRA ENTERPRISES"
 COMPANY_ADDRESS = "Office Address: 2-1-49/244, Park Street, Street No. 17, Suryanagar Colony, Uppal, Hyderabad, Telangana - 500039"

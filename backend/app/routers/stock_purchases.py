@@ -11,10 +11,9 @@ from ..models.employee import Employee
 from ..dependencies import get_current_user, require_admin_or_deskwork
 from .stock import _upsert_employee_stock, _upsert_employee_stock_batch, _create_batch
 from ..ist_time import today_ist
+from ..storage import UPLOADS_DIR
 
 router = APIRouter(prefix="/api/stock-purchases", tags=["stock-purchases"])
-
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
 
 class PurchaseReview(BaseModel):
     status: str  # approved / rejected

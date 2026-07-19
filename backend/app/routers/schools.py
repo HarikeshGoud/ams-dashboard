@@ -156,7 +156,7 @@ def sync_coords_from_reports(db: Session = Depends(get_db), _=Depends(get_curren
     return {"ok": True, "updated": updated, "total_schools": db.query(School).count()}
 
 
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+from ..storage import UPLOADS_DIR
 
 @router.post("/{sid}/stamp")
 async def upload_school_stamp(sid: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(get_current_user)):

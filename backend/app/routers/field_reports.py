@@ -16,7 +16,7 @@ from ..dependencies import get_current_user, require_admin, require_admin_or_des
 
 router = APIRouter(prefix="/api/field-reports", tags=["field-reports"])
 
-UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+from ..storage import UPLOADS_DIR
 
 class VerifyRequest(BaseModel):
     status: str          # verified / rejected
