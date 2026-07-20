@@ -99,7 +99,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const CAT_A = '50/100 LPH RO Units'
   const CAT_B = '1000/1500/2000 LPH RO Units'
   const CAT_META = {
-    [CAT_A]: { icon: '🔵', short: '50 / 100 LPH RO', color: 'var(--accent)', bg: 'rgba(56,189,248,.15)' },
+    [CAT_A]: { icon: '🔵', short: '50 / 100 LPH RO', color: 'var(--accent)', bg: 'rgba(34,211,238,.15)' },
     [CAT_B]: { icon: '🟢', short: '1000 – 2000 LPH RO', color: 'var(--green)', bg: 'rgba(52,211,153,.15)' },
   }
   function catMeta(cat) {
@@ -393,7 +393,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
               return (
                 <div key={i} style={{
                   flex: 1, textAlign: 'center', padding: '6px 4px', borderRadius: 8, fontSize: 10, fontWeight: 700,
-                  background: active ? 'rgba(56,189,248,.15)' : done ? 'rgba(52,211,153,.15)' : 'var(--surface2)',
+                  background: active ? 'rgba(34,211,238,.15)' : done ? 'rgba(52,211,153,.15)' : 'var(--surface2)',
                   color: active ? 'var(--accent)' : done ? 'var(--green)' : 'var(--muted)',
                   border: `1.5px solid ${active ? 'var(--accent)' : done ? 'var(--green)' : 'var(--border)'}`
                 }}>
@@ -490,7 +490,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
               )}
 
 {selectedItems.length > 0 && (
-                <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(56,189,248,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 12 }}>
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(34,211,238,.08)', border: '1px solid var(--accent)', fontSize: 12, marginBottom: 12 }}>
                   <b style={{ color: 'var(--accent)' }}>Selected ({selectedItems.length}):</b>{' '}
                   {selectedNames.join(' · ')}
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
@@ -538,7 +538,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                       <span style={{
                         fontSize: 11, fontWeight: 800, padding: '2px 9px', borderRadius: 10,
-                        background: itemDone ? 'rgba(52,211,153,.2)' : 'rgba(56,189,248,.15)',
+                        background: itemDone ? 'rgba(52,211,153,.2)' : 'rgba(34,211,238,.15)',
                         color: itemDone ? 'var(--green)' : 'var(--accent)',
                         border: `1px solid ${itemDone ? 'var(--green)' : 'var(--accent)'}`
                       }}>
@@ -609,7 +609,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                         setExtraLabels(l => [...l, ''])
                       }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8,
-                        fontSize: 12, fontWeight: 700, background: 'rgba(56,189,248,.15)', color: 'var(--accent)',
+                        fontSize: 12, fontWeight: 700, background: 'rgba(34,211,238,.15)', color: 'var(--accent)',
                         border: '1.5px dashed var(--accent)', cursor: 'pointer' }}>
                       + Add Extra Photo
                     </button>
@@ -735,7 +735,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 <>
                   {/* ── Section label helper ── */}
                   {/* Report Meta */}
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(34,211,238,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
                     📋 Report Info
                   </div>
                   <div className="grid-3" style={{ gap: 8, marginBottom: 10 }}>
@@ -756,7 +756,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   </div>
 
                   {/* Problem / Observation / Action */}
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(34,211,238,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
                     🔧 Work Details
                   </div>
                   <div className="form-group" style={{ marginBottom: 8 }}>
@@ -774,7 +774,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   </div>
 
                   {/* Unit Details / Site Condition */}
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(34,211,238,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
                     🏭 Unit Details / Site Condition
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -808,7 +808,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   </div>
 
                   {/* Plant Readings */}
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(34,211,238,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
                     📊 Plant Readings
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
@@ -848,7 +848,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   </div>
 
                   {/* Customer info */}
-                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(56,189,248,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(34,211,238,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
                     🧑‍💼 Customer / Principal
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>

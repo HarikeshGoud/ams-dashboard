@@ -327,7 +327,7 @@ export default function Stock() {
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8,
                 padding: '8px 12px', borderRadius: 8,
-                background: cat === CAT_A ? 'rgba(56,189,248,.08)' : cat === CAT_B ? 'rgba(52,211,153,.08)' : 'var(--surface2)',
+                background: cat === CAT_A ? 'rgba(34,211,238,.08)' : cat === CAT_B ? 'rgba(52,211,153,.08)' : 'var(--surface2)',
                 border: `1px solid ${cat === CAT_A ? 'var(--accent)' : cat === CAT_B ? 'var(--green)' : 'var(--border)'}`,
               }}>
                 <span style={{ fontSize: 13, fontWeight: 800, color: cat === CAT_A ? 'var(--accent)' : cat === CAT_B ? 'var(--green)' : 'var(--muted)' }}>

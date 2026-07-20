@@ -23,12 +23,13 @@ const NAV = [
 ]
 
 const linkStyle = ({ isActive }) => ({
-  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+  display: 'flex', alignItems: 'center', gap: 11, padding: '11px 16px',
   cursor: 'pointer', borderLeft: `3px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
   color: isActive ? 'var(--accent)' : 'var(--muted)',
-  fontWeight: isActive ? 600 : 400, fontSize: 13, textDecoration: 'none',
-  background: isActive ? 'rgba(59,158,255,0.1)' : 'transparent',
-  transition: 'all .15s', letterSpacing: '-0.01em'
+  fontWeight: isActive ? 700 : 500, fontSize: 13, textDecoration: 'none',
+  background: isActive ? 'var(--accent-soft)' : 'transparent',
+  boxShadow: isActive ? 'inset 0 0 26px -14px var(--glow-aqua)' : 'none',
+  transition: 'all .18s', letterSpacing: '-0.01em'
 })
 
 export default function Sidebar({ open, onClose }) {
@@ -39,7 +40,10 @@ export default function Sidebar({ open, onClose }) {
       <div className={`sidebar${open ? ' open' : ''}`}>
         <div style={{ padding: '16px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent2)' }}>💧 SHC Dashboard</div>
+            <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em' }}>
+              <span style={{ marginRight: 4 }}>💧</span>
+              <span className="gradient-text">SHC Dashboard</span>
+            </div>
             <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>Water Purifier Management</div>
           </div>
           <button onClick={onClose} style={{

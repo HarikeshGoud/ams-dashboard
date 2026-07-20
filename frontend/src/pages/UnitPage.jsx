@@ -461,7 +461,7 @@ export default function UnitPage() {
             {CONTRACT_OPTS.map(ct => (
               <button key={ct.key} onClick={() => setContract(ct.key)} style={{
                 padding: '9px 24px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
-                background: contract === ct.key ? 'rgba(59,158,255,0.15)' : 'transparent',
+                background: contract === ct.key ? 'rgba(34,211,238,0.15)' : 'transparent',
                 color: contract === ct.key ? 'var(--accent)' : 'var(--muted)',
                 borderBottom: contract === ct.key ? '2px solid var(--accent)' : '2px solid transparent',
                 transition: 'all .15s',
@@ -513,7 +513,7 @@ export default function UnitPage() {
               {filtered.map((s, i) => (
                 <tr key={s.id}
                   style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)', transition: 'background .12s', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,158,255,0.06)'}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(34,211,238,0.06)'}
                   onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)'}
                 >
                   <td style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>{i + 1}</td>

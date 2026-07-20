@@ -73,7 +73,7 @@ export default function DeskTravel() {
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 12, textTransform: 'uppercase' }}>💰 Travel Allowance Rate</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-          <div style={{ padding: 10, borderRadius: 10, border: `2px solid ${ratePerKm > 0 ? 'var(--accent)' : 'var(--border)'}`, background: ratePerKm > 0 ? 'rgba(56,189,248,.06)' : 'var(--surface2)' }}>
+          <div style={{ padding: 10, borderRadius: 10, border: `2px solid ${ratePerKm > 0 ? 'var(--accent)' : 'var(--border)'}`, background: ratePerKm > 0 ? 'rgba(34,211,238,.06)' : 'var(--surface2)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>📍 Flat Rate Per KM {ratePerKm > 0 && <span style={{ color: 'var(--accent)', fontSize: 9 }}>● ACTIVE</span>}</div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input type="number" min="0" max="50" step="0.5" value={rateInput} onChange={e => setRateInput(e.target.value)} placeholder="e.g. 2.5"

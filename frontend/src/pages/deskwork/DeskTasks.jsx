@@ -116,7 +116,7 @@ export default function DeskTasks() {
           <button key={tab.key} onClick={() => setMainTab(tab.key)} style={{
             padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
             border: `1.5px solid ${mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--border)'}`,
-            background: mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'rgba(251,191,36,.15)' : 'rgba(56,189,248,.15)') : 'var(--surface2)',
+            background: mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'rgba(251,191,36,.15)' : 'rgba(34,211,238,.15)') : 'var(--surface2)',
             color: mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--muted)',
           }}>{tab.label}</button>
         ))}
@@ -472,7 +472,7 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
                   <button key={s.id} onClick={() => { set('school_id', String(s.id)); set('title', `Visit ${s.name}`) }}
                     style={{
                       fontSize: 11, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
-                      background: String(form.school_id) === String(s.id) ? 'rgba(56,189,248,.2)' : 'var(--surface2)',
+                      background: String(form.school_id) === String(s.id) ? 'rgba(34,211,238,.2)' : 'var(--surface2)',
                       border: `1px solid ${s.plant_condition === 'not_working' ? 'var(--red)' : String(form.school_id) === String(s.id) ? 'var(--accent)' : 'var(--border)'}`,
                       color: String(form.school_id) === String(s.id) ? 'var(--accent)' : 'var(--text)'
                     }}>

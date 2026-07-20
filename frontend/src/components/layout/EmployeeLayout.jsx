@@ -102,14 +102,15 @@ export default function EmployeeLayout() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 70 }}>
       {/* Top bar */}
       <div style={{
-        background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+        background: 'var(--glass)', WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border)',
         padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         position: 'sticky', top: 0, zIndex: 100
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 20 }}>💧</span>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent2)' }}>SHC Dashboard</div>
+            <div className="gradient-text" style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em' }}>SHC Dashboard</div>
             <div style={{ fontSize: 10, color: 'var(--muted)' }}>Field Technician</div>
           </div>
         </div>
@@ -154,8 +155,9 @@ export default function EmployeeLayout() {
           </span>
           {!isStandalone && installPrompt && (
             <button onClick={handleInstall} style={{
-              fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
-              background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer'
+              fontSize: 10, fontWeight: 700, padding: '4px 11px', borderRadius: 7,
+              background: 'var(--grad-primary)', color: '#fff', border: 'none', cursor: 'pointer',
+              boxShadow: '0 3px 12px -3px var(--glow-aqua)', textShadow: '0 1px 2px rgba(3,35,45,.35)'
             }}>
               ⬇ Install App
             </button>
@@ -182,9 +184,9 @@ export default function EmployeeLayout() {
             <button key={n.path} onClick={() => navigate(n.path)} style={{
               flex: '0 0 auto', minWidth: 60, padding: '6px 8px',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-              background: 'none', border: 'none', cursor: 'pointer',
+              background: isActive ? 'var(--accent-soft)' : 'none', border: 'none', cursor: 'pointer',
               borderTop: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
-              color: isActive ? 'var(--accent)' : 'var(--muted)'
+              color: isActive ? 'var(--accent)' : 'var(--muted)', transition: 'all .18s'
             }}>
               <span style={{ fontSize: 18 }}>{n.icon}</span>
               <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 400, whiteSpace: 'nowrap' }}>{n.label}</span>

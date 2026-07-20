@@ -117,7 +117,7 @@ export default function Header({ onMenuClick }) {
           `}</style>
           <div style={{ position: 'relative' }} ref={panelRef}>
             <button onClick={() => setShowNotifs(v => !v)} style={{
-              background: showNotifs ? 'rgba(56,189,248,.15)' : 'var(--surface2)',
+              background: showNotifs ? 'rgba(34,211,238,.15)' : 'var(--surface2)',
               border: `1px solid ${showNotifs ? 'var(--accent)' : 'var(--border)'}`,
               borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 16,
               position: 'relative', lineHeight: 1
@@ -155,7 +155,7 @@ export default function Header({ onMenuClick }) {
                   ) : notifs.map(n => (
                     <div key={n.id} onClick={() => !n.is_read && markRead(n.id)} style={{
                       padding: '10px 14px', borderBottom: '1px solid var(--border)',
-                      background: n.is_read ? 'transparent' : 'rgba(56,189,248,.06)',
+                      background: n.is_read ? 'transparent' : 'rgba(34,211,238,.06)',
                       cursor: n.is_read ? 'default' : 'pointer'
                     }}>
                       <div style={{ fontSize: 12, fontWeight: n.is_read ? 400 : 600 }}>{n.message}</div>

@@ -42,14 +42,15 @@ export default function DeskworkLayout() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 70 }}>
       {/* Top bar */}
       <div style={{
-        background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+        background: 'var(--glass)', WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border)',
         padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         position: 'sticky', top: 0, zIndex: 100, gap: 8
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 20 }}>💧</span>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent2)' }}>SHC Dashboard</div>
+            <div className="gradient-text" style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em' }}>SHC Dashboard</div>
             <div style={{ fontSize: 10, color: 'var(--muted)' }}>Deskwork — {user?.designation || 'Office Staff'}</div>
           </div>
         </div>
@@ -65,7 +66,7 @@ export default function DeskworkLayout() {
                 <div key={n.path} ref={clientsRef} style={{ position: 'relative' }}>
                   <button onClick={() => setClientsOpen(o => !o)} style={{
                     padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: isActive ? 700 : 400,
-                    cursor: 'pointer', background: isActive ? 'rgba(56,189,248,.15)' : 'none',
+                    cursor: 'pointer', background: isActive ? 'rgba(34,211,238,.15)' : 'none',
                     border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                     color: isActive ? 'var(--accent)' : 'var(--muted)', display: 'flex', alignItems: 'center', gap: 5
                   }}>
@@ -74,8 +75,8 @@ export default function DeskworkLayout() {
                   {clientsOpen && (
                     <div style={{
                       position: 'absolute', top: '100%', left: 0, zIndex: 200, minWidth: 200,
-                      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
-                      boxShadow: '0 8px 24px rgba(0,0,0,.4)', padding: '6px 0', marginTop: 4
+                      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
+                      boxShadow: 'var(--shadow-lg)', padding: '6px 0', marginTop: 4
                     }}>
                       <button onClick={() => { navigate('/deskwork/clients'); setClientsOpen(false) }} style={{
                         width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none',
@@ -99,7 +100,7 @@ export default function DeskworkLayout() {
             return (
               <button key={n.path} onClick={() => navigate(n.path)} style={{
                 padding: '7px 14px', borderRadius: 8, fontSize: 13, fontWeight: isActive ? 700 : 400,
-                cursor: 'pointer', background: isActive ? 'rgba(56,189,248,.15)' : 'none',
+                cursor: 'pointer', background: isActive ? 'rgba(34,211,238,.15)' : 'none',
                 border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                 color: isActive ? 'var(--accent)' : 'var(--muted)'
               }}>
@@ -137,9 +138,9 @@ export default function DeskworkLayout() {
             <button key={n.path} onClick={() => navigate(n.path)} style={{
               flex: '0 0 auto', minWidth: 64, padding: '6px 8px',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-              background: 'none', border: 'none', cursor: 'pointer',
+              background: isActive ? 'var(--accent-soft)' : 'none', border: 'none', cursor: 'pointer',
               borderTop: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
-              color: isActive ? 'var(--accent)' : 'var(--muted)'
+              color: isActive ? 'var(--accent)' : 'var(--muted)', transition: 'all .18s'
             }}>
               <span style={{ fontSize: 18 }}>{n.icon}</span>
               <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 400, whiteSpace: 'nowrap' }}>{n.label}</span>

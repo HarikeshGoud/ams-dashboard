@@ -94,7 +94,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
                 onMouseEnter={() => setHighlight(i)}
                 style={{
                   padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                  background: i === highlight ? 'var(--surface2)' : String(opt.value) === String(value) ? 'rgba(56,189,248,.1)' : 'transparent',
+                  background: i === highlight ? 'var(--surface2)' : String(opt.value) === String(value) ? 'rgba(34,211,238,.1)' : 'transparent',
                   color: String(opt.value) === String(value) ? 'var(--accent)' : 'var(--text)',
                 }}
               >

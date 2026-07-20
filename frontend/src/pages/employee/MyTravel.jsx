@@ -272,7 +272,7 @@ function LogTripModal({ onClose, onSaved }) {
                 <div key={i} style={{
                   borderRadius: 8, marginBottom: 6,
                   border: `1.5px solid ${s.selected ? 'var(--accent)' : s.hasCoords ? 'var(--border)' : 'rgba(251,191,36,.5)'}`,
-                  background: s.selected ? 'rgba(56,189,248,.1)' : 'var(--surface2)',
+                  background: s.selected ? 'rgba(34,211,238,.1)' : 'var(--surface2)',
                   overflow: 'hidden',
                 }}>
                   <div

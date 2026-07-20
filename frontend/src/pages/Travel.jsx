@@ -86,7 +86,7 @@ export default function Travel() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
           {/* Option A: flat rate per km */}
-          <div style={{ padding: 12, borderRadius: 10, border: `2px solid ${ratePerKm > 0 ? 'var(--accent)' : 'var(--border)'}`, background: ratePerKm > 0 ? 'rgba(56,189,248,.06)' : 'var(--surface2)' }}>
+          <div style={{ padding: 12, borderRadius: 10, border: `2px solid ${ratePerKm > 0 ? 'var(--accent)' : 'var(--border)'}`, background: ratePerKm > 0 ? 'rgba(34,211,238,.06)' : 'var(--surface2)' }}>
             <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
               📍 Flat Rate Per KM {ratePerKm > 0 && <span style={{ color: 'var(--accent)', fontSize: 10 }}>● ACTIVE</span>}
             </div>

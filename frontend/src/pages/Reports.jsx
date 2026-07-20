@@ -350,7 +350,7 @@ function MonthlyReport({ months }) {
       </div>
 
       {months === 3 && (
-        <div style={{ background: 'rgba(59,158,255,0.08)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 14px', marginBottom: 16, fontSize: 13 }}>
+        <div style={{ background: 'rgba(34,211,238,0.08)', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 14px', marginBottom: 16, fontSize: 13 }}>
           <b>AMC Cycle:</b> {label} &nbsp;·&nbsp; 3-month maintenance period
         </div>
       )}
@@ -406,7 +406,7 @@ export default function Reports() {
           {[['1m', '1 Month'], ['3m', '3 Months (AMC Cycle)']].map(([key, label]) => (
             <button key={key} onClick={() => setSubTab(key)} style={{
               padding: '8px 22px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
-              background: subTab === key ? 'rgba(59,158,255,0.15)' : 'transparent',
+              background: subTab === key ? 'rgba(34,211,238,0.15)' : 'transparent',
               color: subTab === key ? 'var(--accent)' : 'var(--muted)',
               borderBottom: subTab === key ? '2px solid var(--accent)' : '2px solid transparent',
               transition: 'all .15s',

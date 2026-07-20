@@ -85,7 +85,7 @@ export default function MyTasks() {
               <div key={i} style={{
                 flex: 1, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 700,
-                background: !t ? 'var(--surface2)' : rej ? 'rgba(248,113,113,.15)' : verified ? 'rgba(52,211,153,.15)' : submitted ? 'rgba(251,191,36,.15)' : 'rgba(56,189,248,.1)',
+                background: !t ? 'var(--surface2)' : rej ? 'rgba(248,113,113,.15)' : verified ? 'rgba(52,211,153,.15)' : submitted ? 'rgba(251,191,36,.15)' : 'rgba(34,211,238,.1)',
                 border: `1px solid ${!t ? 'var(--border)' : rej ? 'var(--red)' : verified ? 'var(--green)' : submitted ? 'var(--yellow)' : 'var(--accent)'}`,
                 color: !t ? 'var(--muted)' : rej ? 'var(--red)' : verified ? 'var(--green)' : submitted ? 'var(--yellow)' : 'var(--accent)'
               }}>
@@ -104,7 +104,7 @@ export default function MyTasks() {
               </span>
               <span style={{
                 fontSize: 10, padding: '1px 7px', borderRadius: 5, fontWeight: 700,
-                background: rotation.new_round ? 'rgba(52,211,153,.15)' : 'rgba(56,189,248,.15)',
+                background: rotation.new_round ? 'rgba(52,211,153,.15)' : 'rgba(34,211,238,.15)',
                 color: rotation.new_round ? 'var(--green)' : 'var(--accent)'
               }}>
                 {rotation.new_round ? '🔁 New round started' : `${rotation.unvisited_count} schools left in round`}
@@ -125,7 +125,7 @@ export default function MyTasks() {
             cursor: 'pointer',
             border: `1.5px solid ${tab === t.key ? (t.key === 'rejected' ? 'var(--red)' : t.key === 'completed' ? 'var(--green)' : 'var(--accent)') : 'var(--border)'}`,
             background: tab === t.key
-              ? t.key === 'rejected' ? 'rgba(248,113,113,.12)' : t.key === 'completed' ? 'rgba(52,211,153,.12)' : 'rgba(56,189,248,.12)'
+              ? t.key === 'rejected' ? 'rgba(248,113,113,.12)' : t.key === 'completed' ? 'rgba(52,211,153,.12)' : 'rgba(34,211,238,.12)'
               : 'var(--surface)',
             color: tab === t.key
               ? t.key === 'rejected' ? 'var(--red)' : t.key === 'completed' ? 'var(--green)' : 'var(--accent)'
@@ -177,7 +177,7 @@ export default function MyTasks() {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {tab === 'today' && <span style={{ fontSize: 11, background: 'rgba(56,189,248,.15)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 5, fontWeight: 800 }}>Visit {idx + 1}</span>}
+                    {tab === 'today' && <span style={{ fontSize: 11, background: 'rgba(34,211,238,.15)', color: 'var(--accent)', padding: '1px 7px', borderRadius: 5, fontWeight: 800 }}>Visit {idx + 1}</span>}
                     {isRejected && <span style={{ color: 'var(--red)' }}>❌</span>}
                     {task.title}
                   </div>
