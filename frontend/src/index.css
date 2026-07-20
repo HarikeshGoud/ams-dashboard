@@ -239,9 +239,10 @@ tr:hover td { background: var(--surface2); }
 .toast.error { background: var(--red); }
 @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-/* Modal */
+/* Modal — above the fixed sidebar/bottom-nav bars (z-index 1500) so a modal's
+   own action buttons are never hidden underneath them on mobile/deskwork. */
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 400;
+  position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 1600;
   display: flex; align-items: flex-end; justify-content: center; padding: 0;
 }
 .modal-box {
@@ -311,9 +312,13 @@ tr:hover td { background: var(--surface2); }
   /* Tables scroll horizontally */
   .table-wrap, table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-  /* Modal full sheet from bottom — a touch-native pattern on tablets too */
+  /* Modal full sheet from bottom — a touch-native pattern on tablets too.
+     Extra bottom padding clears the deskwork/employee fixed bottom nav bar
+     (~70px), so a modal's own action buttons never end up crowded right up
+     against it — modals render above the nav (z-index 1600 vs 1500) but
+     without this they'd still visually butt right up against it. */
   .modal-backdrop { align-items: flex-end; padding: 0; }
-  .modal-box { border-radius: 18px 18px 0 0; max-width: 100%; max-height: 92vh; }
+  .modal-box { border-radius: 18px 18px 0 0; max-width: 100%; max-height: 92vh; padding-bottom: 90px; }
 
   /* Toast above bottom nav */
   .toast { bottom: 80px; right: 16px; left: 16px; text-align: center; }

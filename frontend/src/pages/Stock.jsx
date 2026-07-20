@@ -1143,7 +1143,7 @@ export default function Stock() {
       {/* Lightbox */}
       {lightbox && (
         <div onClick={() => setLightbox(null)} style={{
-          position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.88)',
+          position: 'fixed', inset: 0, zIndex: 1600, background: 'rgba(0,0,0,.88)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out'
         }}>
           <img src={lightbox} alt="proof" style={{ maxWidth: '92vw', maxHeight: '88vh', borderRadius: 10, boxShadow: '0 8px 40px rgba(0,0,0,.6)' }} />

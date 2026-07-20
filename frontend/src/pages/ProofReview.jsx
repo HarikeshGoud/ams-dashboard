@@ -284,7 +284,7 @@ export default function ProofReview() {
       {/* Lightbox */}
       {lightbox && (
         <div onClick={() => setLightbox(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.92)', zIndex: 999,
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.92)', zIndex: 1600,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out'
         }}>
           <img src={lightbox.url} alt={lightbox.photo_type}
