@@ -42,6 +42,9 @@ export default function DeskStock() {
   const [reorderForm, setReorderForm]     = useState({ quantity: 1, note: '' })
   const [receiveModal, setReceiveModal]   = useState(null)
   const [receiveForm, setReceiveForm]     = useState({ quantity: 1, buy_price: '', person: '' })
+  // Standalone "Receive Stock" (mirrors the admin Receive form): record a purchase into a new batch.
+  const [showReceive, setShowReceive]     = useState(false)
+  const [recvForm, setRecvForm]           = useState({ item_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', note: '' })
   const [accounts, setAccounts]           = useState({ batches: [], monthly: [], grand_total: 0 })
   const [toast, setToast]           = useState('')
 
@@ -98,6 +101,26 @@ export default function DeskStock() {
         person: receiveForm.person || null,
       })
       setReceiveModal(null); load(); showToast('✅ Stock received — added to office inventory as a new batch')
+    } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
+  }
+
+  // Standalone Receive — same effect as admin's Receive form: creates a new batch
+  // recording buy price + both logistics legs, and adds to office inventory.
+  async function submitReceive(ev) {
+    ev.preventDefault()
+    if (!recvForm.item_id) { showToast('❌ Select an item'); return }
+    try {
+      await api.post('/api/stock/ledger', {
+        item_id: parseInt(recvForm.item_id),
+        transaction_type: 'receive',
+        quantity: parseInt(recvForm.quantity) || 0,
+        person: recvForm.person || null,
+        buy_price: parseFloat(recvForm.buy_price) || null,
+        logistics1: parseFloat(recvForm.logistics1) || null,
+        logistics2: parseFloat(recvForm.logistics2) || null,
+        note: recvForm.note || null,
+      })
+      setShowReceive(false); load(); showToast('✅ Stock received — added to office inventory as a new batch')
     } catch (e) { showToast('❌ ' + (e.response?.data?.detail || e.message)) }
   }
 
@@ -230,6 +253,7 @@ export default function DeskStock() {
       <div className="section-header" style={{ marginBottom: 12 }}>
         <h3>📦 Stock Management</h3>
         <div className="flex gap-8">
+          <button className="btn btn-green" style={{ fontSize: 12 }} onClick={() => { setShowReceive(true); setRecvForm({ item_id: '', quantity: 1, person: '', buy_price: '', logistics1: '', logistics2: '', note: '' }) }}>⬇ Receive</button>
           <button className="btn btn-purple" style={{ fontSize: 12 }} onClick={() => { setDistModal(true); setDistForm({ item_id: '', batch_id: '', employee_id: '', quantity: 1, note: '' }) }}>📤 Distribute to Tech</button>
           <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>+ Add Item</button>
         </div>
@@ -1031,6 +1055,50 @@ export default function DeskStock() {
       </>}
 
       {showAdd && <AddStockModal onClose={() => setShowAdd(false)} onSaved={() => { load(); showToast('Stock item added!') }} />}
+      {/* Receive Stock — records a purchase into a new batch (same as admin's Receive) */}
+      {showReceive && (
+        <div className="modal-backdrop" onClick={e => e.target.className === 'modal-backdrop' && setShowReceive(false)}>
+          <div className="modal-box">
+            <button className="modal-close" onClick={() => setShowReceive(false)}>✕</button>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>⬇ Receive Stock</h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Adds stock into the office as a new batch, recording buy price + logistics.</p>
+            <form onSubmit={submitReceive}>
+              <div className="form-grid">
+                <div className="form-group form-full"><label>Item *</label>
+                  <SearchableSelect value={recvForm.item_id} onChange={val => setRecvForm({ ...recvForm, item_id: val })}
+                    placeholder="Select item…"
+                    options={items.map(i => ({ value: String(i.id), label: `${i.name} (in office: ${i.quantity ?? i.office_qty ?? 0})` }))} />
+                </div>
+                <div className="form-group"><label>Quantity *</label>
+                  <input required type="number" min="1" value={recvForm.quantity} onChange={e => setRecvForm({ ...recvForm, quantity: e.target.value })} />
+                </div>
+                <div className="form-group"><label>Received By</label>
+                  <SearchableSelect value={recvForm.person} onChange={val => setRecvForm({ ...recvForm, person: val })}
+                    placeholder="— Select —"
+                    options={employees.map(e => ({ value: e.name, label: `${e.name} (${e.employee_code})` }))} />
+                </div>
+                <div className="form-group"><label>Buy Price (₹)</label>
+                  <input type="number" min="0" step="0.01" value={recvForm.buy_price} onChange={e => setRecvForm({ ...recvForm, buy_price: e.target.value })} />
+                </div>
+                <div className="form-group"><label>Logistics 1 (Mfr→Office)</label>
+                  <input type="number" min="0" step="0.01" value={recvForm.logistics1} onChange={e => setRecvForm({ ...recvForm, logistics1: e.target.value })} />
+                </div>
+                <div className="form-group"><label>Logistics 2 (Office→Tech)</label>
+                  <input type="number" min="0" step="0.01" value={recvForm.logistics2} onChange={e => setRecvForm({ ...recvForm, logistics2: e.target.value })} />
+                </div>
+                <div className="form-group form-full"><label>Note</label>
+                  <input value={recvForm.note} onChange={e => setRecvForm({ ...recvForm, note: e.target.value })} />
+                </div>
+              </div>
+              <div className="mt-16 flex gap-8">
+                <button type="submit" className="btn btn-primary">Submit</button>
+                <button type="button" className="btn btn-outline" onClick={() => setShowReceive(false)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {adjusting && <AdjustStockModal item={adjusting} employees={employees} onClose={() => setAdjusting(null)} onSaved={() => { load(); showToast('Stock updated!') }} />}
 
       {/* Distribute Modal */}
@@ -1273,7 +1341,7 @@ function AdjustStockModal({ item, onClose, onSaved, employees = [] }) {
           </div>
           {action === 'add' ? (
             <>
-              <div className="form-group"><label>Person</label>
+              <div className="form-group"><label>Received By</label>
                 <SearchableSelect value={person} onChange={setPerson}
                   placeholder="— Select —"
                   options={employees.map(e => ({ value: e.name, label: `${e.name} (${e.employee_code})` }))} />

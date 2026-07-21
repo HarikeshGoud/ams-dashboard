@@ -1058,7 +1058,7 @@ export default function Stock() {
                   </div>
                 )}
                 <div className="form-group"><label>Quantity *</label><input required type="number" min="1" max={modal === 'issue' ? (selectedLedgerBatch?.qty_office || 0) : undefined} value={ledgerForm.quantity} onChange={e => setLedgerForm({...ledgerForm, quantity: e.target.value})} /></div>
-                <div className="form-group"><label>Person</label>
+                <div className="form-group"><label>Received By</label>
                   <SearchableSelect value={ledgerForm.person} onChange={val => setLedgerForm({...ledgerForm, person: val})}
                     placeholder="— Select —"
                     options={employees.map(e => ({ value: e.name, label: `${e.name} (${e.employee_code})` }))} />
@@ -1264,7 +1264,7 @@ function AdjustStockModal({ item, onClose, onSaved, employees = [] }) {
           </div>
           {action === 'add' ? (
             <>
-              <div className="form-group"><label>Person</label>
+              <div className="form-group"><label>Received By</label>
                 <SearchableSelect value={person} onChange={setPerson}
                   placeholder="— Select —"
                   options={employees.map(e => ({ value: e.name, label: `${e.name} (${e.employee_code})` }))} />
