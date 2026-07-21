@@ -36,6 +36,10 @@ export default function EmployeeLayout() {
   const [isStandalone] = useState(() =>
     window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true
   )
+  // iPhone/iPad can't sideload or fire an install prompt — the only way to
+  // "install" on iOS is Safari's Share → Add to Home Screen, so we show a hint.
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
   useEffect(() => {
     // Register the service worker here (not just in main.jsx, which only runs on
@@ -166,6 +170,15 @@ export default function EmployeeLayout() {
               boxShadow: '0 3px 12px -3px var(--glow-aqua)', textShadow: '0 1px 2px rgba(3,35,45,.35)'
             }}>
               ⬇ Install App
+            </button>
+          )}
+          {!isStandalone && !installPrompt && isIOS && (
+            <button onClick={() => alert('To install on iPhone (must use Safari):\n\n1. Tap the Share button  ⬆️  at the bottom of Safari\n2. Scroll down and tap “Add to Home Screen”\n3. Tap “Add”\n\nThe SHC Technician icon will appear on your home screen and open full-screen like an app.')} style={{
+              fontSize: 10, fontWeight: 700, padding: '4px 11px', borderRadius: 7,
+              background: 'var(--grad-primary)', color: '#fff', border: 'none', cursor: 'pointer',
+              boxShadow: '0 3px 12px -3px var(--glow-aqua)', textShadow: '0 1px 2px rgba(3,35,45,.35)'
+            }}>
+              📲 Install on iPhone
             </button>
           )}
         </div>
