@@ -72,10 +72,15 @@ export default function Login() {
         .login-input {
           width: 100%; box-sizing: border-box;
           background: var(--surface2) !important; border: 1.5px solid var(--border) !important;
-          border-radius: 12px; padding: 13px 14px 13px 42px;
+          border-radius: 12px;
+          /* !important needed to beat the global input[...] reset, whose
+             attribute selector out-specifies this single class and would
+             otherwise pull the left pad back to 12px and hide text under the icon. */
+          padding: 14px 16px 14px 46px !important;
           color: var(--text) !important; font-size: 14.5px; outline: none;
           transition: border-color .18s, box-shadow .18s, background .18s;
         }
+        .login-input.has-toggle { padding-right: 46px !important; }
         .login-input:focus { border-color: var(--accent) !important; box-shadow: var(--ring) !important; }
         .login-input::placeholder { color: var(--muted); opacity: .7; }
       `}</style>
@@ -156,7 +161,7 @@ export default function Login() {
                 type="text"
                 value={code}
                 onChange={e => setCode(e.target.value)}
-                placeholder="e.g. ADMIN01"
+                placeholder="Enter Employee ID"
                 autoComplete="username"
                 style={{ letterSpacing: 1, fontWeight: 600 }}
               />
@@ -169,13 +174,12 @@ export default function Login() {
             <div style={inputWrap}>
               <span style={iconStyle}>🔒</span>
               <input
-                className="login-input"
+                className="login-input has-toggle"
                 type={showPass ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="Enter password"
                 autoComplete="current-password"
-                style={{ paddingRight: 44 }}
               />
               <button
                 type="button"
