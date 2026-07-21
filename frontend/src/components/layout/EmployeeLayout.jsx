@@ -38,10 +38,16 @@ export default function EmployeeLayout() {
   )
 
   useEffect(() => {
+    // Register the service worker here (not just in main.jsx, which only runs on
+    // full page load) so a technician who just logged in becomes installable
+    // right away. Gated to the technician role — this is the technician-only app.
+    if (user?.role === 'technician' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
+    }
     function onBeforeInstall(e) { e.preventDefault(); setInstallPrompt(e) }
     window.addEventListener('beforeinstallprompt', onBeforeInstall)
     return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall)
-  }, [])
+  }, [user?.role])
 
   async function handleInstall() {
     if (!installPrompt) return
