@@ -1151,14 +1151,14 @@ export default function Stock() {
         </div>
       )}
 
-      {adjusting && <AdjustStockModal item={adjusting} onClose={() => setAdjusting(null)} onSaved={() => { load(); showToast('Stock updated!') }} />}
+      {adjusting && <AdjustStockModal item={adjusting} employees={employees} onClose={() => setAdjusting(null)} onSaved={() => { load(); showToast('Stock updated!') }} />}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
 }
 
-function AdjustStockModal({ item, onClose, onSaved }) {
+function AdjustStockModal({ item, onClose, onSaved, employees = [] }) {
   const currentPrice = item.unit_price ?? item.unit_cost ?? 0
   const [qty, setQty] = useState(0)
   const [action, setAction] = useState('add')
@@ -1168,6 +1168,11 @@ function AdjustStockModal({ item, onClose, onSaved }) {
   const [price, setPrice] = useState(currentPrice)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // "Add Stock" mirrors the Receive Stock form — buy price + logistics recorded on the batch.
+  const [person, setPerson] = useState('')
+  const [buyPrice, setBuyPrice] = useState('')
+  const [logistics1, setLogistics1] = useState('')
+  const [logistics2, setLogistics2] = useState('')
 
   useEffect(() => {
     if (action === 'remove') {
@@ -1181,15 +1186,37 @@ function AdjustStockModal({ item, onClose, onSaved }) {
   const selectedBatch = batches.find(b => b.id === parseInt(batchId))
 
   async function submit() {
-    const delta = action === 'add' ? Number(qty) : -Number(qty)
-    if (action === 'remove' && !batchId) { setError('Select which batch this is being removed from'); return }
+    setError('')
+    if (action === 'add') {
+      const q = Number(qty)
+      if (!q || q <= 0) { setError('Enter a quantity to add'); return }
+      try {
+        setLoading(true)
+        // Same effect as "Receive Stock": creates a new batch that records
+        // buy price + both logistics legs, and adds to office inventory.
+        await api.post('/api/stock/ledger', {
+          item_id: item.id, transaction_type: 'receive', quantity: q,
+          person: person || null,
+          buy_price: parseFloat(buyPrice) || null,
+          logistics1: parseFloat(logistics1) || null,
+          logistics2: parseFloat(logistics2) || null,
+          note: notes || null,
+        })
+        onSaved(); onClose()
+      } catch (e) { setError(e.response?.data?.detail || 'Failed') }
+      setLoading(false)
+      return
+    }
+    // Remove — batch-aware, unchanged.
+    if (!batchId) { setError('Select which batch this is being removed from'); return }
+    const delta = -Number(qty)
     const priceChanged = Number(price) !== Number(currentPrice)
     if (!delta && !priceChanged) { setError('Change the quantity or the price before updating'); return }
     try {
       setLoading(true)
       await api.post(`/api/stock/${item.id}/adjust`, {
         quantity_change: delta, notes,
-        batch_id: action === 'remove' ? parseInt(batchId) : null,
+        batch_id: parseInt(batchId),
         new_unit_cost: priceChanged ? Number(price) : null
       })
       onSaved(); onClose()
@@ -1235,10 +1262,29 @@ function AdjustStockModal({ item, onClose, onSaved }) {
           <div className="form-group"><label>Quantity</label>
             <input type="number" min="1" max={action === 'remove' ? (selectedBatch?.qty_office || 0) : undefined} value={qty} onChange={e => setQty(e.target.value)} />
           </div>
-          <div className="form-group"><label>Price per {item.unit || 'pcs'} (₹)</label>
-            <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
-          </div>
-          <div className="form-group form-full"><label>Notes</label>
+          {action === 'add' ? (
+            <>
+              <div className="form-group"><label>Person</label>
+                <SearchableSelect value={person} onChange={setPerson}
+                  placeholder="— Select —"
+                  options={employees.map(e => ({ value: e.name, label: `${e.name} (${e.employee_code})` }))} />
+              </div>
+              <div className="form-group"><label>Buy Price (₹)</label>
+                <input type="number" min="0" step="0.01" value={buyPrice} onChange={e => setBuyPrice(e.target.value)} />
+              </div>
+              <div className="form-group"><label>Logistics 1 (Mfr→Office)</label>
+                <input type="number" min="0" step="0.01" value={logistics1} onChange={e => setLogistics1(e.target.value)} />
+              </div>
+              <div className="form-group"><label>Logistics 2 (Office→Tech)</label>
+                <input type="number" min="0" step="0.01" value={logistics2} onChange={e => setLogistics2(e.target.value)} />
+              </div>
+            </>
+          ) : (
+            <div className="form-group"><label>Price per {item.unit || 'pcs'} (₹)</label>
+              <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
+            </div>
+          )}
+          <div className="form-group form-full"><label>Note</label>
             <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Reason / reference…" />
           </div>
         </div>
