@@ -1,8 +1,11 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "*.{css,js,png,jpg,jpeg,gif,svg,ico,woff,woff2,json}"]
+    "exclude": ["/assets/*", "/.well-known/*", "*.{css,js,png,jpg,jpeg,gif,svg,ico,woff,woff2,json}"]
   },
+  "routes": [
+    { "route": "/.well-known/assetlinks.json", "headers": { "content-type": "application/json" } }
+  ],
   "responseOverrides": {
     "404": {
       "rewrite": "/index.html"
