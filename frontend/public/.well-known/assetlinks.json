@@ -5,7 +5,7 @@
       "namespace": "android_app",
       "package_name": "co.riksu.shc.twa",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_SHA256_FINGERPRINT_FROM_PWABUILDER_OR_KEYSTORE"
+        "55:3C:F9:75:EB:9C:8F:67:59:F9:F5:C6:FA:E3:B7:E5:08:4A:2D:0E:93:87:FA:57:C3:97:9C:82:21:B3:6A:29"
       ]
     }
   }
