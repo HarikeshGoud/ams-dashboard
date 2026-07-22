@@ -58,7 +58,7 @@ export default function CameraCapture({ onCapture, onClose, gps, siteName, showG
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1600, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 1700, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       {error ? (
         <div style={{ color: '#f87171', fontSize: 14, textAlign: 'center', padding: 24 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📵</div>{error}<br /><br />
