@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import ChangePasswordModal from '../ChangePasswordModal'
+import PermissionGate from '../PermissionGate'
 import api from '../../api/axios'
 
 const PING_INTERVAL_MS = 25000
@@ -215,6 +216,9 @@ export default function EmployeeLayout() {
       </div>
 
       {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
+
+      {/* Mandatory camera + location — blocks the technician app until granted */}
+      {user?.role === 'technician' && <PermissionGate />}
     </div>
   )
 }
