@@ -14,23 +14,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </BrowserRouter>
 )
 
-// PWA install is intentionally TECHNICIAN-ONLY. Browsers only offer to "install"
-// a site once a service worker is registered, so we register it just for a
-// technician session (also re-registered when the technician dashboard mounts —
-// see EmployeeLayout) and actively remove it for admin/deskwork. Result: only
-// technician devices can install the app; everyone else stays a plain website.
+// PWA is available to EVERYONE. Registering the service worker is what makes the
+// browser offer "Install app", so we register it on every load, for all users
+// (and even on the login screen) — the InstallPrompt component then surfaces the
+// one-tap install. The SW itself is network-first, so the installed app always
+// shows the latest deploy (see public/sw.js).
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    let role = null
-    try { role = JSON.parse(localStorage.getItem('ams_user') || 'null')?.role } catch {}
-    if (role === 'technician') {
-      navigator.serviceWorker.register('/sw.js').catch(() => {})
-    } else if (role === 'admin' || role === 'deskwork') {
-      navigator.serviceWorker.getRegistrations()
-        .then(regs => regs.forEach(r => r.unregister()))
-        .catch(() => {})
-    }
-    // role null (logged out / login screen): leave any existing registration
-    // untouched so an already-installed technician app isn't disturbed.
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
   })
 }

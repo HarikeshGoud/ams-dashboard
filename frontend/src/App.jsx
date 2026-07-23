@@ -36,6 +36,7 @@ import DeskStock from './pages/deskwork/DeskStock'
 import DeskTravel from './pages/deskwork/DeskTravel'
 import ServiceReports from './pages/ServiceReports'
 import LiveTracking from './pages/LiveTracking'
+import InstallPrompt from './components/InstallPrompt'
 
 function Guard({ children }) {
   const { token } = useAuthStore()
@@ -78,7 +79,9 @@ export default function App() {
   }, [theme])
 
   return (
-    <Routes>
+    <>
+      <InstallPrompt />
+      <Routes>
       <Route path="/login" element={<Login />} />
 
       {/* EMPLOYEE ROUTES */}
@@ -129,6 +132,7 @@ export default function App() {
       </Route>
 
       <Route path="*" element={<RedirectByRole />} />
-    </Routes>
+      </Routes>
+    </>
   )
 }

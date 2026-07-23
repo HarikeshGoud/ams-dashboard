@@ -33,33 +33,9 @@ export default function EmployeeLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [showChangePw, setShowChangePw] = useState(false)
-  const [installPrompt, setInstallPrompt] = useState(null)
-  const [isStandalone] = useState(() =>
-    window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true
-  )
-  // iPhone/iPad can't sideload or fire an install prompt — the only way to
-  // "install" on iOS is Safari's Share → Add to Home Screen, so we show a hint.
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
-  useEffect(() => {
-    // Register the service worker here (not just in main.jsx, which only runs on
-    // full page load) so a technician who just logged in becomes installable
-    // right away. Gated to the technician role — this is the technician-only app.
-    if (user?.role === 'technician' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {})
-    }
-    function onBeforeInstall(e) { e.preventDefault(); setInstallPrompt(e) }
-    window.addEventListener('beforeinstallprompt', onBeforeInstall)
-    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall)
-  }, [user?.role])
-
-  async function handleInstall() {
-    if (!installPrompt) return
-    installPrompt.prompt()
-    await installPrompt.userChoice
-    setInstallPrompt(null)
-  }
+  // PWA install + service-worker registration are handled globally now
+  // (InstallPrompt component + main.jsx) so every role can install — not just
+  // technicians. This layout only enforces the permission gate below.
 
   function handleLogout() { logout(); navigate('/login') }
 
@@ -164,24 +140,6 @@ export default function EmployeeLayout() {
               ? '📍 Live tracking active till 6:30 PM — keep this app open on your phone'
               : '📍 Live tracking resumes at 9:00 AM'}
           </span>
-          {!isStandalone && installPrompt && (
-            <button onClick={handleInstall} style={{
-              fontSize: 10, fontWeight: 700, padding: '4px 11px', borderRadius: 7,
-              background: 'var(--grad-primary)', color: '#fff', border: 'none', cursor: 'pointer',
-              boxShadow: '0 3px 12px -3px var(--glow-aqua)', textShadow: '0 1px 2px rgba(3,35,45,.35)'
-            }}>
-              ⬇ Install App
-            </button>
-          )}
-          {!isStandalone && !installPrompt && isIOS && (
-            <button onClick={() => alert('To install on iPhone (must use Safari):\n\n1. Tap the Share button  ⬆️  at the bottom of Safari\n2. Scroll down and tap “Add to Home Screen”\n3. Tap “Add”\n\nThe SHC Technician icon will appear on your home screen and open full-screen like an app.')} style={{
-              fontSize: 10, fontWeight: 700, padding: '4px 11px', borderRadius: 7,
-              background: 'var(--grad-primary)', color: '#fff', border: 'none', cursor: 'pointer',
-              boxShadow: '0 3px 12px -3px var(--glow-aqua)', textShadow: '0 1px 2px rgba(3,35,45,.35)'
-            }}>
-              📲 Install on iPhone
-            </button>
-          )}
         </div>
       )}
 

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import ChangePasswordModal from '../ChangePasswordModal'
+import PermissionGate from '../PermissionGate'
 
 const NAV = [
   { path: '/deskwork',            icon: '🏠', label: 'Home'       },
@@ -150,6 +151,9 @@ export default function DeskworkLayout() {
       </div>
 
       {showChangePw && <ChangePasswordModal onClose={() => setShowChangePw(false)} />}
+
+      {/* Desk staff: enforce Location (+ Camera only if this device actually has one). */}
+      {user?.role === 'deskwork' && <PermissionGate camera location />}
     </div>
   )
 }
