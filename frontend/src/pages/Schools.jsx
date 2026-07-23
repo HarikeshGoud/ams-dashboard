@@ -15,7 +15,7 @@ export default function Schools() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState(null)
-  const [form, setForm] = useState({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc' })
+  const [form, setForm] = useState({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc', sub_locations: '' })
   const [toast, setToast] = useState('')
   const [stampFile, setStampFile] = useState(null)
   const [stampPreview, setStampPreview] = useState(null)
@@ -47,11 +47,11 @@ export default function Schools() {
 
 
   function openAdd() {
-    setForm({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc' })
+    setForm({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc', sub_locations: '' })
     setEditId(null); setStampFile(null); setStampPreview(null); setExistingStamp(null); setModal(true)
   }
   function openEdit(s) {
-    setForm({ name: s.name, client_id: s.client_id || '', model: s.model || 'school', mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '', unit_number: s.unit_number || '', amc_status: s.amc_status || 'amc' })
+    setForm({ name: s.name, client_id: s.client_id || '', model: s.model || 'school', mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '', unit_number: s.unit_number || '', amc_status: s.amc_status || 'amc', sub_locations: (s.sub_locations || []).join('\n') })
     setEditId(s.id); setStampFile(null); setStampPreview(null); setExistingStamp(null)
     // Check if stamp already uploaded
     api.get(`/api/schools/${s.id}/stamp`).then(r => {
@@ -76,7 +76,11 @@ export default function Schools() {
       return
     }
     setStampSaving(true)
-    const payload = { ...form, client_id: form.client_id ? parseInt(form.client_id) : null }
+    const payload = {
+      ...form,
+      client_id: form.client_id ? parseInt(form.client_id) : null,
+      sub_locations: form.sub_locations.split('\n').map(s => s.trim()).filter(Boolean),
+    }
     let savedId = editId
     if (editId) {
       await api.put(`/api/schools/${editId}`, payload)
@@ -208,6 +212,13 @@ export default function Schools() {
                 </div>
                 <div className="form-group"><label>Capacity</label><input value={form.capacity} onChange={f('capacity')} placeholder="e.g. 1000 LPH" /></div>
                 <div className="form-group form-full"><label>Plant Model</label><input value={form.plant_model} onChange={f('plant_model')} /></div>
+                {form.model === 'hospital' && (
+                  <div className="form-group form-full">
+                    <label>Sub-locations (optional, one per line)</label>
+                    <textarea rows={4} value={form.sub_locations} onChange={f('sub_locations')}
+                      placeholder={'e.g.\nEmergency Block\nOP Building — Ground Floor\nIP Building — 1st Floor'} />
+                  </div>
+                )}
               </div>
 
               {/* Stamp upload — mandatory on edit */}

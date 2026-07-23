@@ -1,8 +1,8 @@
-import os, shutil
+import os, shutil, json
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from ..database import get_db
 from ..models.school import School
 from ..models.mandal import Mandal
@@ -23,9 +23,16 @@ class SchoolCreate(BaseModel):
     plant_model: Optional[str] = None
     unit_number: Optional[str] = None
     amc_status: Optional[str] = "amc"
+    sub_locations: Optional[List[str]] = None
 
 def _fmt(s: School):
     tech_obj = s.technician if s.technician_id else None
+    sub_locations = None
+    if s.sub_locations:
+        try:
+            sub_locations = json.loads(s.sub_locations)
+        except (ValueError, TypeError):
+            sub_locations = None
     return {
         "id": s.id, "name": s.name, "mandal_id": s.mandal_id,
         "mandal_name": s.mandal.name if s.mandal else None,
@@ -36,6 +43,7 @@ def _fmt(s: School):
         "model": s.model, "capacity": s.capacity, "plant_model": s.plant_model,
         "unit_number": s.unit_number,
         "plant_condition": s.plant_condition,
+        "sub_locations": sub_locations,
         "amc_status": s.amc_status, "last_visit_date": s.last_visit_date.isoformat() if s.last_visit_date else None,
         "is_active": s.is_active
     }
@@ -77,13 +85,20 @@ def list_schools(
     schools = q.offset((page - 1) * limit).limit(limit).all()
     return {"total": total, "page": page, "limit": limit, "items": [_fmt(s) for s in schools]}
 
+def _clean_sub_locations(items: Optional[List[str]]) -> Optional[str]:
+    if not items:
+        return None
+    cleaned = [s.strip() for s in items if s and s.strip()]
+    return json.dumps(cleaned) if cleaned else None
+
 @router.post("/")
 def create_school(data: SchoolCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     mandal = db.query(Mandal).filter(Mandal.name == data.mandal).first() if data.mandal else None
     s = School(name=data.name, client_id=data.client_id, model=data.model,
                mandal_id=mandal.id if mandal else None,
                capacity=data.capacity, plant_model=data.plant_model,
-               unit_number=data.unit_number, amc_status=data.amc_status or "amc")
+               unit_number=data.unit_number, amc_status=data.amc_status or "amc",
+               sub_locations=_clean_sub_locations(data.sub_locations))
     db.add(s); db.commit(); db.refresh(s)
     return _fmt(s)
 
@@ -96,6 +111,7 @@ def update_school(sid: int, data: SchoolCreate, db: Session = Depends(get_db), _
     s.mandal_id = mandal.id if mandal else s.mandal_id
     s.capacity = data.capacity; s.plant_model = data.plant_model
     s.unit_number = data.unit_number; s.amc_status = data.amc_status or s.amc_status
+    s.sub_locations = _clean_sub_locations(data.sub_locations)
     db.commit(); db.refresh(s)
     return _fmt(s)
 

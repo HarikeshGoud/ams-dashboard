@@ -244,6 +244,22 @@ function SiteModal({ site, onClose }) {
           ))}
         </div>
 
+        {/* Sub-locations — hospitals with multiple wards/blocks */}
+        {site.sub_locations?.length > 0 && (
+          <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 6 }}>
+              SUB-LOCATIONS ({site.sub_locations.length})
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {site.sub_locations.map((loc, i) => (
+                <span key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 9px', fontSize: 12 }}>
+                  {loc}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Year / period tabs */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
           {[
