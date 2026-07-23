@@ -7,6 +7,10 @@ import '@fontsource/poppins/500.css'
 import '@fontsource/poppins/600.css'
 import '@fontsource/poppins/700.css'
 import './index.css'
+import { initPwa } from './store/pwaStore'
+
+// Attach install listeners before React renders so we never miss the event.
+initPwa()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <BrowserRouter>

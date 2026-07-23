@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ChangePasswordModal from '../ChangePasswordModal'
+import InstallButton from '../InstallButton'
 import api from '../../api/axios'
 import { formatISTDateTime } from '../../utils/istTime'
 
@@ -89,6 +90,7 @@ export default function Header({ onMenuClick }) {
           <h2 style={{ fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {title}
           </h2>
+          <InstallButton />
         </div>
 
         {/* Right: user info + actions */}

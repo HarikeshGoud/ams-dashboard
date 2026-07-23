@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import ChangePasswordModal from '../ChangePasswordModal'
 import PermissionGate from '../PermissionGate'
+import InstallButton from '../InstallButton'
 import api from '../../api/axios'
 
 const PING_INTERVAL_MS = 25000
@@ -100,6 +101,7 @@ export default function EmployeeLayout() {
             <div className="gradient-text" style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em' }}>SHC Dashboard</div>
             <div style={{ fontSize: 10, color: 'var(--muted)' }}>Field Technician</div>
           </div>
+          <InstallButton />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ textAlign: 'right' }}>

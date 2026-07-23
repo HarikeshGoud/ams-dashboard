@@ -1,65 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { usePwaStore, isStandalone } from '../store/pwaStore'
 
-// A friendly, one-tap "Install app" card shown to first-time visitors on any page
-// (including the login screen), for every role. Once installed OR dismissed it never
-// nags again. iPhone/iPad can't be installed programmatically (Apple blocks it), so
-// there we show the Share -> Add to Home Screen hint instead.
-const DISMISS_KEY = 'shc_pwa_dismissed'
-
-const isStandalone = () =>
-  window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true
-
-const isIOS = () =>
-  /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
+// A friendly one-tap "Install app" card shown to visitors on any page (incl. login).
+// Dismissing hides it for THIS view only — it is intentionally NOT remembered, so it
+// pops up again on the next refresh/visit and keeps asking until the app is installed.
+// Once installed it never shows. iPhone/iPad can't be installed programmatically
+// (Apple blocks it), so there we show the Share -> Add to Home Screen hint.
 export default function InstallPrompt() {
-  const [deferred, setDeferred] = useState(null)   // stashed beforeinstallprompt event
-  const [show, setShow] = useState(false)          // Android/desktop one-tap card
-  const [iosHint, setIosHint] = useState(false)    // iOS manual-steps card
+  const { canInstall, installed, ios, promptInstall } = usePwaStore()
+  const [dismissed, setDismissed] = useState(false) // per-view only — never persisted
 
-  useEffect(() => {
-    if (isStandalone()) return                     // already installed → never show
-    let dismissed = false
-    try { dismissed = !!localStorage.getItem(DISMISS_KEY) } catch {}
-    if (dismissed) return                          // user said no before → don't nag
-
-    function onBeforeInstall(e) {
-      e.preventDefault()                           // stop Chrome's mini-infobar; we show our own
-      setDeferred(e)
-      setShow(true)
-    }
-    function onInstalled() { close() }
-
-    window.addEventListener('beforeinstallprompt', onBeforeInstall)
-    window.addEventListener('appinstalled', onInstalled)
-
-    // iOS never fires beforeinstallprompt — offer the manual hint after a beat
-    // (only in Safari, where Add to Home Screen actually works).
-    let t
-    if (isIOS()) t = setTimeout(() => setIosHint(true), 1500)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
-      window.removeEventListener('appinstalled', onInstalled)
-      if (t) clearTimeout(t)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  function close() {
-    setShow(false); setIosHint(false); setDeferred(null)
-    try { localStorage.setItem(DISMISS_KEY, '1') } catch {}
-  }
-
-  async function install() {
-    if (!deferred) return
-    deferred.prompt()
-    try { await deferred.userChoice } catch {}
-    close()
-  }
-
-  if (!show && !iosHint) return null
+  if (installed || isStandalone()) return null
+  const show = !dismissed && (canInstall || ios)
+  if (!show) return null
 
   return (
     <>
@@ -78,7 +31,7 @@ export default function InstallPrompt() {
           <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text, #e5edf5)', letterSpacing: '-0.01em' }}>
             Install SHC Dashboard
           </div>
-          {iosHint ? (
+          {ios && !canInstall ? (
             <div style={{ fontSize: 11.5, color: 'var(--muted, #90a4b8)', lineHeight: 1.5, marginTop: 2 }}>
               Tap <b style={{ color: 'var(--text,#e5edf5)' }}>Share ⬆︎</b> below, then{' '}
               <b style={{ color: 'var(--text,#e5edf5)' }}>“Add to Home Screen”</b>
@@ -90,8 +43,8 @@ export default function InstallPrompt() {
           )}
         </div>
 
-        {!iosHint && (
-          <button onClick={install} style={{
+        {(!ios || canInstall) && (
+          <button onClick={promptInstall} style={{
             flex: '0 0 auto', fontSize: 13, fontWeight: 800, padding: '9px 16px', borderRadius: 10,
             background: 'var(--grad-primary, linear-gradient(135deg,#22d3ee,#0891b2))', color: '#fff',
             border: 'none', cursor: 'pointer', boxShadow: '0 4px 14px -4px rgba(8,145,178,.7)'
@@ -100,7 +53,7 @@ export default function InstallPrompt() {
           </button>
         )}
 
-        <button onClick={close} aria-label="Dismiss" style={{
+        <button onClick={() => setDismissed(true)} aria-label="Dismiss" style={{
           flex: '0 0 auto', width: 30, height: 30, borderRadius: 8, lineHeight: 1,
           background: 'var(--surface2, #16202e)', border: '1px solid var(--border, #1e2a3a)',
           color: 'var(--muted, #90a4b8)', cursor: 'pointer', fontSize: 15

@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import ChangePasswordModal from '../ChangePasswordModal'
 import PermissionGate from '../PermissionGate'
+import InstallButton from '../InstallButton'
 
 const NAV = [
   { path: '/deskwork',            icon: '🏠', label: 'Home'       },
@@ -54,6 +55,7 @@ export default function DeskworkLayout() {
             <div className="gradient-text" style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em' }}>SHC Dashboard</div>
             <div style={{ fontSize: 10, color: 'var(--muted)' }}>Deskwork — {user?.designation || 'Office Staff'}</div>
           </div>
+          <InstallButton />
         </div>
 
         {/* Desktop nav links */}
