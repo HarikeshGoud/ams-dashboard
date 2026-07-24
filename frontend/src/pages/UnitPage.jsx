@@ -261,7 +261,7 @@ function SiteModal({ site, onClose }) {
         {childrenLoading ? (
           <div style={{ padding: '14px 20px', color: 'var(--muted)', fontSize: 12, flexShrink: 0 }}>Loading sub-locations...</div>
         ) : hasChildren ? (
-          <div style={{ padding: '14px 20px', flexShrink: 0, overflowY: 'auto' }}>
+          <div style={{ padding: '14px 20px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 8 }}>
               SUB-LOCATIONS ({children.length}) — tap View to see that location's own visit &amp; report history
             </div>
