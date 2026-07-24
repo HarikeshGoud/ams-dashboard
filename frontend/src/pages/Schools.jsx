@@ -15,6 +15,7 @@ export default function Schools() {
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState(null)
+  const [existingSubCount, setExistingSubCount] = useState(0)
   const [form, setForm] = useState({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc', sub_locations: '' })
   const [toast, setToast] = useState('')
   const [stampFile, setStampFile] = useState(null)
@@ -48,11 +49,11 @@ export default function Schools() {
 
   function openAdd() {
     setForm({ name: '', client_id: '', model: 'school', mandal: '', capacity: '', plant_model: '', unit_number: '', amc_status: 'amc', sub_locations: '' })
-    setEditId(null); setStampFile(null); setStampPreview(null); setExistingStamp(null); setModal(true)
+    setEditId(null); setExistingSubCount(0); setStampFile(null); setStampPreview(null); setExistingStamp(null); setModal(true)
   }
   function openEdit(s) {
-    setForm({ name: s.name, client_id: s.client_id || '', model: s.model || 'school', mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '', unit_number: s.unit_number || '', amc_status: s.amc_status || 'amc', sub_locations: (s.sub_locations || []).join('\n') })
-    setEditId(s.id); setStampFile(null); setStampPreview(null); setExistingStamp(null)
+    setForm({ name: s.name, client_id: s.client_id || '', model: s.model || 'school', mandal: s.mandal_name || '', capacity: s.capacity || '', plant_model: s.plant_model || '', unit_number: s.unit_number || '', amc_status: s.amc_status || 'amc', sub_locations: '' })
+    setEditId(s.id); setExistingSubCount(s.sub_location_count || 0); setStampFile(null); setStampPreview(null); setExistingStamp(null)
     // Check if stamp already uploaded
     api.get(`/api/schools/${s.id}/stamp`).then(r => {
       if (r.data.ok) setExistingStamp(r.data.stamp_url)
@@ -214,7 +215,12 @@ export default function Schools() {
                 <div className="form-group form-full"><label>Plant Model</label><input value={form.plant_model} onChange={f('plant_model')} /></div>
                 {form.model === 'hospital' && (
                   <div className="form-group form-full">
-                    <label>Sub-locations (optional, one per line)</label>
+                    <label>{existingSubCount > 0 ? 'Add More Sub-locations (optional, one per line)' : 'Sub-locations (optional, one per line)'}</label>
+                    {existingSubCount > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
+                        This hospital already has {existingSubCount} sub-location{existingSubCount > 1 ? 's' : ''} on file (view them from its card on the Unit page). Names typed below are only ADDED — existing sub-locations and their visit history are untouched.
+                      </div>
+                    )}
                     <textarea rows={4} value={form.sub_locations} onChange={f('sub_locations')}
                       placeholder={'e.g.\nEmergency Block\nOP Building — Ground Floor\nIP Building — 1st Floor'} />
                   </div>

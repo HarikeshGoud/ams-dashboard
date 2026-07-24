@@ -122,6 +122,17 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
     if not all_schools:
         return [], [], True, 0
 
+    # A hospital with sub-locations is just an organizational container once it has children -
+    # technicians visit and report on each sub-location individually, not the hospital itself.
+    parents_with_children = {
+        pid for (pid,) in db.query(School.parent_school_id)
+            .filter(School.parent_school_id.isnot(None), School.is_active == True)
+            .distinct().all()
+    }
+    all_schools = [s for s in all_schools if s.id not in parents_with_children]
+    if not all_schools:
+        return [], [], True, 0
+
     # Schools that have a pending or in_progress task for this technician count as
     # "in rotation this cycle" — they should not be re-assigned until the cycle resets.
     pending_school_ids = {

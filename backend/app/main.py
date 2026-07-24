@@ -85,7 +85,8 @@ def _auto_generate_daily_tasks():
 async def lifespan(app: FastAPI):
     # Create all tables
     Base.metadata.create_all(bind=engine)
-    _auto_generate_daily_tasks()
+    if os.environ.get("SKIP_AUTO_TASKS") != "1":
+        _auto_generate_daily_tasks()
     yield
 
 

@@ -21,7 +21,8 @@ class School(Base):
     capacity          = Column(String(50), nullable=True)
     plant_model       = Column(String(100), nullable=True)
     plant_condition   = Column(String(20), default="working")  # working / not_working
-    sub_locations     = Column(Text, nullable=True)  # JSON list of strings, e.g. hospital wards/blocks
+    sub_locations     = Column(Text, nullable=True)  # deprecated: JSON list of strings, replaced by parent_school_id children
+    parent_school_id  = Column(Integer, ForeignKey("schools.id"), nullable=True)  # set on a sub-location row, pointing at its parent hospital
     total_purifiers   = Column(Integer, default=1)
     working_purifiers = Column(Integer, default=1)
     amc_status        = Column(String(20), default="active")
@@ -36,3 +37,4 @@ class School(Base):
     technician = relationship("Employee", foreign_keys=[technician_id])
     visits     = relationship("Visit", back_populates="school")
     complaints = relationship("Complaint", back_populates="school")
+    parent           = relationship("School", remote_side=[id], backref="sub_location_rows", foreign_keys=[parent_school_id])

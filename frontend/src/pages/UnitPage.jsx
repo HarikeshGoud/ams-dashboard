@@ -127,6 +127,9 @@ function SiteModal({ site, onClose }) {
   const [loading, setLoading]   = useState(true)
   const [activeYear, setYear]   = useState('all')
   const [selected, setSelected] = useState(new Set())
+  const [children, setChildren]         = useState([])
+  const [childrenLoading, setChildrenLoading] = useState(true)
+  const [viewingChild, setViewingChild] = useState(null)
 
   useEffect(() => {
     setLoading(true)
@@ -134,6 +137,16 @@ function SiteModal({ site, onClose }) {
       setReports(r.data?.reports || [])
     }).catch(() => setReports([])).finally(() => setLoading(false))
   }, [site.id])
+
+  // Sub-locations — real child sites technicians visit and report on individually
+  useEffect(() => {
+    setChildrenLoading(true)
+    api.get(`/api/schools/?parent_id=${site.id}`).then(r => {
+      setChildren(r.data?.items || [])
+    }).catch(() => setChildren([])).finally(() => setChildrenLoading(false))
+  }, [site.id])
+
+  const hasChildren = children.length > 0
 
   // derive years present in data
   const years = [...new Set(reports.map(r => r.date?.split('-')[0]).filter(Boolean))].sort((a,b) => b-a)
@@ -244,23 +257,60 @@ function SiteModal({ site, onClose }) {
           ))}
         </div>
 
-        {/* Sub-locations — hospitals with multiple wards/blocks */}
-        {site.sub_locations?.length > 0 && (
-          <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 6 }}>
-              SUB-LOCATIONS ({site.sub_locations.length})
+        {/* Sub-locations — hospitals with multiple wards/blocks, each visited & reported on independently */}
+        {childrenLoading ? (
+          <div style={{ padding: '14px 20px', color: 'var(--muted)', fontSize: 12, flexShrink: 0 }}>Loading sub-locations...</div>
+        ) : hasChildren ? (
+          <div style={{ padding: '14px 20px', flexShrink: 0, overflowY: 'auto' }}>
+            <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 8 }}>
+              SUB-LOCATIONS ({children.length}) — tap View to see that location's own visit &amp; report history
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {site.sub_locations.map((loc, i) => (
-                <span key={i} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 9px', fontSize: 12 }}>
-                  {loc}
-                </span>
-              ))}
+            <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface2)' }}>
+                    {['#', 'Site Name', 'Technician', 'Condition', 'Last Visit', 'View'].map(h => (
+                      <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {children.map((c, i) => (
+                    <tr key={c.id}
+                      style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                      onClick={() => setViewingChild(c)}
+                    >
+                      <td style={{ padding: '9px 12px', color: 'var(--muted)', fontSize: 12 }}>{i + 1}</td>
+                      <td style={{ padding: '9px 12px', fontWeight: 600 }}>{c.name}</td>
+                      <td style={{ padding: '9px 12px', color: 'var(--muted)' }}>{c.technician_name || '—'}</td>
+                      <td style={{ padding: '9px 12px' }}>
+                        <span style={{ background: condColor(c.plant_condition), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{condLabel(c.plant_condition)}</span>
+                      </td>
+                      <td style={{ padding: '9px 12px', color: 'var(--muted)', fontSize: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{c.last_visit_date || 'Never'}</span>
+                          {isOverdue(c.last_visit_date) && (
+                            <span style={{ background: '#dc3545', color: '#fff', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                              ⚠ Overdue
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ padding: '9px 12px' }}>
+                        <button onClick={e => { e.stopPropagation(); setViewingChild(c) }} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* Year / period tabs */}
+        {/* Year / period tabs + report list — only for leaf sites (no sub-locations of their own) */}
+        {!hasChildren && (
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
           {[
             { key: 'month', label: `This Month (${MONTH_NAMES[now.getMonth()]} ${thisYearStr})` },
@@ -281,8 +331,10 @@ function SiteModal({ site, onClose }) {
             </button>
           ))}
         </div>
+        )}
 
         {/* Report list */}
+        {!hasChildren && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
           {loading ? (
             <div style={{ color: 'var(--muted)', padding: 40, textAlign: 'center' }}>Loading reports...</div>
@@ -379,7 +431,10 @@ function SiteModal({ site, onClose }) {
             ))
           )}
         </div>
+        )}
       </div>
+
+      {viewingChild && <SiteModal site={viewingChild} onClose={() => setViewingChild(null)} />}
     </div>
   )
 }

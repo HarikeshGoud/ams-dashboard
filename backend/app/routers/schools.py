@@ -1,6 +1,7 @@
 import os, shutil, json
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional, List
 from ..database import get_db
@@ -25,14 +26,13 @@ class SchoolCreate(BaseModel):
     amc_status: Optional[str] = "amc"
     sub_locations: Optional[List[str]] = None
 
-def _fmt(s: School):
+def _clean_sub_location_names(items: Optional[List[str]]) -> List[str]:
+    if not items:
+        return []
+    return [s.strip() for s in items if s and s.strip()]
+
+def _fmt(s: School, sub_location_count: int = None):
     tech_obj = s.technician if s.technician_id else None
-    sub_locations = None
-    if s.sub_locations:
-        try:
-            sub_locations = json.loads(s.sub_locations)
-        except (ValueError, TypeError):
-            sub_locations = None
     return {
         "id": s.id, "name": s.name, "mandal_id": s.mandal_id,
         "mandal_name": s.mandal.name if s.mandal else None,
@@ -43,7 +43,8 @@ def _fmt(s: School):
         "model": s.model, "capacity": s.capacity, "plant_model": s.plant_model,
         "unit_number": s.unit_number,
         "plant_condition": s.plant_condition,
-        "sub_locations": sub_locations,
+        "parent_school_id": s.parent_school_id,
+        "sub_location_count": sub_location_count,
         "amc_status": s.amc_status, "last_visit_date": s.last_visit_date.isoformat() if s.last_visit_date else None,
         "is_active": s.is_active
     }
@@ -59,6 +60,7 @@ def list_schools(
     unit_number: Optional[str] = None,
     segment: Optional[str] = None,
     contract_type: Optional[str] = None,
+    parent_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
@@ -67,6 +69,12 @@ def list_schools(
         joinedload(School.client),
         joinedload(School.technician),
     ).filter(School.is_active == True)
+    if parent_id:
+        # Sub-locations of one hospital — ignore other filters, they don't apply at this level.
+        q = q.filter(School.parent_school_id == parent_id)
+    else:
+        # Top-level sites only — sub-location rows are hidden here, they show when you drill into their parent.
+        q = q.filter(School.parent_school_id.is_(None))
     if search:
         q = q.filter(School.name.ilike(f"%{search}%"))
     if mandal_id:
@@ -83,13 +91,16 @@ def list_schools(
         q = q.filter(School.amc_status == contract_type)
     total = q.count()
     schools = q.offset((page - 1) * limit).limit(limit).all()
-    return {"total": total, "page": page, "limit": limit, "items": [_fmt(s) for s in schools]}
 
-def _clean_sub_locations(items: Optional[List[str]]) -> Optional[str]:
-    if not items:
-        return None
-    cleaned = [s.strip() for s in items if s and s.strip()]
-    return json.dumps(cleaned) if cleaned else None
+    sub_counts = {}
+    if not parent_id and schools:
+        rows = db.query(School.parent_school_id, func.count(School.id)).filter(
+            School.parent_school_id.in_([s.id for s in schools]), School.is_active == True
+        ).group_by(School.parent_school_id).all()
+        sub_counts = {pid: cnt for pid, cnt in rows}
+
+    return {"total": total, "page": page, "limit": limit,
+            "items": [_fmt(s, sub_location_count=sub_counts.get(s.id)) for s in schools]}
 
 @router.post("/")
 def create_school(data: SchoolCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -97,9 +108,14 @@ def create_school(data: SchoolCreate, db: Session = Depends(get_db), _=Depends(g
     s = School(name=data.name, client_id=data.client_id, model=data.model,
                mandal_id=mandal.id if mandal else None,
                capacity=data.capacity, plant_model=data.plant_model,
-               unit_number=data.unit_number, amc_status=data.amc_status or "amc",
-               sub_locations=_clean_sub_locations(data.sub_locations))
+               unit_number=data.unit_number, amc_status=data.amc_status or "amc")
     db.add(s); db.commit(); db.refresh(s)
+
+    for loc_name in _clean_sub_location_names(data.sub_locations):
+        db.add(School(name=loc_name, parent_school_id=s.id, client_id=s.client_id, model=s.model,
+                       mandal_id=s.mandal_id, unit_number=s.unit_number, amc_status=s.amc_status,
+                       technician_id=s.technician_id))
+    db.commit()
     return _fmt(s)
 
 @router.put("/{sid}")
@@ -111,7 +127,17 @@ def update_school(sid: int, data: SchoolCreate, db: Session = Depends(get_db), _
     s.mandal_id = mandal.id if mandal else s.mandal_id
     s.capacity = data.capacity; s.plant_model = data.plant_model
     s.unit_number = data.unit_number; s.amc_status = data.amc_status or s.amc_status
-    s.sub_locations = _clean_sub_locations(data.sub_locations)
+    db.commit()
+
+    # Sub-locations textarea only ever ADDS new ones here — existing children keep their own
+    # visit history/condition/technician untouched, so editing the parent can't silently wipe them.
+    existing_names = {c.name.strip().lower() for c in
+                       db.query(School).filter(School.parent_school_id == sid, School.is_active == True).all()}
+    for loc_name in _clean_sub_location_names(data.sub_locations):
+        if loc_name.strip().lower() not in existing_names:
+            db.add(School(name=loc_name, parent_school_id=s.id, client_id=s.client_id, model=s.model,
+                           mandal_id=s.mandal_id, unit_number=s.unit_number, amc_status=s.amc_status,
+                           technician_id=s.technician_id))
     db.commit(); db.refresh(s)
     return _fmt(s)
 
