@@ -9,6 +9,9 @@ export default function DeskTravel() {
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterEmp, setFilterEmp] = useState('')
+  const [mandals, setMandals] = useState([])
+  const [filterMandal, setFilterMandal] = useState('')
+  const [hideTravel, setHideTravel] = useState(false)
   const [fuelPrice, setFuelPrice] = useState(105)
   const [fuelInput, setFuelInput] = useState('')
   const [ratePerKm, setRatePerKm] = useState(0)
@@ -20,21 +23,40 @@ export default function DeskTravel() {
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   function load() {
+    const params = {}
+    if (filterEmp) params.employee_id = filterEmp
+    if (filterMandal) params.mandal_id = filterMandal
     Promise.all([
-      api.get('/api/travel/', { params: filterEmp ? { employee_id: filterEmp } : {} }),
+      api.get('/api/travel/', { params }),
       api.get('/api/employees/'),
       api.get('/api/travel/fuel-settings'),
-    ]).then(([t, e, f]) => {
+      api.get('/api/mandals/'),
+    ]).then(([t, e, f, m]) => {
       setTrips(t.data)
       setEmployees(e.data.filter(emp => emp.role === 'technician'))
       setFuelPrice(f.data.fuel_price)
       setFuelInput(String(f.data.fuel_price))
       setRatePerKm(f.data.rate_per_km || 0)
       setRateInput(String(f.data.rate_per_km || 0))
+      setHideTravel(!!f.data.hide_travel)
+      setMandals(m.data || [])
       setLoading(false)
     }).catch(() => setLoading(false))
   }
-  useEffect(() => { load() }, [filterEmp])
+  useEffect(() => { load() }, [filterEmp, filterMandal])
+
+  async function toggleHideTravel(next) {
+    await api.post('/api/travel/fuel-settings', { fuel_price: fuelPrice, rate_per_km: ratePerKm, hide_travel: next })
+    setHideTravel(next)
+    showToast(next ? '🚫 Travel page hidden from all technicians' : '✅ Travel page visible to technicians')
+  }
+
+  async function toggleMandalEligible(mandalId, eligible) {
+    await api.patch(`/api/mandals/${mandalId}`, { travel_eligible: eligible })
+    setMandals(ms => ms.map(m => m.id === mandalId ? { ...m, travel_eligible: eligible } : m))
+    showToast(eligible ? '✅ Mandal is eligible for travel allowance'
+                       : '🚫 Mandal marked NOT eligible — its technicians lose Travel')
+  }
 
   async function saveSettings() {
     if (!fuelInput || isNaN(fuelInput)) return
@@ -95,6 +117,19 @@ export default function DeskTravel() {
         <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveSettings} disabled={fuelSaving}>
           {fuelSaving ? 'Saving…' : '💾 Save Settings'}
         </button>
+
+        {/* Master switch — hide Travel from every technician */}
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>🚫 Hide Travel from all technicians</div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>When ON, no technician sees the Travel page or can submit trips.</div>
+          </div>
+          <button onClick={() => toggleHideTravel(!hideTravel)} style={{
+            padding: '6px 14px', borderRadius: 999, border: `1.5px solid ${hideTravel ? 'var(--red)' : 'var(--border)'}`,
+            background: hideTravel ? 'rgba(244,63,94,.15)' : 'var(--surface2)', color: hideTravel ? 'var(--red)' : 'var(--muted)',
+            fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+          }}>{hideTravel ? '● Hidden — tap to show' : '○ Visible — tap to hide'}</button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -111,12 +146,38 @@ export default function DeskTravel() {
         ))}
       </div>
 
-      {/* Filter */}
-      <div style={{ marginBottom: 12 }}>
+      {/* Filters: technician + mandal */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <SearchableSelect value={filterEmp} onChange={setFilterEmp} placeholder="All Technicians"
           options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
-          style={{ minWidth: 200, display: 'inline-block' }} />
+          style={{ minWidth: 200 }} />
+        <SearchableSelect value={filterMandal} onChange={setFilterMandal} placeholder="All Mandals"
+          options={mandals.map(m => ({ value: String(m.id), label: m.travel_eligible === false ? `${m.name} — no allowance` : m.name }))}
+          style={{ minWidth: 200 }} />
       </div>
+
+      {/* Per-mandal eligibility — shown when a mandal is selected */}
+      {filterMandal && (() => {
+        const m = mandals.find(x => String(x.id) === String(filterMandal))
+        if (!m) return null
+        const eligible = m.travel_eligible !== false
+        return (
+          <div style={{ background: 'var(--surface)', border: `1px solid ${eligible ? 'var(--border)' : 'var(--red)'}`, borderRadius: 10, padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>📍 {m.name} — travel allowance</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                {eligible ? 'Technicians here are eligible and see the Travel page.'
+                          : 'NOT eligible — no allowance is calculated, and these technicians don’t see the Travel page.'}
+              </div>
+            </div>
+            <button onClick={() => toggleMandalEligible(m.id, !eligible)} style={{
+              padding: '6px 14px', borderRadius: 999, border: `1.5px solid ${eligible ? 'var(--green)' : 'var(--red)'}`,
+              background: eligible ? 'rgba(52,211,153,.15)' : 'rgba(244,63,94,.15)', color: eligible ? 'var(--green)' : 'var(--red)',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+            }}>{eligible ? '✅ Eligible — tap to disable' : '🚫 Not eligible — tap to enable'}</button>
+          </div>
+        )
+      })()}
 
       {trips.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>No trips logged yet.</div>

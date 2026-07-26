@@ -7,11 +7,24 @@ from datetime import date, datetime
 from ..database import get_db
 from ..models.travel import TravelTrip, FuelSettings
 from ..models.employee import Employee
+from ..models.mandal import Mandal
 from ..dependencies import get_current_user, require_admin_or_deskwork
 
 router = APIRouter(prefix="/api/travel", tags=["travel"])
 
 EXTRA_AMOUNT = 50  # fixed extra Rs added to every trip
+
+def _travel_enabled_for_employee(db, emp) -> bool:
+    """False when travel is globally hidden, or the employee's mandal is marked
+    not eligible for travel allowance."""
+    settings = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
+    if settings and settings.hide_travel:
+        return False
+    if emp and emp.mandal_id:
+        m = db.query(Mandal).filter(Mandal.id == emp.mandal_id).first()
+        if m and m.travel_eligible is False:
+            return False
+    return True
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -98,10 +111,11 @@ class MileageUpdate(BaseModel):
 def get_fuel_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
     row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
     if not row:
-        return {"fuel_price": 105.0, "rate_per_km": 0.0, "updated_at": None}
+        return {"fuel_price": 105.0, "rate_per_km": 0.0, "hide_travel": False, "updated_at": None}
     return {
         "fuel_price": row.fuel_price,
         "rate_per_km": row.rate_per_km or 0.0,
+        "hide_travel": bool(row.hide_travel),
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
 
@@ -109,6 +123,7 @@ def get_fuel_settings(db: Session = Depends(get_db), _=Depends(get_current_user)
 class FuelSettingsUpdate(BaseModel):
     fuel_price: float
     rate_per_km: Optional[float] = 0.0
+    hide_travel: Optional[bool] = None   # master switch — hide Travel from all technicians
 
 
 @router.post("/fuel-settings")
@@ -119,10 +134,13 @@ def set_fuel_settings(data: FuelSettingsUpdate, db: Session = Depends(get_db), u
     if row:
         row.fuel_price = new_fuel
         row.rate_per_km = new_rate
+        if data.hide_travel is not None:
+            row.hide_travel = data.hide_travel
         row.set_by = user.id
         row.updated_at = datetime.utcnow()
     else:
-        db.add(FuelSettings(fuel_price=new_fuel, rate_per_km=new_rate, set_by=user.id))
+        db.add(FuelSettings(fuel_price=new_fuel, rate_per_km=new_rate,
+                            hide_travel=bool(data.hide_travel), set_by=user.id))
     db.commit()
 
     # Recalculate all pending auto trips with the new rate
@@ -144,7 +162,20 @@ def set_fuel_settings(data: FuelSettingsUpdate, db: Session = Depends(get_db), u
         t.calculated_amount = new_amount
     db.commit()
 
-    return {"ok": True, "fuel_price": new_fuel, "rate_per_km": new_rate, "recalculated": len(pending_trips)}
+    hide_now = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first().hide_travel
+    return {"ok": True, "fuel_price": new_fuel, "rate_per_km": new_rate,
+            "hide_travel": bool(hide_now), "recalculated": len(pending_trips)}
+
+
+@router.get("/my-access")
+def travel_access(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Whether the current user should see the Travel page. Admin/deskwork always
+    manage it; technicians only when travel isn't globally hidden AND their mandal
+    is eligible for travel allowance."""
+    if user.role in ("admin", "deskwork"):
+        return {"can_access": True}
+    emp = db.query(Employee).filter(Employee.id == user.id).first()
+    return {"can_access": _travel_enabled_for_employee(db, emp)}
 
 
 # ── Mileage / home location ───────────────────────────────────────────────────
@@ -230,6 +261,10 @@ async def auto_trip_from_reports(
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
+
+    # Skip auto travel when this technician's area isn't eligible (or globally hidden)
+    if not _travel_enabled_for_employee(db, emp):
+        return {"ok": False, "message": "Travel allowance is disabled for this technician's area"}
 
     # Get ALL today's reports sorted by submission time (GPS optional)
     reports = (
@@ -355,23 +390,33 @@ async def auto_trip_from_reports(
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 @router.get("/")
-def list_trips(employee_id: int = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def list_trips(employee_id: int = None, mandal_id: int = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
     q = db.query(TravelTrip)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(TravelTrip.employee_id == user.id)
-    elif employee_id:
-        q = q.filter(TravelTrip.employee_id == employee_id)
+    else:
+        if employee_id:
+            q = q.filter(TravelTrip.employee_id == employee_id)
+        if mandal_id:
+            # Trips of technicians allotted to the selected mandal
+            emp_ids = [e.id for e in db.query(Employee).filter(Employee.mandal_id == mandal_id).all()]
+            q = q.filter(TravelTrip.employee_id.in_(emp_ids or [-1]))
     return [_fmt(t) for t in q.order_by(TravelTrip.trip_date.desc()).all()]
 
 
 @router.post("/")
 async def create_trip(data: TripCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    emp = db.query(Employee).filter(Employee.id == user.id).first()
+
+    # Block if travel allowance is disabled for this technician's area (or globally hidden)
+    if not _travel_enabled_for_employee(db, emp):
+        raise HTTPException(403, "Travel allowance is not enabled for your area.")
+
     # Get fuel price
     fuel_row = db.query(FuelSettings).order_by(FuelSettings.id.desc()).first()
     fuel_price = fuel_row.fuel_price if fuel_row else 105.0
 
     # Save mileage to employee profile
-    emp = db.query(Employee).filter(Employee.id == user.id).first()
     emp.bike_mileage = data.mileage
     if data.from_location:
         emp.home_location = data.from_location
