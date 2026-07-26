@@ -390,7 +390,8 @@ async def auto_trip_from_reports(
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 @router.get("/")
-def list_trips(employee_id: int = None, mandal_id: int = None, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def list_trips(employee_id: int = None, mandal_id: int = None, state: str = None,
+               db: Session = Depends(get_db), user=Depends(get_current_user)):
     q = db.query(TravelTrip)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(TravelTrip.employee_id == user.id)
@@ -400,6 +401,11 @@ def list_trips(employee_id: int = None, mandal_id: int = None, db: Session = Dep
         if mandal_id:
             # Trips of technicians allotted to the selected mandal
             emp_ids = [e.id for e in db.query(Employee).filter(Employee.mandal_id == mandal_id).all()]
+            q = q.filter(TravelTrip.employee_id.in_(emp_ids or [-1]))
+        if state:
+            # Trips of technicians whose mandal is in the selected state
+            mandal_ids = [m.id for m in db.query(Mandal).filter(Mandal.state == state).all()]
+            emp_ids = [e.id for e in db.query(Employee).filter(Employee.mandal_id.in_(mandal_ids or [-1])).all()]
             q = q.filter(TravelTrip.employee_id.in_(emp_ids or [-1]))
     return [_fmt(t) for t in q.order_by(TravelTrip.trip_date.desc()).all()]
 
