@@ -43,11 +43,8 @@ def monthly_summary(month: int, year: int, db: Session = Depends(get_db), user=D
         Employee.role == "technician", Employee.is_active == True
     ).all()
 
-    # Mon-Sat = 6-day working week for field workers
-    working_days = sum(
-        1 for d in range(1, calendar.monthrange(year, month)[1] + 1)
-        if date(year, month, d).weekday() < 6
-    )
+    # Full calendar month — the business counts every day as a working day
+    working_days = calendar.monthrange(year, month)[1]
 
     result = []
     for emp in technicians:
@@ -95,10 +92,8 @@ def my_monthly_summary(month: int, year: int, db: Session = Depends(get_db), use
         extract("year", Attendance.date) == year
     ).all()
 
-    working_days = sum(
-        1 for d in range(1, calendar.monthrange(year, month)[1] + 1)
-        if date(year, month, d).weekday() < 6
-    )
+    # Full calendar month — the business counts every day as a working day
+    working_days = calendar.monthrange(year, month)[1]
     present  = sum(1 for r in records if r.status == "present")
     half_day = sum(1 for r in records if r.status == "half_day")
     absent   = sum(1 for r in records if r.status == "absent")
