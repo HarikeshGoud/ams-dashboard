@@ -1,6 +1,7 @@
-import os, base64, io
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+import os, base64, io, re, zipfile
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
@@ -560,13 +561,130 @@ def create_service_report(request: Request, req: CreateServiceReport, db: Sessio
         raise HTTPException(500, f"Service report failed: {str(e)}")
 
 
-@router.get("/")
-def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    base_url = str(request.base_url).rstrip("/")
+# ── Filtering ────────────────────────────────────────────────────────────────
+
+SEGMENT_LABELS = {
+    "school": "Schools", "hospital": "Hospitals", "temple": "Temples",
+    "hostel": "Hostels", "park": "Parks", "village": "Villages", "other": "Other Sites",
+}
+
+def _parse_date(s):
+    try:
+        return date.fromisoformat(s) if s else None
+    except ValueError:
+        raise HTTPException(400, f"Invalid date '{s}' — use YYYY-MM-DD")
+
+
+def _filtered_query(db, user, unit=None, segment=None, mandal_id=None,
+                    unit_type=None, employee_id=None, d_from=None, d_to=None):
+    """Service reports narrowed by the filter bar. Unit/segment/mandal live on the
+    linked school, so reports with no school link can't match those three."""
+    from ..models.school import School
+
     q = db.query(ServiceReport)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(ServiceReport.employee_id == user.id)
-    reports = q.order_by(ServiceReport.created_at.desc()).limit(200).all()
+    if employee_id:
+        q = q.filter(ServiceReport.employee_id == employee_id)
+    if unit_type:
+        q = q.filter(func.lower(ServiceReport.unit_type) == unit_type.lower())
+    if d_from:
+        q = q.filter(ServiceReport.report_date >= d_from)
+    if d_to:
+        q = q.filter(ServiceReport.report_date <= d_to)
+
+    if unit or segment or mandal_id:
+        sq = db.query(School.id)
+        if unit:
+            sq = sq.filter(School.unit_number == str(unit))
+        if segment:
+            sq = sq.filter(School.model == segment)
+        if mandal_id:
+            sq = sq.filter(School.mandal_id == mandal_id)
+        school_ids = [i for (i,) in sq.all()]
+        q = q.filter(ServiceReport.school_id.in_(school_ids or [-1]))
+
+    return q.order_by(ServiceReport.report_date.desc(), ServiceReport.created_at.desc())
+
+
+def _pretty_date(d):
+    return f"{d.day} {d.strftime('%B')} {d.year}"
+
+
+def _filter_label(db, unit=None, segment=None, mandal_id=None, unit_type=None,
+                  employee_id=None, d_from=None, d_to=None, defaulted_today=False):
+    """Human-readable name for the current selection — used as the download folder,
+    e.g. 'Nalgonda Schools 1 January 2026 to 4 January 2026 Service Reports' or
+    '29 July 2026 Service Reports' when nothing is selected."""
+    from ..models.mandal import Mandal
+    parts = []
+    if mandal_id:
+        m = db.query(Mandal).filter(Mandal.id == mandal_id).first()
+        if m: parts.append(m.name.title())
+    if unit:
+        parts.append(f"Unit {unit}")
+    if segment:
+        parts.append(SEGMENT_LABELS.get(segment, segment.title()))
+    if unit_type:
+        parts.append(unit_type.upper() if unit_type.lower() == "amc" else unit_type.title())
+    if employee_id:
+        e = db.query(Employee).filter(Employee.id == employee_id).first()
+        if e: parts.append(e.name.title())
+
+    if d_from and d_to and d_from == d_to:
+        parts.append(_pretty_date(d_from))
+    elif d_from and d_to:
+        parts.append(f"{_pretty_date(d_from)} to {_pretty_date(d_to)}")
+    elif d_from:
+        parts.append(f"From {_pretty_date(d_from)}")
+    elif d_to:
+        parts.append(f"Up to {_pretty_date(d_to)}")
+    elif defaulted_today:
+        parts.append(_pretty_date(today_ist()))
+
+    if not parts:
+        parts.append("All")
+    return " ".join(parts) + " Service Reports"
+
+
+def _safe_name(s, fallback="report"):
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", str(s or "")).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned[:120] or fallback
+
+
+def _resolve_filters(unit, segment, mandal_id, unit_type, employee_id, single_date, date_from, date_to):
+    """Returns (d_from, d_to, defaulted_today). With nothing selected at all we
+    show TODAY only — that's the page's default view."""
+    single = _parse_date(single_date)
+    d_from = single or _parse_date(date_from)
+    d_to   = single or _parse_date(date_to)
+    nothing_selected = not any([unit, segment, mandal_id, unit_type, employee_id, d_from, d_to])
+    if nothing_selected:
+        t = today_ist()
+        return t, t, True
+    return d_from, d_to, False
+
+
+@router.get("/")
+def list_reports(
+    request: Request,
+    unit: Optional[str] = None,
+    segment: Optional[str] = None,
+    mandal_id: Optional[int] = None,
+    unit_type: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    single_date: Optional[str] = Query(None, alias="date"),   # single day (overrides from/to)
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    base_url = str(request.base_url).rstrip("/")
+    d_from, d_to, defaulted = _resolve_filters(unit, segment, mandal_id, unit_type,
+                                               employee_id, single_date, date_from, date_to)
+    reports = _filtered_query(db, user, unit, segment, mandal_id, unit_type,
+                              employee_id, d_from, d_to).limit(500).all()
 
     # Self-heal: the pdf_url below is a direct static link (so a plain <a href>
     # download works without needing an auth header) — regenerate on the spot
@@ -585,7 +703,81 @@ def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(g
     if dirty:
         db.commit()
 
-    return [_fmt(r, base_url=base_url) for r in reports]
+    return {
+        "showing_today_only": defaulted,
+        "label": _filter_label(db, unit, segment, mandal_id, unit_type, employee_id,
+                               d_from, d_to, defaulted),
+        "count": len(reports),
+        "items": [_fmt(r, base_url=base_url) for r in reports],
+    }
+
+
+@router.get("/download-all")
+def download_all(
+    unit: Optional[str] = None,
+    segment: Optional[str] = None,
+    mandal_id: Optional[int] = None,
+    unit_type: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    single_date: Optional[str] = Query(None, alias="date"),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Every report matching the current filters, zipped. Files sit inside a folder
+    named after the selected conditions, so unzipping yields one tidy folder."""
+    d_from, d_to, defaulted = _resolve_filters(unit, segment, mandal_id, unit_type,
+                                               employee_id, single_date, date_from, date_to)
+    reports = _filtered_query(db, user, unit, segment, mandal_id, unit_type,
+                              employee_id, d_from, d_to).all()
+    if not reports:
+        raise HTTPException(404, "No service reports match the selected filters.")
+
+    folder = _safe_name(_filter_label(db, unit, segment, mandal_id, unit_type,
+                                      employee_id, d_from, d_to, defaulted))
+
+    buf = io.BytesIO()
+    added = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        used = set()
+        for r in reports:
+            path = os.path.join(UPLOADS_DIR, r.pdf_path) if r.pdf_path else None
+            if not path or not os.path.exists(path):
+                try:
+                    rel = _generate_pdf(r, db)
+                    if rel:
+                        r.pdf_path = rel
+                        db.commit()
+                        path = os.path.join(UPLOADS_DIR, rel)
+                except Exception as e:
+                    print(f"ZIP: could not build PDF for report {r.id}: {e}")
+                    continue
+            if not path or not os.path.exists(path):
+                continue
+
+            site = _safe_name(_site_name(r) or "Unknown Site")
+            name = f"{site} - {r.report_date} - #{r.serial_no or r.id}.pdf"
+            name = _safe_name(name, f"report_{r.id}.pdf")
+            if name in used:                      # two visits, same site same day
+                name = f"{name[:-4]} ({r.id}).pdf"
+            used.add(name)
+            z.write(path, f"{folder}/{name}")
+            added += 1
+
+    if not added:
+        raise HTTPException(404, "Matching reports have no PDFs available to download.")
+
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{folder}.zip"',
+            "X-Report-Count": str(added),
+            "Access-Control-Expose-Headers": "Content-Disposition, X-Report-Count",
+        },
+    )
 
 
 @router.get("/{report_id}/pdf")
