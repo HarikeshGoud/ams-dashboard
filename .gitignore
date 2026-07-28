@@ -17,3 +17,6 @@ __pycache__/
 # ams.db
 __pycache__/
 backend/.env
+
+# Locally generated upload artifacts (PDFs, photos, signatures) — never commit
+backend/uploads/
