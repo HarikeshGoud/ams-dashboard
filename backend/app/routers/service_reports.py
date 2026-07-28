@@ -70,6 +70,7 @@ class CreateServiceReport(BaseModel):
     status:                   Optional[str]   = "PROBLEM RESOLVED"
     technician_signature_b64: Optional[str]   = None
     principal_signature_b64:  Optional[str]   = None
+    stamp_photo_b64:          Optional[str]   = None   # photo of stamp + signature + date
     principal_name:           Optional[str]   = None
 
 
@@ -169,22 +170,34 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
             field_report_verified = True
 
     # ── School stamp — only shown once the underlying proof has been verified ───
+    # Preferred source is the photo the technician took on site of the stamped,
+    # signed and dated document. Falls back to a stored per-school stamp image.
     stamp_img = None
     stamp_placeholder = "(no stamp on file)"
+
+    def _fit_stamp(path, w=48*mm, h=34*mm):
+        img = RLImage(path)
+        r = min(w / img.imageWidth, h / img.imageHeight)
+        img.drawWidth  = img.imageWidth  * r
+        img.drawHeight = img.imageHeight * r
+        return img
+
+    stamp_candidates = []
+    if report.stamp_photo:
+        stamp_candidates.append(os.path.join(UPLOADS_DIR, report.stamp_photo))
     if report.school_id:
-        for ext in ("png", "jpg", "jpeg"):
-            sp = os.path.join(UPLOADS_DIR, "stamps", f"{report.school_id}.{ext}")
-            if os.path.exists(sp):
-                stamp_placeholder = "(pending verification)"
-                if field_report_verified and _image_decodable(sp):
-                    try:
-                        img = RLImage(sp)
-                        r = min(30*mm / img.imageWidth, 15*mm / img.imageHeight)
-                        img.drawWidth  = img.imageWidth  * r
-                        img.drawHeight = img.imageHeight * r
-                        stamp_img = img
-                    except Exception:
-                        pass
+        stamp_candidates += [os.path.join(UPLOADS_DIR, "stamps", f"{report.school_id}.{ext}")
+                             for ext in ("png", "jpg", "jpeg")]
+
+    for sp in stamp_candidates:
+        if os.path.exists(sp):
+            stamp_placeholder = "(pending verification)"
+            if field_report_verified and _image_decodable(sp):
+                try:
+                    stamp_img = _fit_stamp(sp)
+                except Exception:
+                    stamp_img = None
+            if stamp_img or not field_report_verified:
                 break
 
     story = []
@@ -353,11 +366,11 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     ]
     cust_val_row = [
         Paragraph(f"{val(report.principal_name)}\n{val(report.customer_mobile)}", ps("cv2",9)),
-        sig_img(report.principal_signature, 55*mm, 20*mm),
+        sig_img(report.principal_signature, 66*mm, 32*mm),
         stamp_img if stamp_img else Paragraph(stamp_placeholder, ps("ns",8,color=BORDER)),
     ]
     sig_tbl = Table([cust_lbl_row, cust_val_row],
-                    colWidths=[PAGE_W*0.33, PAGE_W*0.37, PAGE_W*0.30])
+                    colWidths=[PAGE_W*0.30, PAGE_W*0.36, PAGE_W*0.34])
     sig_tbl.setStyle(TableStyle([
         ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
         ("BACKGROUND",(0,0),(-1,0), LGREY),
@@ -366,7 +379,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
         ("ROWBACKGROUNDS",(0,1),(-1,1),[WHITE]),
         ("VALIGN",(0,1),(-1,1),"MIDDLE"),
         ("ALIGN",(1,1),(2,1),"CENTER"),
-        ("MINROWHEIGHT",(0,1),(-1,1), 28*mm),
+        ("MINROWHEIGHT",(0,1),(-1,1), 38*mm),
     ]))
     story.append(sig_tbl)
 
@@ -397,15 +410,15 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     # ── Technician signature row ───────────────────────────────────────────────
     tech_sig_row = [[
         Paragraph("<b>SERVICE ENGINEER SIGNATURE:</b>", ps("tes",9,bold=True)),
-        sig_img(report.technician_signature, 60*mm, 18*mm),
+        sig_img(report.technician_signature, 80*mm, 30*mm),
     ]]
-    tech_sig_tbl = Table(tech_sig_row, colWidths=[PAGE_W*0.35, PAGE_W*0.65])
+    tech_sig_tbl = Table(tech_sig_row, colWidths=[PAGE_W*0.32, PAGE_W*0.68])
     tech_sig_tbl.setStyle(TableStyle([
         ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
         ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
         ("LEFTPADDING",(0,0),(-1,-1),6),
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("MINROWHEIGHT",(0,0),(-1,0), 22*mm),
+        ("MINROWHEIGHT",(0,0),(-1,0), 34*mm),
     ]))
     story.append(tech_sig_tbl)
 
@@ -539,6 +552,12 @@ def create_service_report(request: Request, req: CreateServiceReport, db: Sessio
             rel = f"signatures/{today.year}/{today.month}/principal_{report.id}.png"
             _save_b64_image(req.principal_signature_b64, os.path.join(UPLOADS_DIR, rel))
             report.principal_signature = rel
+
+        # Photo of the stamped/signed/dated document, taken on site by the technician.
+        if req.stamp_photo_b64:
+            rel = f"stamp_photos/{today.year}/{today.month}/stamp_{report.id}.jpg"
+            _save_b64_image(req.stamp_photo_b64, os.path.join(UPLOADS_DIR, rel))
+            report.stamp_photo = rel
 
         db.flush()
 
