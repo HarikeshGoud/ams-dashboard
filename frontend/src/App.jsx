@@ -34,6 +34,7 @@ import DeskTasks from './pages/deskwork/DeskTasks'
 import DeskAttendance from './pages/deskwork/DeskAttendance'
 import DeskStock from './pages/deskwork/DeskStock'
 import DeskTravel from './pages/deskwork/DeskTravel'
+import DeskEmployees from './pages/deskwork/DeskEmployees'
 import ServiceReports from './pages/ServiceReports'
 import LiveTracking from './pages/LiveTracking'
 import InstallPrompt from './components/InstallPrompt'
@@ -100,6 +101,7 @@ export default function App() {
       <Route path="/deskwork" element={<DeskworkGuard><DeskworkLayout /></DeskworkGuard>}>
         <Route index element={<DeskHome />} />
         <Route path="tasks"      element={<DeskTasks />} />
+        <Route path="employees"  element={<DeskEmployees />} />
         <Route path="attendance" element={<DeskAttendance />} />
         <Route path="stock"      element={<DeskStock />} />
         <Route path="travel"          element={<DeskTravel />} />
