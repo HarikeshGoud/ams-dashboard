@@ -60,11 +60,16 @@ def change_password(req: ChangePasswordRequest, db: Session = Depends(get_db), u
 
 @router.post("/admin-reset-password/{emp_id}")
 def admin_reset_password(emp_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if user.role != "admin":
-        raise HTTPException(403, "Admin only")
+    if user.role not in ("admin", "deskwork"):
+        raise HTTPException(403, "Not authorized")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
+    # Deskwork staff may reset a TECHNICIAN's password only. Resetting a deskwork or
+    # admin account would be account takeover: the default password is derived from
+    # the employee code, so whoever triggers the reset can then log in as them.
+    if user.role == "deskwork" and emp.role != "technician":
+        raise HTTPException(403, "You can only reset a technician's password")
     import re
     m = re.match(r'^([A-Za-z]+)(\d+)$', emp.employee_code or "")
     default_pw = (m.group(1) + "@" + m.group(2)) if m else (emp.employee_code + "@pass")

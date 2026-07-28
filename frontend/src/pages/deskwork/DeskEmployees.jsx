@@ -19,6 +19,7 @@ export default function DeskEmployees() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [created, setCreated] = useState(null)   // { name, employee_code, default_password }
+  const [reset, setReset] = useState(null)       // { name, code, password } after a password reset
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState('')
 
@@ -61,6 +62,19 @@ export default function DeskEmployees() {
     setSaving(false)
   }
 
+  // Reset a technician's login back to the default password (LETTERS@NUMBERS,
+  // e.g. EMP031 -> EMP@031). Server-side this is limited to technicians.
+  async function resetPassword(emp) {
+    const guess = (emp.employee_code || '').replace(/([A-Za-z]+)(\d+)/, '$1@$2')
+    if (!confirm(`Reset ${emp.name}'s password back to the default (${guess})?\n\nThey will need to use this password at their next login.`)) return
+    try {
+      const r = await api.post(`/api/auth/admin-reset-password/${emp.id}`)
+      setReset({ name: emp.name, code: emp.employee_code, password: guess, message: r.data?.message })
+    } catch (err) {
+      showToast('❌ ' + (err.response?.data?.detail || 'Reset failed'))
+    }
+  }
+
   const filtered = employees.filter(e => {
     const q = search.trim().toLowerCase()
     if (!q) return true
@@ -96,6 +110,22 @@ export default function DeskEmployees() {
         </div>
       )}
 
+      {/* Password-reset confirmation — shows the default password to pass on */}
+      {reset && (
+        <div className="alert alert-yellow" style={{ display: 'block', marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>🔑 Password reset for {reset.name}</div>
+          <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+            Login ID: <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>{reset.code}</b>{'  ·  '}
+            New password: <b style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>{reset.password}</b>
+            <br />
+            <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>
+              Tell them this password and ask them to change it after logging in.
+            </span>
+          </div>
+          <button className="btn btn-outline btn-sm" style={{ marginTop: 10 }} onClick={() => setReset(null)}>Got it</button>
+        </div>
+      )}
+
       <div className="filter-bar">
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="🔍 Search name, ID, mandal…" style={{ minWidth: 240 }} />
@@ -119,7 +149,13 @@ export default function DeskEmployees() {
                   <td>{e.designation || '—'}</td>
                   <td>{e.mandal_name || '—'}</td>
                   <td>{e.phone || '—'}</td>
-                  <td><button className="btn btn-outline btn-sm" onClick={() => openEdit(e)}>Edit</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="btn btn-outline btn-sm" onClick={() => openEdit(e)}>Edit</button>{' '}
+                    <button className="btn btn-outline btn-sm"
+                      style={{ color: 'var(--yellow)', borderColor: 'var(--yellow)' }}
+                      title="Reset this technician's password to the default"
+                      onClick={() => resetPassword(e)}>🔑 Reset</button>
+                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
