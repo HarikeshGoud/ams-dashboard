@@ -175,7 +175,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     stamp_img = None
     stamp_placeholder = "(no stamp on file)"
 
-    def _fit_stamp(path, w=48*mm, h=34*mm):
+    def _fit_stamp(path, w=46*mm, h=22*mm):
         img = RLImage(path)
         r = min(w / img.imageWidth, h / img.imageHeight)
         img.drawWidth  = img.imageWidth  * r
@@ -366,11 +366,11 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     ]
     cust_val_row = [
         Paragraph(f"{val(report.principal_name)}\n{val(report.customer_mobile)}", ps("cv2",9)),
-        sig_img(report.principal_signature, 66*mm, 32*mm),
+        sig_img(report.principal_signature, 55*mm, 20*mm),
         stamp_img if stamp_img else Paragraph(stamp_placeholder, ps("ns",8,color=BORDER)),
     ]
     sig_tbl = Table([cust_lbl_row, cust_val_row],
-                    colWidths=[PAGE_W*0.30, PAGE_W*0.36, PAGE_W*0.34])
+                    colWidths=[PAGE_W*0.33, PAGE_W*0.37, PAGE_W*0.30])
     sig_tbl.setStyle(TableStyle([
         ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
         ("BACKGROUND",(0,0),(-1,0), LGREY),
@@ -379,7 +379,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
         ("ROWBACKGROUNDS",(0,1),(-1,1),[WHITE]),
         ("VALIGN",(0,1),(-1,1),"MIDDLE"),
         ("ALIGN",(1,1),(2,1),"CENTER"),
-        ("MINROWHEIGHT",(0,1),(-1,1), 38*mm),
+        ("MINROWHEIGHT",(0,1),(-1,1), 28*mm),
     ]))
     story.append(sig_tbl)
 
@@ -410,15 +410,15 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     # ── Technician signature row ───────────────────────────────────────────────
     tech_sig_row = [[
         Paragraph("<b>SERVICE ENGINEER SIGNATURE:</b>", ps("tes",9,bold=True)),
-        sig_img(report.technician_signature, 80*mm, 30*mm),
+        sig_img(report.technician_signature, 60*mm, 18*mm),
     ]]
-    tech_sig_tbl = Table(tech_sig_row, colWidths=[PAGE_W*0.32, PAGE_W*0.68])
+    tech_sig_tbl = Table(tech_sig_row, colWidths=[PAGE_W*0.35, PAGE_W*0.65])
     tech_sig_tbl.setStyle(TableStyle([
         ("BOX",(0,0),(-1,-1),0.5,BORDER), ("INNERGRID",(0,0),(-1,-1),0.5,BORDER),
         ("TOPPADDING",(0,0),(-1,-1),5), ("BOTTOMPADDING",(0,0),(-1,-1),5),
         ("LEFTPADDING",(0,0),(-1,-1),6),
         ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("MINROWHEIGHT",(0,0),(-1,0), 34*mm),
+        ("MINROWHEIGHT",(0,0),(-1,0), 22*mm),
     ]))
     story.append(tech_sig_tbl)
 
