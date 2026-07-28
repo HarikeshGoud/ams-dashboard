@@ -35,6 +35,7 @@ import DeskAttendance from './pages/deskwork/DeskAttendance'
 import DeskStock from './pages/deskwork/DeskStock'
 import DeskTravel from './pages/deskwork/DeskTravel'
 import DeskEmployees from './pages/deskwork/DeskEmployees'
+import DataHealth from './pages/DataHealth'
 import ServiceReports from './pages/ServiceReports'
 import LiveTracking from './pages/LiveTracking'
 import InstallPrompt from './components/InstallPrompt'
@@ -110,6 +111,7 @@ export default function App() {
         <Route path="schools"         element={<Schools />} />
         <Route path="clients"         element={<Clients />} />
         <Route path="unit/:unit"      element={<UnitPage />} />
+        <Route path="data-health"     element={<DataHealth />} />
       </Route>
 
       {/* ADMIN ROUTES */}
@@ -131,6 +133,7 @@ export default function App() {
         <Route path="service-reports"  element={<ServiceReports />} />
         <Route path="live-tracking"    element={<LiveTracking />} />
         <Route path="unit/:unit"   element={<UnitPage />} />
+        <Route path="data-health"  element={<DataHealth />} />
       </Route>
 
       <Route path="*" element={<RedirectByRole />} />

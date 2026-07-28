@@ -16,6 +16,7 @@ const NAV = [
   { path: '/deskwork/live-tracking',   icon: '📍', label: 'Live Tracking'   },
   { path: '/deskwork/schools',         icon: '🏫', label: 'Schools'         },
   { path: '/deskwork/clients',         icon: '🏢', label: 'Clients'         },
+  { path: '/deskwork/data-health',     icon: '🩺', label: 'Data Health'     },
 ]
 
 const UNITS = [
