@@ -43,3 +43,4 @@ class ServiceReport(Base):
 
     school    = relationship("School", foreign_keys=[school_id], lazy="joined")
     employee  = relationship("Employee", foreign_keys=[employee_id], lazy="joined")
+    task      = relationship("Task", foreign_keys=[task_id], lazy="joined")

@@ -24,6 +24,22 @@ COMPANY_EMAIL   = "E-mail Id: ch.srini1979@yahoo.com / ch.srini1979@rediffmail.c
 COMPANY_TEL     = "Tel No. 7670873623"
 
 
+def _site_name(r):
+    """Name of the visited site.
+
+    Prefer the linked school. Many tasks were created by typing the site name into
+    the task Title without picking a school from the dropdown, which left
+    school_id NULL — for those, fall back to the task title so the visited site is
+    still shown instead of a bare dash.
+    """
+    if r.school_id and getattr(r, 'school', None):
+        return r.school.name
+    task = getattr(r, 'task', None)
+    if task and (task.title or '').strip():
+        return task.title.strip()
+    return None
+
+
 class CreateServiceReport(BaseModel):
     field_report_id:          Optional[int]   = None
     task_id:                  Optional[int]   = None
@@ -107,7 +123,7 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
                               textColor=color, alignment=align,
                               leading=leading or size * 1.3)
 
-    school_name  = report.school.name  if report.school  else "—"
+    school_name  = _site_name(report) or "—"
     tech_name    = report.employee.name if report.employee else "—"
 
     def val(v, unit=""):
@@ -425,7 +441,7 @@ def _fmt(r: ServiceReport, base_url: str = ""):
         "task_id":            r.task_id,
         "employee_id":        r.employee_id,
         "school_id":          r.school_id,
-        "school_name":        r.school.name   if r.school   else None,
+        "school_name":        _site_name(r),
         "employee_name":      r.employee.name if r.employee else None,
         "report_date":        r.report_date.isoformat() if r.report_date else None,
         "report_no":          r.report_no,

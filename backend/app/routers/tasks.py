@@ -328,6 +328,16 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
     from ..models.school import School
     task_date = date.fromisoformat(data.due_date) if data.due_date else today_ist()
 
+    # ── Site is mandatory ─────────────────────────────────────────────────────
+    # Without a school link the visit can't be traced: proof review shows
+    # "Unknown School" and the service-report PDF has no customer name/address or
+    # plant location. Typing the site into the Title is not enough — it must be
+    # picked from the school list.
+    if not data.school_id:
+        raise HTTPException(400, "Select the school/site for this task — it cannot be left blank.")
+    if not db.query(School).filter(School.id == data.school_id).first():
+        raise HTTPException(404, "That school/site was not found.")
+
     # ── Daily cap enforcement ──────────────────────────────────────────────────
     current_count = _count_today_tasks(db, data.assigned_to_id, task_date)
     if current_count >= DAILY_MAX:
