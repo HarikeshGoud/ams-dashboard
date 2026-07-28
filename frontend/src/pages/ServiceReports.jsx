@@ -79,6 +79,7 @@ export default function ServiceReports() {
           label: d.label || '',
           showing_today_only: !!d.showing_today_only,
           count: d.count ?? (Array.isArray(d) ? d.length : 0),
+          unlinked_excluded: d.unlinked_excluded || 0,
         })
         setLoading(false)
       })
@@ -229,6 +230,21 @@ export default function ServiceReports() {
             </span>
           )}
         </div>
+
+        {/* Unit/site-type/mandal come from the linked school — say so when reports
+            are being held back for want of that link, rather than showing a bare 0. */}
+        {meta.unlinked_excluded > 0 && (
+          <div className="alert alert-yellow" style={{ display: 'block', marginTop: 10, fontSize: 12 }}>
+            ⚠️ <b>{meta.unlinked_excluded}</b> more report{meta.unlinked_excluded === 1 ? '' : 's'} in this date range
+            {meta.unlinked_excluded === 1 ? ' is' : ' are'} not shown because {meta.unlinked_excluded === 1 ? 'its' : 'their'} site
+            was never linked to a school record — Unit, Site Type and Mandal all come from that link.
+            <br />
+            <span style={{ color: 'var(--muted)' }}>
+              Clear the Unit / Site Type / Mandal filters to see {meta.unlinked_excluded === 1 ? 'it' : 'them'}. These are older visits where the site
+              was typed as free text instead of picked from the school list.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Summary */}

@@ -703,11 +703,21 @@ def list_reports(
     if dirty:
         db.commit()
 
+    # Unit/site-type/mandal come from the linked school, so a report with no school
+    # link can never match them. Count those so the UI can say so out loud instead
+    # of just showing an unexplained zero.
+    unlinked_excluded = 0
+    if unit or segment or mandal_id:
+        unlinked_excluded = _filtered_query(
+            db, user, None, None, None, unit_type, employee_id, d_from, d_to
+        ).filter(ServiceReport.school_id.is_(None)).count()
+
     return {
         "showing_today_only": defaulted,
         "label": _filter_label(db, unit, segment, mandal_id, unit_type, employee_id,
                                d_from, d_to, defaulted),
         "count": len(reports),
+        "unlinked_excluded": unlinked_excluded,
         "items": [_fmt(r, base_url=base_url) for r in reports],
     }
 
