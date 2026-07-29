@@ -22,6 +22,22 @@ class VerifyRequest(BaseModel):
     status: str          # verified / rejected
     note: Optional[str] = None
 
+def _site_name(r):
+    """Name of the visited site.
+
+    Prefer the linked school. Many tasks were created by typing the site name into
+    the task Title without picking a school from the dropdown, which left
+    school_id NULL — for those, fall back to the task title so the visited site is
+    still shown instead of a bare dash.
+    """
+    if r.school_id and getattr(r, 'school', None):
+        return r.school.name
+    task = getattr(r, 'task', None)
+    if task and (task.title or '').strip():
+        return task.title.strip()
+    return None
+
+
 def _fmt_report(r: FieldReport, base_url: str = "http://localhost:8000"):
     school = r.school if hasattr(r, 'school') and r.school_id else None
     return {
@@ -40,7 +56,9 @@ def _fmt_report(r: FieldReport, base_url: str = "http://localhost:8000"):
         "verification_note": r.verification_note,
         "verified_at": r.verified_at.isoformat() if r.verified_at else None,
         "whatsapp_sent_at": r.whatsapp_sent_at.isoformat() if r.whatsapp_sent_at else None,
-        "school_name": r.school.name if r.school_id and hasattr(r, 'school') and r.school else None,
+        "school_name": _site_name(r),
+        "employee_name": r.employee.name if getattr(r, 'employee', None) else None,
+        "employee_code": r.employee.employee_code if getattr(r, 'employee', None) else None,
         "school_phone": r.school.phone if r.school_id and hasattr(r, 'school') and r.school else None,
         "school_contact": r.school.contact_person if r.school_id and hasattr(r, 'school') and r.school else None,
         "has_service_report": False,  # populated by caller

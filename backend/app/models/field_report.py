@@ -23,6 +23,8 @@ class FieldReport(Base):
     created_at            = Column(DateTime, default=datetime.utcnow)
 
     school = relationship("School", foreign_keys=[school_id], lazy="joined")
+    employee = relationship("Employee", foreign_keys=[employee_id], lazy="joined")
+    task = relationship("Task", foreign_keys=[task_id], lazy="joined")
     work_photos = relationship("WorkProof", back_populates="field_report_ref",
                                foreign_keys="WorkProof.field_report_id",
                                cascade="all, delete-orphan")

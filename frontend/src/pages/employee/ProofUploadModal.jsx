@@ -93,6 +93,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [status,            setStatus]            = useState('PROBLEM RESOLVED')
   const [techSig,           setTechSig]           = useState(null)
   const [principalSig,      setPrincipalSig]      = useState(null)
+  // Photo of the stamped + signed + dated document — mandatory, captured live.
+  const [stampPhoto,        setStampPhoto]        = useState(null)   // base64 for the report
+  const [stampPreview,      setStampPreview]      = useState(null)
   const [srSubmitting,      setSrSubmitting]      = useState(false)
   const [pdfUrl,            setPdfUrl]            = useState(null)
 
@@ -185,6 +188,16 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   }
 
   function handleCaptured(key, file, previewUrl) {
+    if (key === 'stamp') {
+      // The service report is posted as JSON, so this one is kept as base64
+      // alongside the signatures rather than uploaded as a file.
+      const reader = new FileReader()
+      reader.onload = () => setStampPhoto(reader.result)
+      reader.readAsDataURL(file)
+      setStampPreview(previewUrl)
+      setActiveCamera(null)
+      return
+    }
     if (key.startsWith('extra_')) {
       const idx = parseInt(key.split('_')[1])
       setExtraPhotos(p => p.map((ep, i) => i === idx ? { ...ep, file, preview: previewUrl } : ep))
@@ -318,6 +331,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     if (!customerMobile.trim())  missing.push('Mobile Number')
     if (!techSig)                missing.push('Your Signature')
     if (!principalSig)           missing.push('Customer Signature')
+    if (!stampPhoto)             missing.push('School stamp photo')
     if (missing.length > 0) {
       setError(`Please fill all required fields: ${missing.join(', ')}`)
       return
@@ -354,6 +368,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         status,
         technician_signature_b64: techSig,
         principal_signature_b64:  principalSig,
+        stamp_photo_b64:          stampPhoto,
       })
       setPdfUrl(res.data.pdf_url)
     } catch (e) {
@@ -872,6 +887,38 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                     <SignaturePad label="Customer Signature" onSigned={setPrincipalSig} />
                   </div>
 
+                  {/* Mandatory photo of the stamped, signed and dated document.
+                      This becomes the School Stamp on the PDF once verified. */}
+                  <div style={{
+                    padding: 12, borderRadius: 10, marginBottom: 14,
+                    border: `2px solid ${stampPhoto ? 'var(--green)' : 'var(--red)'}`,
+                    background: stampPhoto ? 'rgba(52,211,153,.06)' : 'rgba(244,63,94,.06)'
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: stampPhoto ? 'var(--green)' : 'var(--red)', marginBottom: 4 }}>
+                      {stampPhoto ? '✅ School stamp photo captured' : '📸 School stamp photo — required'}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.5 }}>
+                      Take a photo of the paper showing the <b>school stamp</b>, the
+                      <b> principal's signature</b> and the <b>date</b> together. It is added to the
+                      service report as the school stamp once your proof is verified.
+                    </div>
+
+                    {stampPreview && (
+                      <img src={stampPreview} alt="School stamp"
+                        style={{ width: '100%', maxHeight: 200, objectFit: 'contain',
+                                 borderRadius: 8, border: '1px solid var(--border)', marginBottom: 10 }} />
+                    )}
+
+                    <button onClick={() => setActiveCamera('stamp')} style={{
+                      width: '100%', padding: '10px', borderRadius: 8, cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700, border: 'none',
+                      background: stampPhoto ? 'var(--surface2)' : 'var(--grad-primary)',
+                      color: stampPhoto ? 'var(--text)' : '#fff',
+                    }}>
+                      📷 {stampPhoto ? 'Retake stamp photo' : 'Open Camera'}
+                    </button>
+                  </div>
+
                   {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
 
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -881,7 +928,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                     </button>
                   </div>
                   <div style={{ marginTop: 6, fontSize: 11, color: 'var(--yellow)', textAlign: 'center' }}>
-                    ⚠️ All fields + both signatures required before generating PDF
+                    ⚠️ All fields + both signatures + the stamp photo are required before generating the PDF
                   </div>
                 </>
               )}

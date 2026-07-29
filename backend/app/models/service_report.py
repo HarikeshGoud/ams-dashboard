@@ -37,9 +37,13 @@ class ServiceReport(Base):
     status               = Column(String(30),  default="PROBLEM RESOLVED")
     technician_signature = Column(String(255), nullable=True)
     principal_signature  = Column(String(255), nullable=True)
+    # Photo of the physically stamped + signed + dated document, taken on site.
+    # Shown as the School Stamp on the PDF once the proof has been verified.
+    stamp_photo          = Column(String(255), nullable=True)
     principal_name       = Column(String(100), nullable=True)
     pdf_path             = Column(String(255), nullable=True)
     created_at           = Column(DateTime, default=datetime.utcnow)
 
     school    = relationship("School", foreign_keys=[school_id], lazy="joined")
     employee  = relationship("Employee", foreign_keys=[employee_id], lazy="joined")
+    task      = relationship("Task", foreign_keys=[task_id], lazy="joined")

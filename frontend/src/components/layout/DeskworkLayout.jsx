@@ -8,6 +8,7 @@ import InstallButton from '../InstallButton'
 const NAV = [
   { path: '/deskwork',            icon: '🏠', label: 'Home'       },
   { path: '/deskwork/tasks',      icon: '📋', label: 'Tasks'      },
+  { path: '/deskwork/employees',  icon: '👷', label: 'Employees'  },
   { path: '/deskwork/attendance', icon: '📅', label: 'Attendance' },
   { path: '/deskwork/stock',      icon: '📦', label: 'Stock'      },
   { path: '/deskwork/travel',          icon: '🚗', label: 'Travel'          },
@@ -15,6 +16,7 @@ const NAV = [
   { path: '/deskwork/live-tracking',   icon: '📍', label: 'Live Tracking'   },
   { path: '/deskwork/schools',         icon: '🏫', label: 'Schools'         },
   { path: '/deskwork/clients',         icon: '🏢', label: 'Clients'         },
+  { path: '/deskwork/data-health',     icon: '🩺', label: 'Data Health'     },
 ]
 
 const UNITS = [

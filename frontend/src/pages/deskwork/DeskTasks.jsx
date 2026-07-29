@@ -387,6 +387,10 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
 
   async function submit() {
     if (!empId || !form.title.trim()) { setError('Select employee and enter title'); return }
+    // The site must be picked from the list — typing it in the title only isn't
+    // enough, or the visit can't be traced back to a school (proof review and the
+    // service-report PDF would show no site/customer details).
+    if (!form.school_id) { setError('Select the school / site for this task — pick it from the list below.'); return }
     if (dailyCount && !dailyCount.can_add) { setError(`Daily max (7 tasks) reached for this employee on ${form.due_date}`); return }
     setLoading(true); setError('')
     try {
@@ -498,7 +502,7 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
           <div className="form-group" style={{ flex: 2 }}>
-            <label>School (optional)</label>
+            <label>School / Site *</label>
             <SearchableSelect
               value={form.school_id}
               onChange={val => set('school_id', val)}

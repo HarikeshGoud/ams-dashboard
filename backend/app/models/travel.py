@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, DateTime, ForeignKey, Text, Numeric, Float
+from sqlalchemy import Column, Integer, String, Date, DateTime, ForeignKey, Text, Numeric, Float, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from ..database import Base
@@ -36,5 +36,6 @@ class FuelSettings(Base):
     id             = Column(Integer, primary_key=True, index=True)
     fuel_price     = Column(Float, default=105.0)   # Rs per litre
     rate_per_km    = Column(Float, default=0.0)     # Rs per km flat rate (0 = use fuel formula)
+    hide_travel    = Column(Boolean, default=False) # master switch: hide Travel page from ALL technicians
     set_by         = Column(Integer, ForeignKey("employees.id"), nullable=True)
     updated_at     = Column(DateTime, default=datetime.utcnow)

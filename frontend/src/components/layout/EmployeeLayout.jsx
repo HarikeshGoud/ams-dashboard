@@ -34,6 +34,7 @@ export default function EmployeeLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [showChangePw, setShowChangePw] = useState(false)
+  const [travelAllowed, setTravelAllowed] = useState(true)
   // PWA install + service-worker registration are handled globally now
   // (InstallPrompt component + main.jsx) so every role can install — not just
   // technicians. This layout only enforces the permission gate below.
@@ -41,6 +42,23 @@ export default function EmployeeLayout() {
   function handleLogout() { logout(); navigate('/login') }
 
   const activePath = location.pathname.replace(/\/$/, '') || '/employee'
+
+  // Travel page is hidden for technicians whose mandal isn't travel-eligible
+  // (or when travel is globally hidden). Re-checked on open + when refocused.
+  useEffect(() => {
+    function check() {
+      api.get('/api/travel/my-access').then(r => setTravelAllowed(r.data?.can_access !== false)).catch(() => {})
+    }
+    check()
+    const onVis = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
+  // If travel isn't allowed, bounce away from a directly-typed /employee/travel URL.
+  useEffect(() => {
+    if (!travelAllowed && activePath.startsWith('/employee/travel')) navigate('/employee', { replace: true })
+  }, [travelAllowed, activePath, navigate])
 
   // Live location ping — sends this technician's GPS to the server every 25s,
   // restricted to 9:00 AM-6:30 PM, while the employee app is open in the foreground
@@ -156,7 +174,7 @@ export default function EmployeeLayout() {
         background: 'var(--surface)', borderTop: '1px solid var(--border)',
         display: 'flex', overflowX: 'auto', padding: '4px 0'
       }}>
-        {NAV.map(n => {
+        {(travelAllowed ? NAV : NAV.filter(n => n.path !== '/employee/travel')).map(n => {
           const isActive = n.path === '/employee'
             ? activePath === '/employee'
             : activePath.startsWith(n.path)

@@ -1,34 +1,70 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 
-export default function SignaturePad({ label, onSigned, style = {} }) {
+// Signing happens with a fingertip on a phone, so the drawing area is deliberately
+// tall. The pixel buffer is sized to the box's real on-screen size (times the device
+// pixel ratio) rather than a fixed 400x120: that keeps strokes sharp and, more
+// importantly, stops the saved signature being stretched — a fixed buffer with a
+// different aspect ratio to the visible box distorts whatever was drawn.
+export default function SignaturePad({ label, onSigned, height = 200, style = {} }) {
   const canvasRef = useRef(null)
   const drawing   = useRef(false)
+  const dirty     = useRef(false)     // has anything actually been drawn
   const [signed, setSigned] = useState(false)
 
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
+  const prime = useCallback((ctx, w, h) => {
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.fillRect(0, 0, w, h)
     ctx.strokeStyle = '#1e293b'
-    ctx.lineWidth   = 2.5
-    ctx.lineCap     = 'round'
-    ctx.lineJoin    = 'round'
+    ctx.lineCap  = 'round'
+    ctx.lineJoin = 'round'
   }, [])
+
+  // Match the buffer to the rendered size. Resizing a canvas wipes it, so the
+  // existing drawing is copied across instead of being lost.
+  const fit = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const w = Math.round(rect.width * dpr)
+    const h = Math.round(rect.height * dpr)
+    if (canvas.width === w && canvas.height === h) return
+
+    let previous = null
+    if (dirty.current && canvas.width && canvas.height) {
+      previous = document.createElement('canvas')
+      previous.width = canvas.width
+      previous.height = canvas.height
+      previous.getContext('2d').drawImage(canvas, 0, 0)
+    }
+
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    prime(ctx, w, h)
+    ctx.lineWidth = 2.5 * dpr
+    if (previous) ctx.drawImage(previous, 0, 0, w, h)
+  }, [prime])
+
+  useEffect(() => {
+    fit()
+    window.addEventListener('resize', fit)
+    window.addEventListener('orientationchange', fit)
+    return () => {
+      window.removeEventListener('resize', fit)
+      window.removeEventListener('orientationchange', fit)
+    }
+  }, [fit])
 
   function getPos(e, canvas) {
     const rect = canvas.getBoundingClientRect()
     const scaleX = canvas.width  / rect.width
     const scaleY = canvas.height / rect.height
-    if (e.touches) {
-      return {
-        x: (e.touches[0].clientX - rect.left) * scaleX,
-        y: (e.touches[0].clientY - rect.top)  * scaleY,
-      }
-    }
+    const src = e.touches ? e.touches[0] : e
     return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top)  * scaleY,
+      x: (src.clientX - rect.left) * scaleX,
+      y: (src.clientY - rect.top)  * scaleY,
     }
   }
 
@@ -39,7 +75,11 @@ export default function SignaturePad({ label, onSigned, style = {} }) {
     const { x, y } = getPos(e, canvas)
     ctx.beginPath()
     ctx.moveTo(x, y)
+    // A single tap should still leave a mark
+    ctx.lineTo(x + 0.1, y + 0.1)
+    ctx.stroke()
     drawing.current = true
+    dirty.current = true
   }
 
   function draw(e) {
@@ -52,11 +92,10 @@ export default function SignaturePad({ label, onSigned, style = {} }) {
     ctx.stroke()
   }
 
-  function endDraw(e) {
+  function endDraw() {
     if (!drawing.current) return
     drawing.current = false
-    const canvas = canvasRef.current
-    const dataUrl = canvas.toDataURL('image/png')
+    const dataUrl = canvasRef.current.toDataURL('image/png')
     setSigned(true)
     onSigned(dataUrl)
   }
@@ -64,8 +103,9 @@ export default function SignaturePad({ label, onSigned, style = {} }) {
   function clear() {
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    prime(ctx, canvas.width, canvas.height)
+    ctx.lineWidth = 2.5 * Math.min(window.devicePixelRatio || 1, 2)
+    dirty.current = false
     setSigned(false)
     onSigned(null)
   }
@@ -80,10 +120,8 @@ export default function SignaturePad({ label, onSigned, style = {} }) {
       </div>
       <canvas
         ref={canvasRef}
-        width={400}
-        height={120}
         style={{
-          width: '100%', height: 100, border: `2px dashed ${signed ? 'var(--green)' : 'var(--border)'}`,
+          width: '100%', height, border: `2px dashed ${signed ? 'var(--green)' : 'var(--border)'}`,
           borderRadius: 10, background: '#fff', touchAction: 'none', cursor: 'crosshair', display: 'block'
         }}
         onMouseDown={startDraw}
@@ -93,10 +131,11 @@ export default function SignaturePad({ label, onSigned, style = {} }) {
         onTouchStart={startDraw}
         onTouchMove={draw}
         onTouchEnd={endDraw}
+        onTouchCancel={endDraw}
       />
       {!signed && (
         <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'center', marginTop: 4 }}>
-          ✏️ Draw signature above
+          ✏️ Sign anywhere in the box above
         </div>
       )}
     </div>

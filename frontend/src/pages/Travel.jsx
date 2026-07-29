@@ -9,6 +9,10 @@ export default function Travel() {
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [filterEmp, setFilterEmp] = useState('')
+  const [mandals, setMandals] = useState([])
+  const [filterState, setFilterState] = useState('')
+  const [filterMandal, setFilterMandal] = useState('')
+  const [hideTravel, setHideTravel] = useState(false)
   const [fuelPrice, setFuelPrice] = useState(105)
   const [fuelInput, setFuelInput] = useState('')
   const [ratePerKm, setRatePerKm] = useState(0)
@@ -20,21 +24,54 @@ export default function Travel() {
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   function load() {
+    const params = {}
+    if (filterEmp) params.employee_id = filterEmp
+    if (filterMandal) params.mandal_id = filterMandal
+    if (filterState) params.state = filterState
     Promise.all([
-      api.get('/api/travel/', { params: filterEmp ? { employee_id: filterEmp } : {} }),
+      api.get('/api/travel/', { params }),
       api.get('/api/employees/'),
       api.get('/api/travel/fuel-settings'),
-    ]).then(([t, e, f]) => {
+      api.get('/api/mandals/'),
+    ]).then(([t, e, f, m]) => {
       setTrips(t.data)
       setEmployees(e.data.filter(emp => emp.role === 'technician'))
       setFuelPrice(f.data.fuel_price)
       setFuelInput(String(f.data.fuel_price))
       setRatePerKm(f.data.rate_per_km || 0)
       setRateInput(String(f.data.rate_per_km || 0))
+      setHideTravel(!!f.data.hide_travel)
+      setMandals(m.data || [])
       setLoading(false)
     }).catch(() => setLoading(false))
   }
-  useEffect(() => { load() }, [filterEmp])
+  useEffect(() => { load() }, [filterEmp, filterMandal, filterState])
+
+  async function toggleHideTravel(next) {
+    await api.post('/api/travel/fuel-settings', { fuel_price: fuelPrice, rate_per_km: ratePerKm, hide_travel: next })
+    setHideTravel(next)
+    showToast(next ? '🚫 Travel page hidden from all technicians' : '✅ Travel page visible to technicians')
+  }
+
+  async function toggleMandalEligible(mandalId, eligible) {
+    await api.patch(`/api/mandals/${mandalId}`, { travel_eligible: eligible })
+    setMandals(ms => ms.map(m => m.id === mandalId ? { ...m, travel_eligible: eligible } : m))
+    showToast(eligible ? '✅ Mandal is eligible for travel allowance'
+                       : '🚫 Mandal marked NOT eligible — its technicians lose Travel')
+  }
+
+  async function toggleStateEligible(state, eligible) {
+    await api.post('/api/mandals/state-eligibility', { state, travel_eligible: eligible })
+    setMandals(ms => ms.map(m => m.state === state ? { ...m, travel_eligible: eligible } : m))
+    showToast(eligible ? `✅ All of ${state} is eligible for travel allowance`
+                       : `🚫 All of ${state} marked NOT eligible — those technicians lose Travel`)
+  }
+
+  async function changeMandalState(mandalId, state) {
+    await api.patch(`/api/mandals/${mandalId}`, { state })
+    setMandals(ms => ms.map(m => m.id === mandalId ? { ...m, state } : m))
+    showToast(`📍 Mandal moved to ${state}`)
+  }
 
   async function saveSettings() {
     if (!fuelInput || isNaN(fuelInput)) return
@@ -70,6 +107,10 @@ export default function Travel() {
   const totalAmt = trips.reduce((s, t) => s + (t.amount || 0), 0)
   const pending  = trips.filter(t => t.status === 'pending').length
   const approved = trips.filter(t => t.status === 'approved').length
+
+  const states = [...new Set(mandals.map(m => m.state).filter(Boolean))].sort()
+  const stateOptions = [...new Set([...states, 'Telangana', 'Andhra Pradesh'])]
+  const mandalsInScope = filterState ? mandals.filter(m => m.state === filterState) : mandals
 
   if (loading) return <div className="spinner" />
 
@@ -124,6 +165,19 @@ export default function Travel() {
         <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveSettings} disabled={fuelSaving}>
           {fuelSaving ? 'Saving…' : '💾 Save Settings'}
         </button>
+
+        {/* Master switch — hide Travel from every technician */}
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>🚫 Hide Travel from all technicians</div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>When ON, no technician sees the Travel page or can submit trips.</div>
+          </div>
+          <button onClick={() => toggleHideTravel(!hideTravel)} style={{
+            padding: '6px 14px', borderRadius: 999, border: `1.5px solid ${hideTravel ? 'var(--red)' : 'var(--border)'}`,
+            background: hideTravel ? 'rgba(244,63,94,.15)' : 'var(--surface2)', color: hideTravel ? 'var(--red)' : 'var(--muted)',
+            fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+          }}>{hideTravel ? '● Hidden — tap to show' : '○ Visible — tap to hide'}</button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -141,12 +195,71 @@ export default function Travel() {
         ))}
       </div>
 
-      {/* Filter */}
-      <div style={{ marginBottom: 12 }}>
+      {/* Filters: state + mandal + technician */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <SearchableSelect value={filterState} onChange={v => { setFilterState(v); setFilterMandal('') }} placeholder="All States"
+          options={states.map(s => ({ value: s, label: s }))}
+          style={{ minWidth: 170 }} />
+        <SearchableSelect value={filterMandal} onChange={setFilterMandal} placeholder="All Mandals"
+          options={mandalsInScope.map(m => ({ value: String(m.id), label: m.travel_eligible === false ? `${m.name} — no allowance` : m.name }))}
+          style={{ minWidth: 170 }} />
         <SearchableSelect value={filterEmp} onChange={setFilterEmp} placeholder="All Technicians"
           options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
-          style={{ minWidth: 200, display: 'inline-block' }} />
+          style={{ minWidth: 170 }} />
       </div>
+
+      {/* Per-STATE eligibility — shown when a state is selected */}
+      {filterState && (() => {
+        const inState = mandals.filter(m => m.state === filterState)
+        const total = inState.length
+        const elig = inState.filter(m => m.travel_eligible !== false).length
+        const allOff = elig === 0
+        return (
+          <div style={{ background: 'var(--surface)', border: `1px solid ${allOff ? 'var(--red)' : 'var(--border)'}`, borderRadius: 10, padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>🗺️ {filterState} — travel allowance</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{elig} of {total} mandals eligible. This applies to every mandal in {filterState} at once.</div>
+            </div>
+            <button onClick={() => toggleStateEligible(filterState, allOff)} style={{
+              padding: '6px 14px', borderRadius: 999, border: `1.5px solid ${allOff ? 'var(--green)' : 'var(--red)'}`,
+              background: allOff ? 'rgba(52,211,153,.15)' : 'rgba(244,63,94,.15)', color: allOff ? 'var(--green)' : 'var(--red)',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+            }}>{allOff ? `✅ Enable travel for all ${total}` : `🚫 Disable travel for all ${total}`}</button>
+          </div>
+        )
+      })()}
+
+      {/* Per-MANDAL eligibility + state assignment — shown when a mandal is selected */}
+      {filterMandal && (() => {
+        const m = mandals.find(x => String(x.id) === String(filterMandal))
+        if (!m) return null
+        const eligible = m.travel_eligible !== false
+        return (
+          <div style={{ background: 'var(--surface)', border: `1px solid ${eligible ? 'var(--border)' : 'var(--red)'}`, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>📍 {m.name} — travel allowance</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                  {eligible ? 'Technicians here are eligible and see the Travel page.'
+                            : 'NOT eligible — no allowance is calculated, and these technicians don’t see the Travel page.'}
+                </div>
+              </div>
+              <button onClick={() => toggleMandalEligible(m.id, !eligible)} style={{
+                padding: '6px 14px', borderRadius: 999, border: `1.5px solid ${eligible ? 'var(--green)' : 'var(--red)'}`,
+                background: eligible ? 'rgba(52,211,153,.15)' : 'rgba(244,63,94,.15)', color: eligible ? 'var(--green)' : 'var(--red)',
+                fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+              }}>{eligible ? '✅ Eligible — tap to disable' : '🚫 Not eligible — tap to enable'}</button>
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+              <span style={{ color: 'var(--muted)' }}>State:</span>
+              <select value={m.state || 'Telangana'} onChange={e => changeMandalState(m.id, e.target.value)}
+                style={{ fontSize: 12, padding: '4px 8px' }}>
+                {stateOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Trip cards */}
       {trips.length === 0 ? (

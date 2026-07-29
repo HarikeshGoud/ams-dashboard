@@ -16,7 +16,8 @@ export default function Tasks() {
   const [fieldReports, setFieldReports] = useState([])
   const [loading, setLoading]     = useState(true)
   const [modal, setModal]         = useState(false)
-  const [form, setForm]           = useState({ title: '', description: '', assigned_to_id: '', priority: 'medium', due_date: '' })
+  const [form, setForm]           = useState({ title: '', description: '', assigned_to_id: '', school_id: '', priority: 'medium', due_date: '' })
+  const [schools, setSchools]     = useState([])
   const [toast, setToast]         = useState('')
   const [summaryModal, setSummaryModal] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -40,12 +41,14 @@ export default function Tasks() {
     Promise.all([
       api.get(`/api/tasks/?${params}`),
       api.get('/api/employees/'),
-      api.get('/api/field-reports/')
-    ]).then(([t, e, r]) => {
+      api.get('/api/field-reports/'),
+      api.get('/api/schools/', { params: { limit: 2000 } })
+    ]).then(([t, e, r, s]) => {
       setTasks(t.data)
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(e.data)
       setFieldReports(r.data)
+      setSchools(s.data?.items || s.data || [])
       if (!activeTech && techs.length > 0) setActiveTech(techs[0].id)
       setLoading(false)
     })
@@ -72,8 +75,19 @@ export default function Tasks() {
   async function save(ev) {
     ev.preventDefault()
     if (!form.assigned_to_id) { showToast('❌ Select who to assign this to'); return }
-    await api.post('/api/tasks/', { ...form, assigned_to_id: parseInt(form.assigned_to_id) })
-    load(); setModal(false); showToast('Task created!')
+    // Site is mandatory — without it the visit can't be traced to a school and the
+    // service-report PDF has no customer name/address or plant location.
+    if (!form.school_id) { showToast('❌ Select the school / site for this task'); return }
+    try {
+      await api.post('/api/tasks/', {
+        ...form,
+        assigned_to_id: parseInt(form.assigned_to_id),
+        school_id: parseInt(form.school_id),
+      })
+      load(); setModal(false); showToast('Task created!')
+    } catch (e) {
+      showToast('❌ ' + (e.response?.data?.detail || 'Failed to create task'))
+    }
   }
 
   async function updateStatus(id, status) {
@@ -350,6 +364,15 @@ export default function Tasks() {
                   <SearchableSelect value={form.assigned_to_id} onChange={val => setForm({ ...form, assigned_to_id: val })}
                     placeholder="Select…"
                     options={employees.filter(e => e.role === 'technician').map(e => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` }))} />
+                </div>
+                <div className="form-group form-full"><label>School / Site *</label>
+                  <SearchableSelect value={form.school_id}
+                    onChange={val => {
+                      const s = schools.find(x => String(x.id) === String(val))
+                      setForm(prev => ({ ...prev, school_id: val, title: prev.title.trim() ? prev.title : (s ? `Visit ${s.name}` : prev.title) }))
+                    }}
+                    placeholder="Select the school / site…"
+                    options={schools.map(s => ({ value: String(s.id), label: s.name }))} />
                 </div>
                 <div className="form-group"><label>Priority</label>
                   <select value={form.priority} onChange={f('priority')}>
