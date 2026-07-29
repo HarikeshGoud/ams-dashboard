@@ -50,6 +50,12 @@ export default function DeskStock() {
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
+  async function delItem(item) {
+    if (!confirm(`Delete "${item.name || item.item_name}"? It will be removed from the inventory list — historical ledger/batch records are kept.`)) return
+    await api.delete(`/api/stock/items/${item.id}`)
+    load(); showToast('Item deleted')
+  }
+
   function load() {
     Promise.all([
       api.get('/api/stock/'),
@@ -1036,11 +1042,15 @@ export default function DeskStock() {
                             {isLow ? 'Low' : hasThreshold ? 'OK' : 'No threshold'}
                           </span>
                         </td>
-                        <td style={{ padding: '9px 10px' }}>
+                        <td style={{ padding: '9px 10px', display: 'flex', gap: 6 }}>
                           <button onClick={() => setAdjusting(item)} style={{
                             fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
                             background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)'
                           }}>± Adjust</button>
+                          <button onClick={() => delItem(item)} style={{
+                            fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                            background: 'rgba(248,113,113,.12)', border: '1px solid var(--red)', color: 'var(--red)'
+                          }}>🗑</button>
                         </td>
                       </tr>
                     )

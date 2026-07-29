@@ -209,6 +209,12 @@ export default function Stock() {
     load(); showToast('Deleted')
   }
 
+  async function delItem(item) {
+    if (!confirm(`Delete "${item.name}"? It will be removed from the inventory list — historical ledger/batch records are kept.`)) return
+    await api.delete(`/api/stock/items/${item.id}`)
+    load(); showToast('Item deleted')
+  }
+
   async function toggleTech(techId) {
     if (expandedTech === techId) { setExpandedTech(null); return }
     setExpandedTech(techId)
@@ -358,6 +364,7 @@ export default function Stock() {
                         <td style={{ display: 'flex', gap: 6 }}>
                           <button className="btn btn-outline btn-sm" onClick={() => setAdjusting(i)}>± Adjust</button>
                           <button className="btn btn-outline btn-sm" onClick={() => openEdit(i)}>✏️</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => delItem(i)}>🗑</button>
                         </td>
                       </tr>
                       )

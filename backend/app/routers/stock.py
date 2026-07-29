@@ -226,6 +226,14 @@ def update_item(item_id: int, data: ItemCreate, db: Session = Depends(get_db), _
     db.commit(); db.refresh(item)
     return _item_fmt(item)
 
+@router.delete("/items/{item_id}")
+def delete_item(item_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    item = db.query(StockItem).filter(StockItem.id == item_id).first()
+    if not item: raise HTTPException(404, "Item not found")
+    item.is_active = False
+    db.commit()
+    return {"ok": True}
+
 @router.post("/{item_id}/adjust")
 def adjust_stock(item_id: int, data: AdjustStock, db: Session = Depends(get_db), user=Depends(get_current_user)):
     item = db.query(StockItem).filter(StockItem.id == item_id).first()
