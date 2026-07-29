@@ -122,6 +122,12 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
     if not all_schools:
         return [], [], True, 0
 
+    # Automatic rotation/assignment only ever covers schools — hospitals, temples, and
+    # every other site type are added manually by deskwork/admin as needed, not auto-assigned.
+    all_schools = [s for s in all_schools if s.model == 'school']
+    if not all_schools:
+        return [], [], True, 0
+
     # A hospital with sub-locations is just an organizational container once it has children -
     # technicians visit and report on each sub-location individually, not the hospital itself.
     parents_with_children = {
@@ -350,9 +356,11 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
         warning = f"Warning: task {current_count + 1}/{DAILY_MAX} — over the default limit of {DAILY_DEFAULT}."
 
     # ── School rotation enforcement (per-technician) ──────────────────────────
+    # Only actual schools go through the rotation queue — hospitals, temples, and
+    # every other site type are deskwork/admin-driven and never rotation-gated.
     if data.school_id:
         school = db.query(School).filter(School.id == data.school_id).first()
-        if school:
+        if school and school.model == 'school':
             already_today = {
                 t.school_id for t in db.query(Task).filter(
                     Task.assigned_to_id == data.assigned_to_id,

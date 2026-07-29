@@ -370,10 +370,21 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   const [dailyCount, setDailyCount] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [subLocations, setSubLocations] = useState([])
+  const [selectedSubLocs, setSelectedSubLocs] = useState([])
 
   useEffect(() => {
     api.get('/api/schools/', { params: { limit: 300 } }).then(r => setSchools(r.data?.items || []))
   }, [])
+
+  // Sites with sub-locations (hospitals, temples) get picked as a whole here, but
+  // technicians visit/report on each sub-location individually — so once one is
+  // selected, offer its sub-locations to pick from instead, one task per pick.
+  useEffect(() => {
+    setSelectedSubLocs([])
+    if (!form.school_id) { setSubLocations([]); return }
+    api.get(`/api/schools/?parent_id=${form.school_id}`).then(r => setSubLocations(r.data?.items || []))
+  }, [form.school_id])
 
   useEffect(() => {
     if (!empId) return
@@ -386,21 +397,39 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   function set(field, val) { setForm(f => ({ ...f, [field]: val })) }
 
   async function submit() {
-    if (!empId || !form.title.trim()) { setError('Select employee and enter title'); return }
+    const usingSubLocs = subLocations.length > 0
+    if (!empId) { setError('Select an employee'); return }
     // The site must be picked from the list — typing it in the title only isn't
     // enough, or the visit can't be traced back to a school (proof review and the
     // service-report PDF would show no site/customer details).
     if (!form.school_id) { setError('Select the school / site for this task — pick it from the list below.'); return }
-    if (dailyCount && !dailyCount.can_add) { setError(`Daily max (7 tasks) reached for this employee on ${form.due_date}`); return }
+    if (usingSubLocs && selectedSubLocs.length === 0) { setError('Select at least one sub-location — a task can\'t be assigned to the hospital/temple row itself once it has sub-locations.'); return }
+    if (!usingSubLocs && !form.title.trim()) { setError('Enter a task title'); return }
+    const taskCount = usingSubLocs ? selectedSubLocs.length : 1
+    if (dailyCount && dailyCount.count + taskCount > dailyCount.max_limit) {
+      setError(`Daily max (${dailyCount.max_limit} tasks) would be exceeded for this employee on ${form.due_date} — currently ${dailyCount.count}, adding ${taskCount}.`)
+      return
+    }
     setLoading(true); setError('')
     try {
-      const r = await api.post('/api/tasks/', {
-        title: form.title, description: form.description,
-        assigned_to_id: Number(empId),
-        school_id: form.school_id ? Number(form.school_id) : null,
-        priority: form.priority, due_date: form.due_date
-      })
-      if (r.data.warning) setError(r.data.warning) // soft warning
+      if (usingSubLocs) {
+        for (const slId of selectedSubLocs) {
+          const sl = subLocations.find(s => s.id === slId)
+          await api.post('/api/tasks/', {
+            title: `Visit ${sl.name}`, description: form.description,
+            assigned_to_id: Number(empId), school_id: slId,
+            priority: form.priority, due_date: form.due_date
+          })
+        }
+      } else {
+        const r = await api.post('/api/tasks/', {
+          title: form.title, description: form.description,
+          assigned_to_id: Number(empId),
+          school_id: form.school_id ? Number(form.school_id) : null,
+          priority: form.priority, due_date: form.due_date
+        })
+        if (r.data.warning) setError(r.data.warning) // soft warning
+      }
       onSaved(); onClose()
     } catch (e) {
       setError(e.response?.data?.detail || 'Failed to assign task')
@@ -495,10 +524,12 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
           </div>
         )}
 
-        <div className="form-group" style={{ marginBottom: 10 }}>
-          <label>Task Title *</label>
-          <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Visit Nalgonda PS, Repair pump…" />
-        </div>
+        {subLocations.length === 0 && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label>Task Title *</label>
+            <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Visit Nalgonda PS, Repair pump…" />
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
           <div className="form-group" style={{ flex: 2 }}>
@@ -520,6 +551,29 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
           </div>
         </div>
 
+        {subLocations.length > 0 && (
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label>Sub-locations * — pick one or more, each becomes its own task ({selectedSubLocs.length} selected)</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 170, overflowY: 'auto', padding: 8, border: '1px solid var(--border)', borderRadius: 8 }}>
+              {subLocations.map(sl => {
+                const checked = selectedSubLocs.includes(sl.id)
+                return (
+                  <button key={sl.id} type="button" onClick={() => {
+                    setSelectedSubLocs(prev => checked ? prev.filter(id => id !== sl.id) : [...prev, sl.id])
+                  }} style={{
+                    fontSize: 11, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
+                    background: checked ? 'rgba(34,211,238,.2)' : 'var(--surface2)',
+                    border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                    color: checked ? 'var(--accent)' : 'var(--text)'
+                  }}>
+                    {checked ? '✓ ' : ''}{sl.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="form-group" style={{ marginBottom: 16 }}>
           <label>Description</label>
           <textarea rows={2} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Optional notes…" />
@@ -528,7 +582,7 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
         {error && <div className="alert alert-red" style={{ marginBottom: 12 }}><span>⚠️</span><div>{error}</div></div>}
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit} disabled={loading || (dailyCount && !dailyCount.can_add)}>
-            {loading ? '⏳ Assigning…' : '✅ Assign Task'}
+            {loading ? '⏳ Assigning…' : selectedSubLocs.length > 1 ? `✅ Assign ${selectedSubLocs.length} Tasks` : '✅ Assign Task'}
           </button>
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
         </div>

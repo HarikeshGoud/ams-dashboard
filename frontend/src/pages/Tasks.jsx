@@ -29,11 +29,22 @@ export default function Tasks() {
   const [taskSearch, setTaskSearch] = useState('')    // task search within technician
   const [statusFilter, setStatusFilter] = useState('')  // status filter
   const [priorityFilter, setPriorityFilter] = useState('')  // priority filter
+  const [subLocations, setSubLocations] = useState([])
+  const [selectedSubLocs, setSelectedSubLocs] = useState([])
   const today     = todayIST()
   const yesterday = yesterdayIST()
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
+
+  // Sites with sub-locations (hospitals, temples) get picked as a whole here, but
+  // technicians visit/report on each sub-location individually — so once one is
+  // selected, offer its sub-locations to pick from instead, one task per pick.
+  useEffect(() => {
+    setSelectedSubLocs([])
+    if (!form.school_id) { setSubLocations([]); return }
+    api.get(`/api/schools/?parent_id=${form.school_id}`).then(r => setSubLocations(r.data?.items || []))
+  }, [form.school_id])
 
   function load() {
     const params = new URLSearchParams()
@@ -78,13 +89,31 @@ export default function Tasks() {
     // Site is mandatory — without it the visit can't be traced to a school and the
     // service-report PDF has no customer name/address or plant location.
     if (!form.school_id) { showToast('❌ Select the school / site for this task'); return }
+    const usingSubLocs = subLocations.length > 0
+    if (usingSubLocs && selectedSubLocs.length === 0) {
+      showToast('❌ Select at least one sub-location'); return
+    }
+    if (!usingSubLocs && !form.title.trim()) { showToast('❌ Enter a task title'); return }
     try {
-      await api.post('/api/tasks/', {
-        ...form,
-        assigned_to_id: parseInt(form.assigned_to_id),
-        school_id: parseInt(form.school_id),
-      })
-      load(); setModal(false); showToast('Task created!')
+      if (usingSubLocs) {
+        for (const slId of selectedSubLocs) {
+          const sl = subLocations.find(s => s.id === slId)
+          await api.post('/api/tasks/', {
+            ...form, title: `Visit ${sl.name}`,
+            assigned_to_id: parseInt(form.assigned_to_id),
+            school_id: slId,
+          })
+        }
+        showToast(`✅ ${selectedSubLocs.length} tasks created!`)
+      } else {
+        await api.post('/api/tasks/', {
+          ...form,
+          assigned_to_id: parseInt(form.assigned_to_id),
+          school_id: parseInt(form.school_id),
+        })
+        showToast('Task created!')
+      }
+      load(); setModal(false)
     } catch (e) {
       showToast('❌ ' + (e.response?.data?.detail || 'Failed to create task'))
     }
@@ -358,7 +387,9 @@ export default function Tasks() {
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>+ Create Task</h3>
             <form onSubmit={save}>
               <div className="form-grid">
-                <div className="form-group form-full"><label>Title *</label><input required value={form.title} onChange={f('title')} /></div>
+                {subLocations.length === 0 && (
+                  <div className="form-group form-full"><label>Title *</label><input required value={form.title} onChange={f('title')} /></div>
+                )}
                 <div className="form-group form-full"><label>Description</label><textarea value={form.description} onChange={f('description')} /></div>
                 <div className="form-group"><label>Assign To *</label>
                   <SearchableSelect value={form.assigned_to_id} onChange={val => setForm({ ...form, assigned_to_id: val })}
@@ -374,6 +405,28 @@ export default function Tasks() {
                     placeholder="Select the school / site…"
                     options={schools.map(s => ({ value: String(s.id), label: s.name }))} />
                 </div>
+                {subLocations.length > 0 && (
+                  <div className="form-group form-full">
+                    <label>Sub-locations * — pick one or more, each becomes its own task ({selectedSubLocs.length} selected)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 170, overflowY: 'auto', padding: 8, border: '1px solid var(--border)', borderRadius: 8 }}>
+                      {subLocations.map(sl => {
+                        const checked = selectedSubLocs.includes(sl.id)
+                        return (
+                          <button key={sl.id} type="button" onClick={() => {
+                            setSelectedSubLocs(prev => checked ? prev.filter(id => id !== sl.id) : [...prev, sl.id])
+                          }} style={{
+                            fontSize: 11, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
+                            background: checked ? 'rgba(34,211,238,.2)' : 'var(--surface2)',
+                            border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+                            color: checked ? 'var(--accent)' : 'var(--text)'
+                          }}>
+                            {checked ? '✓ ' : ''}{sl.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="form-group"><label>Priority</label>
                   <select value={form.priority} onChange={f('priority')}>
                     <option value="low">Low</option>
@@ -386,7 +439,7 @@ export default function Tasks() {
                 </div>
               </div>
               <div className="mt-16 flex gap-8">
-                <button type="submit" className="btn btn-primary">Create</button>
+                <button type="submit" className="btn btn-primary">{selectedSubLocs.length > 1 ? `Create ${selectedSubLocs.length} Tasks` : 'Create'}</button>
                 <button type="button" className="btn btn-outline" onClick={() => setModal(false)}>Cancel</button>
               </div>
             </form>
