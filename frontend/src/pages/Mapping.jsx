@@ -579,11 +579,24 @@ function MandalsTab({ showToast, errMsg }) {
   }
 
   async function removeMandal(m) {
-    if (!confirm(`Delete "${m.name}"? Nothing references it, so this is safe.`)) return
+    // A mandal with no sites can still be referenced by staff records, usually inactive
+    // ones left over from the original data load. Those are safe to detach, but the
+    // confirmation has to say so rather than leaving a dead button with no explanation.
+    const needsForce = !m.deletable && m.force_deletable
+    const msg = needsForce
+      ? `Delete "${m.name}"?\n\nIt holds no sites, but it is still referenced by:\n  • ${
+          m.blocked_by.join('\n  • ')}\n\nThose references will be detached. ` +
+        `An employee with no primary mandal just has no mandal-based travel rule.\n\nThis cannot be undone.`
+      : `Delete "${m.name}"? Nothing references it, so this is safe.`
+    if (!confirm(msg)) return
     setBusy(true)
     try {
-      const r = await api.delete(`/api/mapping/mandals/${m.id}`)
-      showToast(`✅ Deleted ${r.data.deleted}`); load()
+      const r = await api.delete(`/api/mapping/mandals/${m.id}`, { params: { force: needsForce } })
+      const extra = []
+      if (r.data.detached_primary_mandal) extra.push(`${r.data.detached_primary_mandal} primary mandal reference(s) detached`)
+      if (r.data.detached_mandal_links) extra.push(`${r.data.detached_mandal_links} mandal assignment(s) detached`)
+      showToast(`✅ Deleted ${r.data.deleted}` + (extra.length ? ` — ${extra.join(', ')}` : ''), 8000)
+      load()
     } catch (e) { showToast(errMsg(e, 'Could not delete'), 10000) }
     setBusy(false)
   }
@@ -629,7 +642,10 @@ function MandalsTab({ showToast, errMsg }) {
              sub="Same name, different rows" tone={data.totals.duplicate_groups ? 'red' : 'green'} />
         <Kpi label="Holding no sites" value={data.totals.empty}
              sub="Often the duplicate to merge away" tone={data.totals.empty ? 'yellow' : 'green'} />
-        <Kpi label="Safe to delete" value={data.totals.deletable} sub="Nothing references them" />
+        <Kpi label="Can be deleted" value={data.totals.removable}
+             sub={data.totals.deletable === data.totals.removable
+                    ? 'Nothing references them'
+                    : `${data.totals.deletable} clean, ${data.totals.removable - data.totals.deletable} need staff refs detached`} />
       </div>
 
       {data.duplicate_groups.length > 0 && (
@@ -748,6 +764,14 @@ function MandalsTab({ showToast, errMsg }) {
                         {m.duplicate_of.length > 0 && (
                           <span className="pill pill-red" style={{ marginLeft: 6 }}>duplicate</span>
                         )}
+                        {/* Say why Delete is off. The Sites and Techs columns can both read 0
+                            while an inactive staff record still holds the reference, which
+                            otherwise leaves a dead button and no explanation. */}
+                        {!m.deletable && (
+                          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+                            {m.force_deletable ? '🔓 ' : '🔒 '}{m.blocked_by.join(' · ')}
+                          </div>
+                        )}
                       </td>
                       <td style={td}>{m.district || '—'}</td>
                       <td style={td}>{m.state}</td>
@@ -780,10 +804,14 @@ function MandalsTab({ showToast, errMsg }) {
                               onClick={() => doMerge(m, mergeInto[m.id])}>Go</button>
                           )}
 
-                          <button className="btn btn-danger btn-sm" disabled={busy || !m.deletable}
+                          <button className="btn btn-danger btn-sm"
+                            disabled={busy || !(m.deletable || m.force_deletable)}
                             title={m.deletable ? 'Nothing references this mandal'
-                                               : 'Still in use — merge it instead so nothing is lost'}
-                            onClick={() => removeMandal(m)}>Delete</button>
+                              : m.force_deletable ? 'Holds no sites — deleting will detach the staff references'
+                              : 'Still has sites in it — merge it, or move the sites in the Sites tab first'}
+                            onClick={() => removeMandal(m)}>
+                            {m.deletable ? 'Delete' : m.force_deletable ? 'Delete…' : 'Delete'}
+                          </button>
                         </div>
                       </td>
                     </>

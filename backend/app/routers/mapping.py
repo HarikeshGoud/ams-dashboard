@@ -435,6 +435,28 @@ def _norm_mandal(name: str) -> str:
     return " ".join((name or "").strip().upper().split())
 
 
+def _staff_phrase(total: int, inactive: int, noun: str) -> str:
+    """e.g. '3 inactive employees' / '2 employees (1 inactive)' / '1 employee'."""
+    if inactive == total:
+        return f"{total} inactive {noun}{'s' if total != 1 else ''}"
+    if inactive:
+        return f"{total} {noun}{'s' if total != 1 else ''} ({inactive} inactive)"
+    return f"{total} {noun}{'s' if total != 1 else ''}"
+
+
+def _blockers(sites: int, links: int, links_inactive: int,
+              legacy: int, legacy_inactive: int):
+    """Why a mandal can't be deleted, in words a non-technical user can act on."""
+    out = []
+    if sites:
+        out.append(f"{sites} site{'s' if sites != 1 else ''} still in it")
+    if links:
+        out.append(_staff_phrase(links, links_inactive, "employee") + " assigned to it")
+    if legacy:
+        out.append(_staff_phrase(legacy, legacy_inactive, "employee") + " using it as their primary mandal")
+    return out
+
+
 @router.get("/mandals")
 def list_mandals_admin(db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
     """Every mandal with its usage counts, and duplicate names grouped together.
@@ -462,12 +484,22 @@ def list_mandals_admin(db: Session = Depends(get_db), user=Depends(require_admin
         if emp.mandal_id:
             legacy_counts[emp.mandal_id] = legacy_counts.get(emp.mandal_id, 0) + 1
 
-    all_legacy_refs = {}
-    for (mid,) in db.query(Employee.mandal_id).filter(Employee.mandal_id.isnot(None)).all():
+    # Split by active flag. "3 inactive staff" is a completely different decision from
+    # "3 active staff", and the row has to be able to say which — a blocked Delete button
+    # with no visible reason is useless.
+    all_legacy_refs, legacy_inactive = {}, {}
+    for mid, is_active in db.query(Employee.mandal_id, Employee.is_active).filter(
+            Employee.mandal_id.isnot(None)).all():
         all_legacy_refs[mid] = all_legacy_refs.get(mid, 0) + 1
-    all_link_refs = {}
-    for (mid,) in db.query(employee_mandals.c.mandal_id).all():
+        if not is_active:
+            legacy_inactive[mid] = legacy_inactive.get(mid, 0) + 1
+
+    all_link_refs, link_inactive = {}, {}
+    for mid, is_active in (db.query(employee_mandals.c.mandal_id, Employee.is_active)
+                             .join(Employee, Employee.id == employee_mandals.c.employee_id).all()):
         all_link_refs[mid] = all_link_refs.get(mid, 0) + 1
+        if not is_active:
+            link_inactive[mid] = link_inactive.get(mid, 0) + 1
     # Sites too: delete_mandal counts only active ones, but an inactive site still carries
     # the FK, so a merge has to move it. Count both.
     all_site_refs = {}
@@ -498,11 +530,21 @@ def list_mandals_admin(db: Session = Depends(get_db), user=Depends(require_admin
             "total_site_refs": all_site_refs.get(m.id, 0),
             "total_technician_link_refs": all_link_refs.get(m.id, 0),
             "total_legacy_refs": all_legacy_refs.get(m.id, 0),
+            "inactive_link_refs": link_inactive.get(m.id, 0),
+            "inactive_legacy_refs": legacy_inactive.get(m.id, 0),
             "duplicate_of": [i for i in groups[key] if i != m.id],
             # Must mirror delete_mandal exactly, or the button offers a delete that 400s.
             "deletable": (all_site_refs.get(m.id, 0) == 0
                           and all_link_refs.get(m.id, 0) == 0
                           and all_legacy_refs.get(m.id, 0) == 0),
+            # Deletable once the staff references are detached. Only sites make a mandal
+            # truly undeletable, because dropping them would strip their mandal and quietly
+            # remove them from every Mandal filter — merge, or move them, instead.
+            "force_deletable": all_site_refs.get(m.id, 0) == 0,
+            # Plain-English reasons, so the row can say why the button is off.
+            "blocked_by": _blockers(all_site_refs.get(m.id, 0),
+                                    all_link_refs.get(m.id, 0), link_inactive.get(m.id, 0),
+                                    all_legacy_refs.get(m.id, 0), legacy_inactive.get(m.id, 0)),
         })
 
     dupe_groups = [
@@ -516,6 +558,9 @@ def list_mandals_admin(db: Session = Depends(get_db), user=Depends(require_admin
             "duplicate_groups": len(dupe_groups),
             "empty": sum(1 for i in items if i["site_count"] == 0),
             "deletable": sum(1 for i in items if i["deletable"]),
+            # Holds no sites, so it can go once its staff references are detached. This is
+            # the number that actually corresponds to an enabled Delete button.
+            "removable": sum(1 for i in items if i["force_deletable"]),
         },
     }
 
@@ -575,34 +620,64 @@ def edit_mandal(mandal_id: int, data: MandalEdit, db: Session = Depends(get_db),
 
 
 @router.delete("/mandals/{mandal_id}")
-def delete_mandal(mandal_id: int, db: Session = Depends(get_db),
+def delete_mandal(mandal_id: int, force: bool = False, db: Session = Depends(get_db),
                   user=Depends(require_admin_or_deskwork)):
-    """Delete a mandal that nothing references. Anything in use must be merged instead."""
+    """Delete a mandal.
+
+    Plain delete only succeeds when nothing at all references it. force=True additionally
+    detaches STAFF references (an employee's primary mandal, and their mandal assignments)
+    and then deletes — that is safe, because an employee with no primary mandal simply has
+    no mandal-based travel rule and falls back to their explicit mandal list.
+
+    Sites are never dropped this way, even with force. Clearing a site's mandal removes it
+    from every Mandal filter and from the rotation's mandal fallback, silently. Moving them
+    is what merge and the Sites tab are for.
+    """
     m = db.query(Mandal).filter(Mandal.id == mandal_id).first()
     if not m:
         raise HTTPException(404, "Mandal not found")
 
-    # Every one of these counts must ignore is_active: an archived site or a deactivated
-    # employee still carries the foreign key, and Postgres rejects the delete regardless of
-    # whether the app considers the row live. Counting only active rows would let this pass
-    # its own check and then fail on the constraint.
+    # Every count here ignores is_active: an archived site or a deactivated employee still
+    # carries the foreign key, and Postgres rejects the delete regardless of whether the app
+    # considers the row live. Counting only active rows would pass this check and then fail
+    # on the constraint.
     sites = db.query(School).filter(School.mandal_id == mandal_id).count()
-    legacy = db.query(Employee).filter(Employee.mandal_id == mandal_id).count()
-    links = db.query(employee_mandals).filter(employee_mandals.c.mandal_id == mandal_id).count()
+    legacy_emps = db.query(Employee).filter(Employee.mandal_id == mandal_id).all()
+    link_rows = db.query(employee_mandals).filter(employee_mandals.c.mandal_id == mandal_id).count()
 
-    if sites or legacy or links:
-        bits = []
-        if sites:  bits.append(f"{sites} site(s)")
-        if links:  bits.append(f"{links} technician mandal link(s)")
-        if legacy: bits.append(f"{legacy} employee(s) using it as their primary mandal")
+    if sites:
         raise HTTPException(400,
-            f"'{m.name}' is still in use by {', '.join(bits)} "
-            f"(counting archived sites and inactive staff, which hold the reference too). "
-            f"Merge it into another mandal instead — that moves everything across first.")
+            f"'{m.name}' still has {sites} site(s) in it (archived sites count too — they "
+            f"hold the same reference). Merge it into another mandal, or move the sites in "
+            f"the Sites tab first. Deleting it here would leave them with no mandal, which "
+            f"drops them out of every Mandal filter.")
 
+    if (legacy_emps or link_rows) and not force:
+        inactive = sum(1 for e in legacy_emps if not e.is_active)
+        bits = _blockers(0, link_rows, 0, len(legacy_emps), inactive)
+        raise HTTPException(400,
+            f"'{m.name}' is still referenced by {', '.join(bits)}. "
+            f"Deleting will detach them — confirm to go ahead.")
+
+    detached_primary = 0
+    for emp in legacy_emps:
+        emp.mandal_id = None
+        detached_primary += 1
+
+    detached_links = 0
+    if link_rows:
+        # Through the ORM collection so SQLAlchemy's identity map stays consistent with the
+        # junction table — a raw DELETE would leave stale collections cached on loaded rows.
+        for emp in list(m.technicians):
+            emp.mandals = [x for x in emp.mandals if x.id != m.id]
+            detached_links += 1
+
+    db.flush()
     name = m.name
     db.delete(m); db.commit()
-    return {"ok": True, "deleted": name}
+    return {"ok": True, "deleted": name,
+            "detached_primary_mandal": detached_primary,
+            "detached_mandal_links": detached_links}
 
 
 class MandalMerge(BaseModel):
