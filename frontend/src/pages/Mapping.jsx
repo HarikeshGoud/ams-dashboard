@@ -1,42 +1,91 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
 
-// Technician -> Mandal -> Site mapping.
+// Data management for the technician → mandal → site chain, in three tabs:
 //
-// Two levels, because the daily task rotation reads them in that order: it first looks
-// for sites assigned directly to the technician, and only if there are none does it fall
-// back to every site in their mandals. So mapping mandals alone is already enough to get
-// a technician working; the site level is for splitting a mandal between two people.
+//   Technicians   which mandals (and optionally which individual sites) a technician covers
+//   Sites         which mandal each site sits in
+//   Mandals       add / rename / merge / delete the mandals themselves
+//
+// The daily task rotation reads the chain in that order: sites assigned directly to the
+// technician first, and only if there are none does it fall back to every site in their
+// mandals. So mapping mandals alone is enough to get a technician working.
+const TABS = [
+  { key: 'techs',   label: '👷 Technicians → Mandals' },
+  { key: 'sites',   label: '🏫 Sites → Mandals'       },
+  { key: 'mandals', label: '📍 Manage Mandals'        },
+]
+
 export default function Mapping() {
+  const [tab, setTab] = useState('techs')
+  const [toast, setToast] = useState('')
+
+  // Each toast cancels the previous one's timer. Without this, an earlier long timer
+  // fires partway through a later toast and wipes it off screen early — the messages
+  // here are the longest in the app and the ones you least want cut short.
+  const toastTimer = useRef(null)
+  const showToast = useCallback((msg, ms = 5000) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    setToast(msg)
+    toastTimer.current = setTimeout(() => { setToast(''); toastTimer.current = null }, ms)
+  }, [])
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
+
+  const errMsg = (e, fallback) => '❌ ' + (e.response?.data?.detail || fallback)
+
+  return (
+    <div>
+      <div className="section-header" style={{ marginBottom: 12 }}>
+        <h2 style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.02em' }}>🗺️ Mapping</h2>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+        {TABS.map(x => (
+          <button key={x.key} onClick={() => setTab(x.key)} style={{
+            padding: '7px 14px', borderRadius: 999, fontSize: 12.5, cursor: 'pointer',
+            fontWeight: tab === x.key ? 700 : 400,
+            background: tab === x.key ? 'rgba(34,211,238,.16)' : 'var(--surface)',
+            border: `1px solid ${tab === x.key ? 'var(--accent)' : 'var(--border)'}`,
+            color: tab === x.key ? 'var(--accent)' : 'var(--muted)',
+          }}>{x.label}</button>
+        ))}
+      </div>
+
+      {tab === 'techs'   && <TechniciansTab   showToast={showToast} errMsg={errMsg} />}
+      {tab === 'sites'   && <SitesTab         showToast={showToast} errMsg={errMsg} />}
+      {tab === 'mandals' && <MandalsTab       showToast={showToast} errMsg={errMsg} />}
+
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
+          padding: '10px 16px', fontSize: 12.5, boxShadow: 'var(--shadow-lg)', maxWidth: 'min(620px, 92vw)',
+        }}>{toast}</div>
+      )}
+    </div>
+  )
+}
+
+/* ──────────────────────────── Technicians → Mandals ─────────────────────── */
+
+function TechniciansTab({ showToast, errMsg }) {
   const [overview, setOverview] = useState(null)
   const [empId, setEmpId] = useState('')
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [toast, setToast] = useState('')
   const [mandalSearch, setMandalSearch] = useState('')
-  const [draftMandals, setDraftMandals] = useState([])   // ids, order matters (first = primary default)
+  const [draftMandals, setDraftMandals] = useState([])
   const [draftPrimary, setDraftPrimary] = useState(null)
   const [openMandal, setOpenMandal] = useState(null)
   const [sites, setSites] = useState(null)
   const [picked, setPicked] = useState([])
   const [busy, setBusy] = useState(false)
 
-  // Each toast cancels the previous one's timer. Without this, an earlier 9s timer
-  // fires partway through a later toast and wipes it off screen early — the skipped-site
-  // messages here are the longest in the app and the ones you least want cut short.
-  const toastTimer = useRef(null)
-  function showToast(msg, ms = 5000) {
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    setToast(msg)
-    toastTimer.current = setTimeout(() => { setToast(''); toastTimer.current = null }, ms)
-  }
-  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current) }, [])
-
-  function loadOverview() {
+  const loadOverview = useCallback(() => {
     api.get('/api/mapping/overview').then(r => setOverview(r.data))
-  }
-  useEffect(() => { loadOverview() }, [])
+  }, [])
+  useEffect(() => { loadOverview() }, [loadOverview])
 
   useEffect(() => {
     setDetail(null); setOpenMandal(null); setSites(null); setPicked([])
@@ -48,9 +97,9 @@ export default function Mapping() {
         setDraftMandals(r.data.mandals.map(m => m.id))
         setDraftPrimary(r.data.primary_mandal_id)
       })
-      .catch(e => showToast('❌ ' + (e.response?.data?.detail || 'Could not load that technician')))
+      .catch(e => showToast(errMsg(e, 'Could not load that technician')))
       .finally(() => setLoading(false))
-  }, [empId])
+  }, [empId, showToast, errMsg])
 
   const dirty = detail && (
     JSON.stringify([...draftMandals].sort()) !== JSON.stringify(detail.mandals.map(m => m.id).sort()) ||
@@ -60,30 +109,29 @@ export default function Mapping() {
   function toggleMandal(id) {
     setDraftMandals(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-      // Primary has to stay inside the selection — travel eligibility reads it.
       if (draftPrimary && !next.includes(draftPrimary)) setDraftPrimary(next[0] ?? null)
       if (!draftPrimary && next.length) setDraftPrimary(next[0])
       return next
     })
   }
 
+  async function refreshDetail() {
+    const d = await api.get(`/api/mapping/technician/${empId}`)
+    setDetail(d.data)
+    setDraftMandals(d.data.mandals.map(m => m.id))
+    setDraftPrimary(d.data.primary_mandal_id)
+  }
+
   async function saveMandals() {
     setBusy(true)
     try {
       const r = await api.put(`/api/mapping/technician/${empId}/mandals`, {
-        mandal_ids: draftMandals,
-        primary_mandal_id: draftPrimary,
+        mandal_ids: draftMandals, primary_mandal_id: draftPrimary,
       })
       showToast(`✅ ${r.data.technician}: ${r.data.mandal_count} mandal(s) saved` +
                 (r.data.primary_mandal_name ? ` · primary ${r.data.primary_mandal_name}` : ''))
-      const d = await api.get(`/api/mapping/technician/${empId}`)
-      setDetail(d.data)
-      setDraftMandals(d.data.mandals.map(m => m.id))
-      setDraftPrimary(d.data.primary_mandal_id)
-      loadOverview()
-    } catch (e) {
-      showToast('❌ ' + (e.response?.data?.detail || 'Could not save mandals'), 8000)
-    }
+      await refreshDetail(); loadOverview()
+    } catch (e) { showToast(errMsg(e, 'Could not save mandals'), 8000) }
     setBusy(false)
   }
 
@@ -111,27 +159,18 @@ export default function Mapping() {
       showToast((r.data.skipped.length ? '⚠️ ' : '✅ ') + bits.join(' · '), 9000)
       const s = await api.get(`/api/mapping/mandal/${openMandal}/sites`, { params: { technician_id: empId } })
       setSites(s.data); setPicked([])
-      const d = await api.get(`/api/mapping/technician/${empId}`); setDetail(d.data)
-      loadOverview()
-    } catch (e) {
-      showToast('❌ ' + (e.response?.data?.detail || 'Assignment failed'), 8000)
-    }
+      await refreshDetail(); loadOverview()
+    } catch (e) { showToast(errMsg(e, 'Assignment failed'), 8000) }
     setBusy(false)
   }
 
   const techs = overview?.technicians || []
-  const selected = techs.find(t => String(t.id) === String(empId))
   const t = overview?.totals
-
   const visibleMandals = (detail?.all_mandals || []).filter(m =>
     !mandalSearch.trim() || m.name.toLowerCase().includes(mandalSearch.trim().toLowerCase()))
 
   return (
-    <div>
-      <div className="section-header" style={{ marginBottom: 14 }}>
-        <h2 style={{ fontSize: 19, fontWeight: 800, letterSpacing: '-0.02em' }}>🗺️ Mapping</h2>
-      </div>
-
+    <>
       <div className="alert alert-blue" style={{ marginBottom: 16, display: 'block' }}>
         <div style={{ fontSize: 12.5, lineHeight: 1.65 }}>
           Give a technician their <b>mandals</b> first — that alone is enough for daily tasks to start
@@ -140,7 +179,6 @@ export default function Mapping() {
         </div>
       </div>
 
-      {/* Coverage overview — the gaps are the point of this screen */}
       {t && (
         <div className="kpi-grid" style={{ marginBottom: 16 }}>
           <Kpi label="Technicians" value={t.technicians} sub={`${t.mandals} mandals · ${t.sites} sites`} />
@@ -163,22 +201,18 @@ export default function Mapping() {
                    (x.no_coverage ? '  ⚠ no coverage' : ''),
           }))}
         />
-
         <div className="scroll-table" style={{ marginTop: 12, maxHeight: 260, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--muted)' }}>
-                <th style={th}>Technician</th><th style={th}>Mandals</th>
-                <th style={th}>⭐ Primary</th><th style={th}>Sites</th><th style={th}>Shared</th>
-              </tr>
-            </thead>
+            <thead><tr style={{ textAlign: 'left', color: 'var(--muted)' }}>
+              <th style={th}>Technician</th><th style={th}>Mandals</th>
+              <th style={th}>⭐ Primary</th><th style={th}>Sites</th><th style={th}>Shared</th>
+            </tr></thead>
             <tbody>
               {techs.map(x => (
-                <tr key={x.id} onClick={() => setEmpId(String(x.id))}
-                    style={{
-                      cursor: 'pointer', borderTop: '1px solid var(--border)',
-                      background: String(x.id) === String(empId) ? 'var(--accent-soft)' : 'transparent',
-                    }}>
+                <tr key={x.id} onClick={() => setEmpId(String(x.id))} style={{
+                  cursor: 'pointer', borderTop: '1px solid var(--border)',
+                  background: String(x.id) === String(empId) ? 'var(--accent-soft)' : 'transparent',
+                }}>
                   <td style={td}>
                     <b>{x.name}</b> <span style={{ color: 'var(--muted)' }}>[{x.employee_code}]</span>
                     {x.no_coverage && <span className="pill pill-red" style={{ marginLeft: 6 }}>no coverage</span>}
@@ -204,7 +238,6 @@ export default function Mapping() {
 
       {detail && (
         <>
-          {/* ── Step 1: mandals ─────────────────────────────────────────────── */}
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="card-title">
               Step 1 — Mandals for {detail.technician.name}
@@ -215,11 +248,10 @@ export default function Mapping() {
 
             <input value={mandalSearch} onChange={e => setMandalSearch(e.target.value)}
                    placeholder="Search mandals…" style={{ marginBottom: 8 }} />
-
             <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
-              The number after each mandal is how many sites it holds. Some mandals exist twice
-              under different capitalisation — always pick the one with the sites, never the
-              <b style={{ color: 'var(--yellow)' }}> 0 ⚠ </b>twin.
+              The number after each mandal is how many sites it holds. Any showing
+              <b style={{ color: 'var(--yellow)' }}> 0 ⚠ </b>hold none — check the Manage Mandals tab
+              for a duplicate holding the real sites.
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 230, overflowY: 'auto',
@@ -241,10 +273,6 @@ export default function Mapping() {
                       color: on ? 'var(--accent)' : 'var(--text)',
                     }}>
                       {on ? '✓ ' : ''}{m.name}
-                      {/* The site count is load-bearing, not decoration. Several mandals exist
-                          twice under different capitalisation (CHOUTUPPAL has 109 sites,
-                          "Choutuppal" has 0), so picking on name alone can hand a technician
-                          an empty territory that looks correctly mapped. */}
                       <span style={{
                         marginLeft: 5, fontWeight: 700,
                         color: m.site_total === 0 ? 'var(--yellow)' : 'var(--muted)',
@@ -276,131 +304,502 @@ export default function Mapping() {
                 </span>
               )}
               {dirty && draftMandals.length > 0 && (
-                <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>
-                  ⭐ marks the primary mandal. Unsaved changes.
-                </span>
+                <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>⭐ marks the primary mandal. Unsaved changes.</span>
               )}
             </div>
           </div>
 
-          {/* ── Step 2: sites within those mandals ──────────────────────────── */}
           <div className="card">
             <div className="card-title">
               Step 2 — Sites <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 12 }}>(optional)</span>
             </div>
-
             {detail.mandals.length === 0 ? (
               <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
                 Save at least one mandal above first — sites are picked from within a technician's own mandals.
               </div>
-            ) : (
-              detail.mandals.map(m => (
-                <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
-                  <button onClick={() => openSites(m.id)} style={{
-                    width: '100%', textAlign: 'left', padding: '10px 12px', background: 'none',
-                    border: 'none', cursor: 'pointer', color: 'var(--text)', display: 'flex',
-                    justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                  }}>
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>
-                      {m.is_primary && '⭐ '}{m.name}
-                      <span style={{ color: 'var(--muted)', fontWeight: 400, marginLeft: 8, fontSize: 11.5 }}>
-                        {m.site_total} site(s)
-                      </span>
+            ) : detail.mandals.map(m => (
+              <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
+                <button onClick={() => openSites(m.id)} style={{
+                  width: '100%', textAlign: 'left', padding: '10px 12px', background: 'none',
+                  border: 'none', cursor: 'pointer', color: 'var(--text)', display: 'flex',
+                  justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>
+                    {m.is_primary && '⭐ '}{m.name}
+                    <span style={{ color: 'var(--muted)', fontWeight: 400, marginLeft: 8, fontSize: 11.5 }}>
+                      {m.site_total} site(s)
                     </span>
-                    <span style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span className="pill pill-cyan">{m.mine} theirs</span>
-                      {m.shared_with_me > 0 && <span className="pill pill-purple">{m.shared_with_me} shared</span>}
-                      {m.others > 0 && <span className="pill pill-gray">{m.others} other tech</span>}
-                      {m.unassigned > 0 && <span className="pill pill-yellow">{m.unassigned} unassigned</span>}
-                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{openMandal === m.id ? '▲' : '▼'}</span>
-                    </span>
-                  </button>
+                  </span>
+                  <span style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="pill pill-cyan">{m.mine} theirs</span>
+                    {m.shared_with_me > 0 && <span className="pill pill-purple">{m.shared_with_me} shared</span>}
+                    {m.others > 0 && <span className="pill pill-gray">{m.others} other tech</span>}
+                    {m.unassigned > 0 && <span className="pill pill-yellow">{m.unassigned} unassigned</span>}
+                    <span style={{ fontSize: 10, color: 'var(--muted)' }}>{openMandal === m.id ? '▲' : '▼'}</span>
+                  </span>
+                </button>
 
-                  {openMandal === m.id && (
-                    <div style={{ borderTop: '1px solid var(--border)', padding: 12 }}>
-                      {!sites ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading sites…</div> : (
-                        <>
-                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                            <button className="btn btn-outline btn-sm" disabled={busy}
-                              onClick={() => runAssign(sites.items.filter(s => !s.technician_id).map(s => s.id))}>
-                              ➕ Assign all unassigned ({sites.items.filter(s => !s.technician_id).length})
-                            </button>
-                            <button className="btn btn-outline btn-sm" disabled={busy || !picked.length}
-                              onClick={() => runAssign(picked)}>
-                              Assign selected ({picked.length})
-                            </button>
-                            <button className="btn btn-outline btn-sm" disabled={busy || !picked.length}
-                              onClick={() => runAssign(picked, { slot: 'secondary' })}>
-                              Add as 2nd technician
-                            </button>
-                            <button className="btn btn-danger btn-sm" disabled={busy || !picked.length}
-                              onClick={() => { if (confirm(`Take over ${picked.length} site(s) from their current technician?`)) runAssign(picked, { overwrite: true }) }}>
-                              ⚠ Take over
-                            </button>
-                            <button className="btn btn-outline btn-sm" disabled={busy || !picked.length}
-                              onClick={() => { if (confirm(`Clear the technician on ${picked.length} site(s)? They'll belong to nobody.`)) runAssign(picked, { action: 'clear' }) }}>
-                              Clear
-                            </button>
-                          </div>
-
-                          <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-                            {sites.items.map(s => {
-                              const on = picked.includes(s.id)
-                              return (
-                                <div key={s.id} onClick={() => setPicked(p => on ? p.filter(x => x !== s.id) : [...p, s.id])}
-                                  style={{
-                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                    gap: 10, padding: '7px 10px', cursor: 'pointer', fontSize: 12.5,
-                                    borderBottom: '1px solid var(--border)',
-                                    background: on ? 'var(--accent-soft)' : 'transparent',
-                                  }}>
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                                    <span style={{ color: on ? 'var(--accent)' : 'var(--muted)' }}>{on ? '☑' : '☐'}</span>
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {s.name}
-                                      {s.sub_location_count > 0 && (
-                                        <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>
-                                          ({s.sub_location_count} sub-locations — they follow)
-                                        </span>
-                                      )}
-                                    </span>
+                {openMandal === m.id && (
+                  <div style={{ borderTop: '1px solid var(--border)', padding: 12 }}>
+                    {!sites ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading sites…</div> : (
+                      <>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                          <button className="btn btn-outline btn-sm" disabled={busy}
+                            onClick={() => runAssign(sites.items.filter(s => !s.technician_id).map(s => s.id))}>
+                            ➕ Assign all unassigned ({sites.items.filter(s => !s.technician_id).length})
+                          </button>
+                          <button className="btn btn-outline btn-sm" disabled={busy || !picked.length}
+                            onClick={() => runAssign(picked)}>Assign selected ({picked.length})</button>
+                          <button className="btn btn-outline btn-sm" disabled={busy || !picked.length}
+                            onClick={() => runAssign(picked, { slot: 'secondary' })}>Add as 2nd technician</button>
+                          <button className="btn btn-danger btn-sm" disabled={busy || !picked.length}
+                            onClick={() => { if (confirm(`Take over ${picked.length} site(s) from their current technician?`)) runAssign(picked, { overwrite: true }) }}>
+                            ⚠ Take over</button>
+                          <button className="btn btn-outline btn-sm" disabled={busy || !picked.length}
+                            onClick={() => { if (confirm(`Clear the technician on ${picked.length} site(s)? They'll belong to nobody.`)) runAssign(picked, { action: 'clear' }) }}>
+                            Clear</button>
+                        </div>
+                        <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                          {sites.items.map(s => {
+                            const on = picked.includes(s.id)
+                            return (
+                              <div key={s.id} onClick={() => setPicked(p => on ? p.filter(x => x !== s.id) : [...p, s.id])}
+                                style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                                  padding: '7px 10px', cursor: 'pointer', fontSize: 12.5,
+                                  borderBottom: '1px solid var(--border)',
+                                  background: on ? 'var(--accent-soft)' : 'transparent',
+                                }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                                  <span style={{ color: on ? 'var(--accent)' : 'var(--muted)' }}>{on ? '☑' : '☐'}</span>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {s.name}
+                                    {s.sub_location_count > 0 && (
+                                      <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>
+                                        ({s.sub_location_count} sub-locations — they follow)
+                                      </span>
+                                    )}
                                   </span>
-                                  <span style={{ flexShrink: 0 }}>
-                                    {s.held_by_me
-                                      ? <span className="pill pill-cyan">theirs</span>
-                                      : s.technician_name
-                                        ? <span className="pill pill-gray">{s.technician_name}</span>
-                                        : <span className="pill pill-yellow">unassigned</span>}
-                                    {s.shared_with_me && <span className="pill pill-purple" style={{ marginLeft: 4 }}>2nd</span>}
-                                  </span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
+                                </span>
+                                <span style={{ flexShrink: 0 }}>
+                                  {s.held_by_me ? <span className="pill pill-cyan">theirs</span>
+                                    : s.technician_name ? <span className="pill pill-gray">{s.technician_name}</span>
+                                    : <span className="pill pill-yellow">unassigned</span>}
+                                  {s.shared_with_me && <span className="pill pill-purple" style={{ marginLeft: 4 }}>2nd</span>}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </>
       )}
+    </>
+  )
+}
 
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
-          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
-          padding: '10px 16px', fontSize: 12.5, boxShadow: 'var(--shadow-lg)', maxWidth: 'min(560px, 92vw)',
-        }}>{toast}</div>
+/* ──────────────────────────────── Sites → Mandals ───────────────────────── */
+
+function SitesTab({ showToast, errMsg }) {
+  const [mandals, setMandals] = useState([])
+  const [search, setSearch] = useState('')
+  const [filterMandal, setFilterMandal] = useState('')
+  const [data, setData] = useState(null)
+  const [picked, setPicked] = useState([])
+  const [target, setTarget] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => { api.get('/api/mapping/mandals').then(r => setMandals(r.data.items)) }, [])
+
+  const load = useCallback(() => {
+    const params = { limit: 400 }
+    if (search.trim()) params.search = search.trim()
+    if (filterMandal) params.mandal_id = Number(filterMandal)
+    api.get('/api/mapping/sites', { params }).then(r => { setData(r.data); setPicked([]) })
+  }, [search, filterMandal])
+  useEffect(() => { const id = setTimeout(load, 300); return () => clearTimeout(id) }, [load])
+
+  async function apply(clear = false) {
+    if (!picked.length) { showToast('Select some sites first.'); return }
+    if (!clear && !target) { showToast('Pick the mandal to move them into.'); return }
+    if (clear && !confirm(`Clear the mandal on ${picked.length} site(s)? They'll drop out of every Mandal filter.`)) return
+    setBusy(true)
+    try {
+      const r = await api.post('/api/mapping/assign-mandal', {
+        mandal_id: clear ? null : Number(target), school_ids: picked,
+      })
+      const bits = [`${r.data.changed} site(s) ${clear ? 'cleared' : `moved into ${r.data.mandal}`}`]
+      if (r.data.cascaded_sub_locations) bits.push(`${r.data.cascaded_sub_locations} sub-location(s) followed`)
+      showToast('✅ ' + bits.join(' · '))
+      load()
+      api.get('/api/mapping/mandals').then(x => setMandals(x.data.items))
+    } catch (e) { showToast(errMsg(e, 'Could not move those sites'), 8000) }
+    setBusy(false)
+  }
+
+  const mandalOptions = [
+    { value: '-1', label: '— No mandal (needs fixing) —' },
+    ...mandals.map(m => ({ value: String(m.id), label: `${m.name} (${m.site_count})` })),
+  ]
+
+  return (
+    <>
+      <div className="alert alert-blue" style={{ marginBottom: 16, display: 'block' }}>
+        <div style={{ fontSize: 12.5, lineHeight: 1.65 }}>
+          Which mandal each site sits in. This drives the <b>Mandal filters</b> on Service Reports and the
+          fallback the daily rotation uses, so a site with no mandal quietly disappears from both.
+          Sub-locations always follow their parent.
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title">Find sites</div>
+        <div className="form-grid" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ flex: '2 1 220px', marginBottom: 0 }}>
+            <label>Search by name</label>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="e.g. MPPS NELAPATLA…" />
+          </div>
+          <div className="form-group" style={{ flex: '2 1 220px', marginBottom: 0 }}>
+            <label>Filter by current mandal</label>
+            <SearchableSelect value={filterMandal} onChange={setFilterMandal}
+              placeholder="Any mandal…" options={mandalOptions} />
+          </div>
+        </div>
+
+        {data && (
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 10 }}>
+            Showing {data.showing} of {data.total} matching site(s).
+            {data.truncated && <b style={{ color: 'var(--yellow)' }}> Narrow the search to see the rest.</b>}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-title">Move sites into a mandal</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+          <div className="form-group" style={{ flex: '2 1 240px', marginBottom: 0 }}>
+            <label>Move the selected {picked.length} site(s) into</label>
+            <SearchableSelect value={target} onChange={setTarget} placeholder="Choose mandal…"
+              options={mandals.map(m => ({ value: String(m.id), label: `${m.name} (${m.site_count})` }))} />
+          </div>
+          <button className="btn btn-primary btn-sm" disabled={busy || !picked.length || !target}
+            onClick={() => apply(false)}>{busy ? '⏳ Moving…' : `✅ Move ${picked.length}`}</button>
+          <button className="btn btn-outline btn-sm" disabled={busy || !picked.length}
+            onClick={() => apply(true)}>Clear mandal</button>
+          {data?.items?.length > 0 && (
+            <button className="btn btn-outline btn-sm"
+              onClick={() => setPicked(picked.length === data.items.length ? [] : data.items.map(s => s.id))}>
+              {picked.length === data.items.length ? 'Deselect all' : `Select all ${data.items.length}`}
+            </button>
+          )}
+        </div>
+
+        {!data ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading…</div>
+          : data.items.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No site matches that.</div>
+          : (
+            <div style={{ maxHeight: 460, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+              {data.items.map(s => {
+                const on = picked.includes(s.id)
+                return (
+                  <div key={s.id} onClick={() => setPicked(p => on ? p.filter(x => x !== s.id) : [...p, s.id])}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                      padding: '7px 10px', cursor: 'pointer', fontSize: 12.5,
+                      borderBottom: '1px solid var(--border)',
+                      background: on ? 'var(--accent-soft)' : 'transparent',
+                    }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                      <span style={{ color: on ? 'var(--accent)' : 'var(--muted)' }}>{on ? '☑' : '☐'}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.name}
+                        {s.sub_location_count > 0 && (
+                          <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>
+                            ({s.sub_location_count} sub-locations — they follow)
+                          </span>
+                        )}
+                        {s.technician_name && (
+                          <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>· {s.technician_name}</span>
+                        )}
+                      </span>
+                    </span>
+                    <span style={{ flexShrink: 0 }}>
+                      {s.mandal_name ? <span className="pill pill-cyan">{s.mandal_name}</span>
+                                     : <span className="pill pill-red">no mandal</span>}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+      </div>
+    </>
+  )
+}
+
+/* ──────────────────────────────── Manage Mandals ────────────────────────── */
+
+function MandalsTab({ showToast, errMsg }) {
+  const [data, setData] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [form, setForm] = useState({ name: '', district: 'Nalgonda', state: 'Telangana' })
+  const [editing, setEditing] = useState(null)      // id
+  const [editDraft, setEditDraft] = useState({ name: '', district: '', state: '' })
+  const [mergeInto, setMergeInto] = useState({})    // {sourceId: targetId}
+  const [search, setSearch] = useState('')
+
+  const load = useCallback(() => { api.get('/api/mapping/mandals').then(r => setData(r.data)) }, [])
+  useEffect(() => { load() }, [load])
+
+  async function addMandal() {
+    if (!form.name.trim()) { showToast('Enter a mandal name.'); return }
+    setBusy(true)
+    try {
+      const r = await api.post('/api/mapping/mandals', form)
+      showToast(`✅ Added ${r.data.name}`)
+      setForm({ name: '', district: form.district, state: form.state })
+      load()
+    } catch (e) { showToast(errMsg(e, 'Could not add that mandal'), 9000) }
+    setBusy(false)
+  }
+
+  async function saveEdit(id) {
+    setBusy(true)
+    try {
+      const r = await api.patch(`/api/mapping/mandals/${id}`, editDraft)
+      showToast(`✅ Saved ${r.data.name}`)
+      setEditing(null); load()
+    } catch (e) { showToast(errMsg(e, 'Could not save'), 9000) }
+    setBusy(false)
+  }
+
+  async function removeMandal(m) {
+    if (!confirm(`Delete "${m.name}"? Nothing references it, so this is safe.`)) return
+    setBusy(true)
+    try {
+      const r = await api.delete(`/api/mapping/mandals/${m.id}`)
+      showToast(`✅ Deleted ${r.data.deleted}`); load()
+    } catch (e) { showToast(errMsg(e, 'Could not delete'), 10000) }
+    setBusy(false)
+  }
+
+  async function doMerge(src, targetId) {
+    const dst = data.items.find(x => x.id === Number(targetId))
+    if (!dst) { showToast('Pick a mandal to merge into.'); return }
+    // Quote the TOTAL reference counts, not the operational ones. A mandal can show
+    // "0 sites, 0 tech" and still be some inactive employee's primary mandal — saying
+    // "0 and 0" before an irreversible merge would be a lie by omission.
+    const moves = []
+    if (src.total_site_refs) moves.push(`${src.total_site_refs} site(s)`)
+    if (src.total_technician_link_refs) moves.push(`${src.total_technician_link_refs} technician mandal link(s)`)
+    if (src.total_legacy_refs) moves.push(`${src.total_legacy_refs} employee(s) whose primary mandal it is (this affects their travel allowance)`)
+    if (!confirm(
+      `Merge "${src.name}" into "${dst.name}"?\n\n` +
+      (moves.length ? `Moving across:\n  • ${moves.join('\n  • ')}\n\n`
+                    : 'Nothing references it, so nothing moves.\n\n') +
+      `Then "${src.name}" is deleted.\n\nThis cannot be undone.`
+    )) return
+    setBusy(true)
+    try {
+      const r = await api.post(`/api/mapping/mandals/${src.id}/merge`, { into_mandal_id: Number(targetId) })
+      showToast(`✅ Merged ${r.data.merged} into ${r.data.into} — ${r.data.sites_moved} site(s), ` +
+                `${r.data.technician_links_moved} technician link(s) moved` +
+                (r.data.legacy_primaries_repointed ? `, ${r.data.legacy_primaries_repointed} primary mandal(s) repointed` : ''), 10000)
+      setMergeInto(p => ({ ...p, [src.id]: '' })); load()
+    } catch (e) { showToast(errMsg(e, 'Merge failed'), 10000) }
+    setBusy(false)
+  }
+
+  if (!data) return <div className="card">Loading mandals…</div>
+
+  const byId = Object.fromEntries(data.items.map(m => [m.id, m]))
+  const visible = data.items.filter(m =>
+    !search.trim() || m.name.toLowerCase().includes(search.trim().toLowerCase()))
+
+  return (
+    <>
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        <Kpi label="Mandals" value={data.totals.mandals} sub="Total records" />
+        <Kpi label="Duplicate names" value={data.totals.duplicate_groups}
+             sub="Same name, different rows" tone={data.totals.duplicate_groups ? 'red' : 'green'} />
+        <Kpi label="Holding no sites" value={data.totals.empty}
+             sub="Often the duplicate to merge away" tone={data.totals.empty ? 'yellow' : 'green'} />
+        <Kpi label="Safe to delete" value={data.totals.deletable} sub="Nothing references them" />
+      </div>
+
+      {data.duplicate_groups.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, border: '1px solid var(--red)' }}>
+          <div className="card-title" style={{ color: 'var(--red)' }}>
+            ⚠ Duplicate mandal names ({data.duplicate_groups.length})
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.6 }}>
+            These exist more than once under different capitalisation. Merging moves every site,
+            technician link and primary-mandal reference into the one you keep, then deletes the other —
+            so nothing is lost. Keep the one holding the sites.
+          </div>
+          {data.duplicate_groups.map(g => {
+            const members = g.mandal_ids.map(i => byId[i]).filter(Boolean)
+            const keep = [...members].sort((a, b) => b.site_count - a.site_count)[0]
+            const losers = members.filter(m => m.id !== keep.id)
+            return (
+              <div key={g.name} style={{
+                border: '1px solid var(--border)', borderRadius: 10, padding: 10, marginBottom: 8,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              }}>
+                <div style={{ fontSize: 12.5 }}>
+                  {members.map(m => (
+                    <span key={m.id} style={{ marginRight: 10 }}>
+                      <b style={{ color: m.id === keep.id ? 'var(--green)' : 'var(--muted)' }}>{m.name}</b>
+                      <span style={{ color: 'var(--muted)' }}> · {m.site_count} sites, {m.technician_count} tech</span>
+                      {/* An apparently empty duplicate can still be somebody's primary mandal. */}
+                      {m.total_legacy_refs > 0 && (
+                        <span style={{ color: 'var(--yellow)' }} title="Employees using this as their primary mandal — a merge repoints them">
+                          , ⭐{m.total_legacy_refs} primary
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {losers.map(l => (
+                    <button key={l.id} className="btn btn-danger btn-sm" disabled={busy}
+                      onClick={() => doMerge(l, keep.id)}>
+                      Merge "{l.name}" → "{keep.name}"
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
-    </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-title">Add a mandal</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ flex: '2 1 200px', marginBottom: 0 }}>
+            <label>Name *</label>
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                   placeholder="e.g. BHOODAN POCHAMPALLY" />
+          </div>
+          <div className="form-group" style={{ flex: '1 1 140px', marginBottom: 0 }}>
+            <label>District</label>
+            <input value={form.district} onChange={e => setForm(f => ({ ...f, district: e.target.value }))} />
+          </div>
+          <div className="form-group" style={{ flex: '1 1 140px', marginBottom: 0 }}>
+            <label>State</label>
+            <select value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))}>
+              <option value="Telangana">Telangana</option>
+              <option value="Andhra Pradesh">Andhra Pradesh</option>
+            </select>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={addMandal} disabled={busy || !form.name.trim()}>
+            {busy ? '⏳' : '➕ Add'}
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">All mandals ({data.items.length})</div>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+               placeholder="Search mandals…" style={{ marginBottom: 10 }} />
+
+        <div className="scroll-table" style={{ maxHeight: 520, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr style={{ textAlign: 'left', color: 'var(--muted)' }}>
+              <th style={th}>Mandal</th><th style={th}>District</th><th style={th}>State</th>
+              <th style={th}>Sites</th><th style={th}>Techs</th><th style={th}>Actions</th>
+            </tr></thead>
+            <tbody>
+              {visible.map(m => (
+                <tr key={m.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  {editing === m.id ? (
+                    <>
+                      <td style={td}><input value={editDraft.name}
+                        onChange={e => setEditDraft(d => ({ ...d, name: e.target.value }))} /></td>
+                      <td style={td}><input value={editDraft.district}
+                        onChange={e => setEditDraft(d => ({ ...d, district: e.target.value }))} /></td>
+                      <td style={td}>
+                        <select value={editDraft.state}
+                          onChange={e => setEditDraft(d => ({ ...d, state: e.target.value }))}>
+                          <option value="Telangana">Telangana</option>
+                          <option value="Andhra Pradesh">Andhra Pradesh</option>
+                        </select>
+                      </td>
+                      <td style={td}>{m.site_count}</td>
+                      <td style={td}>{m.technician_count}</td>
+                      <td style={td}>
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          <button className="btn btn-primary btn-sm" disabled={busy}
+                            onClick={() => saveEdit(m.id)}>Save</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={td}>
+                        <b>{m.name}</b>
+                        {m.duplicate_of.length > 0 && (
+                          <span className="pill pill-red" style={{ marginLeft: 6 }}>duplicate</span>
+                        )}
+                      </td>
+                      <td style={td}>{m.district || '—'}</td>
+                      <td style={td}>{m.state}</td>
+                      <td style={{ ...td, color: m.site_count === 0 ? 'var(--yellow)' : 'var(--text)', fontWeight: 700 }}>
+                        {m.site_count}
+                      </td>
+                      <td style={td}>
+                        {m.technician_count}
+                        {m.legacy_primary_count > 0 && (
+                          <span style={{ color: 'var(--muted)' }} title="Technicians using this as their primary mandal">
+                            {' '}(⭐{m.legacy_primary_count})
+                          </span>
+                        )}
+                      </td>
+                      <td style={td}>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => {
+                            setEditing(m.id)
+                            setEditDraft({ name: m.name, district: m.district || '', state: m.state })
+                          }}>Rename</button>
+
+                          <select value={mergeInto[m.id] || ''} style={{ maxWidth: 150, fontSize: 11 }}
+                            onChange={e => setMergeInto(p => ({ ...p, [m.id]: e.target.value }))}>
+                            <option value="">Merge into…</option>
+                            {data.items.filter(o => o.id !== m.id)
+                              .map(o => <option key={o.id} value={o.id}>{o.name} ({o.site_count})</option>)}
+                          </select>
+                          {mergeInto[m.id] && (
+                            <button className="btn btn-danger btn-sm" disabled={busy}
+                              onClick={() => doMerge(m, mergeInto[m.id])}>Go</button>
+                          )}
+
+                          <button className="btn btn-danger btn-sm" disabled={busy || !m.deletable}
+                            title={m.deletable ? 'Nothing references this mandal'
+                                               : 'Still in use — merge it instead so nothing is lost'}
+                            onClick={() => removeMandal(m)}>Delete</button>
+                        </div>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   )
 }
 
 const th = { padding: '6px 8px', fontWeight: 600, whiteSpace: 'nowrap' }
-const td = { padding: '6px 8px' }
+const td = { padding: '6px 8px', verticalAlign: 'middle' }
 
 function Kpi({ label, value, sub, tone }) {
   const color = tone === 'red' ? 'var(--red)' : tone === 'yellow' ? 'var(--yellow)'

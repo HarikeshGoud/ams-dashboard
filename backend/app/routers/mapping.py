@@ -1,4 +1,8 @@
-"""Technician → Mandal → Site mapping.
+"""Technician → Mandal → Site mapping, and mandal administration.
+
+Everything needed to keep this data straight lives here: which mandals a technician
+covers, which mandal a site sits in, and creating / renaming / merging / deleting the
+mandals themselves.
 
 Until now nothing in the API could WRITE any of this. School.technician_id,
 School.technician_id_2 and the employee_mandals junction table were only ever read
@@ -18,6 +22,17 @@ Two fields, deliberately kept in step by this router:
 Writing only the many-to-many would look correct on the Tasks screen and quietly cost
 the technician their travel allowance, so every mandal write here also sets mandal_id
 to the designated primary mandal.
+
+Exactly three columns point at mandals.id, and every destructive operation below has to
+account for all three or it will either fail on a constraint or orphan data:
+
+  schools.mandal_id           nullable  — which mandal a site sits in
+  employees.mandal_id         nullable  — the legacy primary, drives travel allowance
+  employee_mandals.mandal_id  NOT NULL, half of a composite primary key
+
+That last one is why a merge cannot be a blind UPDATE: if a technician is linked to both
+the source and the target mandal, repointing the row collides with the existing primary
+key. It is done through the ORM collection instead, which de-duplicates.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -27,6 +42,7 @@ from typing import Optional, List
 
 from ..database import get_db
 from ..models.employee import Employee
+from ..models.employee_mandal import employee_mandals
 from ..models.mandal import Mandal
 from ..models.school import School
 from ..dependencies import require_admin_or_deskwork
@@ -325,4 +341,323 @@ def assign_sites(data: SiteAssignment, db: Session = Depends(get_db),
         "cascaded_sub_locations": cascaded,
         "skipped": skipped,
         "not_found": sorted(set(data.school_ids) - found),
+    }
+
+
+# ── Site → mandal ────────────────────────────────────────────────────────────
+
+@router.get("/sites")
+def list_sites(search: Optional[str] = None, mandal_id: Optional[int] = None,
+               unassigned_only: bool = False, limit: int = 400,
+               db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
+    """Sites with the mandal they sit in, for repairing site → mandal placement.
+
+    mandal_id=-1 is the explicit "no mandal" bucket: 0 and None both read as absent in a
+    query string, so a sentinel is the only way to ask for it.
+    """
+    q = (db.query(School)
+           .options(joinedload(School.mandal), joinedload(School.technician))
+           .filter(School.is_active == True, School.parent_school_id.is_(None)))
+    if search and search.strip():
+        q = q.filter(School.name.ilike(f"%{search.strip()}%"))
+    if unassigned_only or mandal_id == -1:
+        q = q.filter(School.mandal_id.is_(None))
+    elif mandal_id:
+        q = q.filter(School.mandal_id == mandal_id)
+
+    total = q.count()
+    sites = q.order_by(School.name).limit(limit).all()
+
+    child_counts = {}
+    if sites:
+        rows = (db.query(School.parent_school_id, func.count(School.id))
+                  .filter(School.parent_school_id.in_([s.id for s in sites]),
+                          School.is_active == True)
+                  .group_by(School.parent_school_id).all())
+        child_counts = {pid: cnt for pid, cnt in rows}
+
+    return {
+        "total": total, "showing": len(sites), "truncated": total > len(sites),
+        "items": [{
+            "id": s.id, "name": s.name, "model": s.model,
+            "mandal_id": s.mandal_id,
+            "mandal_name": s.mandal.name if s.mandal else None,
+            "technician_name": s.technician.name if s.technician else None,
+            "sub_location_count": child_counts.get(s.id, 0),
+        } for s in sites],
+    }
+
+
+class MandalAssignment(BaseModel):
+    mandal_id: Optional[int] = None      # None clears the mandal
+    school_ids: List[int]
+
+
+@router.post("/assign-mandal")
+def assign_mandal(data: MandalAssignment, db: Session = Depends(get_db),
+                  user=Depends(require_admin_or_deskwork)):
+    """Bulk move sites into a mandal (or clear it)."""
+    if not data.school_ids:
+        raise HTTPException(400, "No sites selected.")
+
+    mandal = None
+    if data.mandal_id is not None:
+        mandal = db.query(Mandal).filter(Mandal.id == data.mandal_id).first()
+        if not mandal:
+            raise HTTPException(404, "Mandal not found")
+
+    sites = db.query(School).filter(School.id.in_(data.school_ids),
+                                    School.is_active == True).all()
+    changed, cascaded = 0, 0
+    for s in sites:
+        if s.mandal_id == data.mandal_id:
+            continue
+        s.mandal_id = data.mandal_id
+        changed += 1
+        # Sub-locations live in the same place as their parent — the Mandal filters on
+        # Service Reports read the site's own mandal, so children left behind would
+        # silently drop out of those reports.
+        for child in db.query(School).filter(School.parent_school_id == s.id,
+                                             School.is_active == True).all():
+            if child.mandal_id != data.mandal_id:
+                child.mandal_id = data.mandal_id
+                cascaded += 1
+    db.commit()
+
+    return {"ok": True, "mandal": mandal.name if mandal else None,
+            "changed": changed, "cascaded_sub_locations": cascaded,
+            "not_found": sorted(set(data.school_ids) - {s.id for s in sites})}
+
+
+# ── Mandal administration ────────────────────────────────────────────────────
+
+def _norm_mandal(name: str) -> str:
+    return " ".join((name or "").strip().upper().split())
+
+
+@router.get("/mandals")
+def list_mandals_admin(db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
+    """Every mandal with its usage counts, and duplicate names grouped together.
+
+    Duplicates are grouped case-insensitively because that is exactly how they arose:
+    an early Title-case seeding round ("Choutuppal") was later superseded by an
+    upper-case one ("CHOUTUPPAL") without the originals being removed.
+    """
+    mandals = db.query(Mandal).order_by(Mandal.name).all()
+    site_counts = _site_counts_by_mandal(db)
+
+    # Two different populations, and the difference matters.
+    #
+    # link_counts / legacy_counts cover ACTIVE TECHNICIANS — the operational picture, what
+    # gets displayed. all_refs covers EVERY employee row, active or not, technician or not,
+    # because that is the population delete_mandal refuses on and merge_mandal repoints.
+    # Reporting only the active-technician figure made "safe to delete" lie about mandals
+    # referenced solely by an inactive employee, and made the merge confirmation understate
+    # what it was about to change.
+    link_counts, legacy_counts = {}, {}
+    for emp in (db.query(Employee).options(selectinload(Employee.mandals))
+                  .filter(Employee.role == "technician", Employee.is_active == True).all()):
+        for m in emp.mandals:
+            link_counts[m.id] = link_counts.get(m.id, 0) + 1
+        if emp.mandal_id:
+            legacy_counts[emp.mandal_id] = legacy_counts.get(emp.mandal_id, 0) + 1
+
+    all_legacy_refs = {}
+    for (mid,) in db.query(Employee.mandal_id).filter(Employee.mandal_id.isnot(None)).all():
+        all_legacy_refs[mid] = all_legacy_refs.get(mid, 0) + 1
+    all_link_refs = {}
+    for (mid,) in db.query(employee_mandals.c.mandal_id).all():
+        all_link_refs[mid] = all_link_refs.get(mid, 0) + 1
+    # Sites too: delete_mandal counts only active ones, but an inactive site still carries
+    # the FK, so a merge has to move it. Count both.
+    all_site_refs = {}
+    for (mid,) in db.query(School.mandal_id).filter(School.mandal_id.isnot(None)).all():
+        all_site_refs[mid] = all_site_refs.get(mid, 0) + 1
+
+    groups = {}
+    for m in mandals:
+        groups.setdefault(_norm_mandal(m.name), []).append(m.id)
+
+    items = []
+    for m in mandals:
+        key = _norm_mandal(m.name)
+        sites = site_counts.get(m.id, 0)
+        links = link_counts.get(m.id, 0)
+        legacy = legacy_counts.get(m.id, 0)
+        items.append({
+            "id": m.id, "name": m.name, "district": m.district,
+            "state": m.state or "Telangana",
+            "travel_eligible": True if m.travel_eligible is None else bool(m.travel_eligible),
+            # Operational view: active technicians and active top-level sites.
+            "site_count": sites,
+            "technician_count": links,
+            "legacy_primary_count": legacy,
+            # Everything that actually references this row, whatever its active flag or
+            # role. This is what a merge moves and what a delete refuses on, so it is what
+            # the confirmation dialogs must quote.
+            "total_site_refs": all_site_refs.get(m.id, 0),
+            "total_technician_link_refs": all_link_refs.get(m.id, 0),
+            "total_legacy_refs": all_legacy_refs.get(m.id, 0),
+            "duplicate_of": [i for i in groups[key] if i != m.id],
+            # Must mirror delete_mandal exactly, or the button offers a delete that 400s.
+            "deletable": (all_site_refs.get(m.id, 0) == 0
+                          and all_link_refs.get(m.id, 0) == 0
+                          and all_legacy_refs.get(m.id, 0) == 0),
+        })
+
+    dupe_groups = [
+        {"name": k, "mandal_ids": v} for k, v in sorted(groups.items()) if len(v) > 1
+    ]
+    return {
+        "items": items,
+        "duplicate_groups": dupe_groups,
+        "totals": {
+            "mandals": len(items),
+            "duplicate_groups": len(dupe_groups),
+            "empty": sum(1 for i in items if i["site_count"] == 0),
+            "deletable": sum(1 for i in items if i["deletable"]),
+        },
+    }
+
+
+class MandalCreate(BaseModel):
+    name: str
+    district: Optional[str] = "Nalgonda"
+    state: Optional[str] = "Telangana"
+
+
+@router.post("/mandals")
+def create_mandal(data: MandalCreate, db: Session = Depends(get_db),
+                  user=Depends(require_admin_or_deskwork)):
+    name = (data.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Enter a mandal name.")
+    # Mandal.name is UNIQUE, so a near-duplicate would hit an opaque IntegrityError.
+    # Check case-insensitively too, since that is how the existing duplicates happened.
+    for m in db.query(Mandal).all():
+        if _norm_mandal(m.name) == _norm_mandal(name):
+            raise HTTPException(400, f"'{m.name}' already exists (id {m.id}) — "
+                                     f"use that one instead of creating a near-duplicate.")
+    m = Mandal(name=name, district=(data.district or "").strip() or None,
+               state=(data.state or "").strip() or "Telangana", travel_eligible=True)
+    db.add(m); db.commit(); db.refresh(m)
+    return {"ok": True, "id": m.id, "name": m.name, "district": m.district, "state": m.state}
+
+
+class MandalEdit(BaseModel):
+    name: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
+
+
+@router.patch("/mandals/{mandal_id}")
+def edit_mandal(mandal_id: int, data: MandalEdit, db: Session = Depends(get_db),
+                user=Depends(require_admin_or_deskwork)):
+    m = db.query(Mandal).filter(Mandal.id == mandal_id).first()
+    if not m:
+        raise HTTPException(404, "Mandal not found")
+    if data.name is not None:
+        new_name = data.name.strip()
+        if not new_name:
+            raise HTTPException(400, "Mandal name cannot be blank.")
+        clash = next((o for o in db.query(Mandal).filter(Mandal.id != mandal_id).all()
+                      if _norm_mandal(o.name) == _norm_mandal(new_name)), None)
+        if clash:
+            raise HTTPException(400, f"'{clash.name}' (id {clash.id}) already uses that name — "
+                                     f"merge them instead of renaming.")
+        m.name = new_name
+    if data.district is not None:
+        m.district = data.district.strip() or None
+    if data.state is not None:
+        m.state = data.state.strip() or m.state
+    db.commit(); db.refresh(m)
+    return {"ok": True, "id": m.id, "name": m.name, "district": m.district, "state": m.state}
+
+
+@router.delete("/mandals/{mandal_id}")
+def delete_mandal(mandal_id: int, db: Session = Depends(get_db),
+                  user=Depends(require_admin_or_deskwork)):
+    """Delete a mandal that nothing references. Anything in use must be merged instead."""
+    m = db.query(Mandal).filter(Mandal.id == mandal_id).first()
+    if not m:
+        raise HTTPException(404, "Mandal not found")
+
+    # Every one of these counts must ignore is_active: an archived site or a deactivated
+    # employee still carries the foreign key, and Postgres rejects the delete regardless of
+    # whether the app considers the row live. Counting only active rows would let this pass
+    # its own check and then fail on the constraint.
+    sites = db.query(School).filter(School.mandal_id == mandal_id).count()
+    legacy = db.query(Employee).filter(Employee.mandal_id == mandal_id).count()
+    links = db.query(employee_mandals).filter(employee_mandals.c.mandal_id == mandal_id).count()
+
+    if sites or legacy or links:
+        bits = []
+        if sites:  bits.append(f"{sites} site(s)")
+        if links:  bits.append(f"{links} technician mandal link(s)")
+        if legacy: bits.append(f"{legacy} employee(s) using it as their primary mandal")
+        raise HTTPException(400,
+            f"'{m.name}' is still in use by {', '.join(bits)} "
+            f"(counting archived sites and inactive staff, which hold the reference too). "
+            f"Merge it into another mandal instead — that moves everything across first.")
+
+    name = m.name
+    db.delete(m); db.commit()
+    return {"ok": True, "deleted": name}
+
+
+class MandalMerge(BaseModel):
+    into_mandal_id: int
+
+
+@router.post("/mandals/{mandal_id}/merge")
+def merge_mandal(mandal_id: int, data: MandalMerge, db: Session = Depends(get_db),
+                 user=Depends(require_admin_or_deskwork)):
+    """Move everything from one mandal into another, then delete the empty one.
+
+    Used to collapse the case-variant duplicates. Every one of the three columns that
+    reference mandals.id is handled; the junction table goes through the ORM collection
+    so a technician already linked to both mandals doesn't collide on the composite key.
+    """
+    src = db.query(Mandal).filter(Mandal.id == mandal_id).first()
+    if not src:
+        raise HTTPException(404, "Mandal to merge was not found")
+    if data.into_mandal_id == mandal_id:
+        raise HTTPException(400, "Pick a different mandal to merge into.")
+    dst = db.query(Mandal).filter(Mandal.id == data.into_mandal_id).first()
+    if not dst:
+        raise HTTPException(404, "Target mandal was not found")
+
+    # 1. Sites — including inactive ones, so a later reactivation doesn't dangle.
+    sites = db.query(School).filter(School.mandal_id == src.id).all()
+    for s in sites:
+        s.mandal_id = dst.id
+
+    # 2. Junction rows, via the collection so duplicates collapse instead of colliding.
+    moved_links, already_had = 0, 0
+    for emp in list(src.technicians):
+        ids = {m.id for m in emp.mandals}
+        emp.mandals = [m for m in emp.mandals if m.id != src.id]
+        if dst.id in ids:
+            already_had += 1
+        else:
+            emp.mandals = emp.mandals + [dst]
+            moved_links += 1
+
+    # 3. Legacy primary — leaving this pointing at a deleted row would break travel.
+    legacy = db.query(Employee).filter(Employee.mandal_id == src.id).all()
+    for emp in legacy:
+        emp.mandal_id = dst.id
+
+    db.flush()
+    src_name = src.name
+    db.delete(src)
+    db.commit()
+
+    return {
+        "ok": True,
+        "merged": src_name, "into": dst.name,
+        "sites_moved": len(sites),
+        "technician_links_moved": moved_links,
+        "technician_links_already_present": already_had,
+        "legacy_primaries_repointed": len(legacy),
     }
