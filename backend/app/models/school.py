@@ -17,6 +17,7 @@ class School(Base):
     phone             = Column(String(15), nullable=True)
     unit_number       = Column(String(20), nullable=True)
     technician_id     = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    technician_id_2   = Column(Integer, ForeignKey("employees.id"), nullable=True)  # optional 2nd technician for jointly-covered sites
     model             = Column(String(20), default="normal")  # normal / temple / village
     capacity          = Column(String(50), nullable=True)
     plant_model       = Column(String(100), nullable=True)
@@ -35,6 +36,7 @@ class School(Base):
     mandal     = relationship("Mandal", back_populates="schools")
     client     = relationship("Client", back_populates="schools")
     technician = relationship("Employee", foreign_keys=[technician_id])
+    technician_2 = relationship("Employee", foreign_keys=[technician_id_2])
     visits     = relationship("Visit", back_populates="school")
     complaints = relationship("Complaint", back_populates="school")
     parent           = relationship("School", remote_side=[id], backref="sub_location_rows", foreign_keys=[parent_school_id])

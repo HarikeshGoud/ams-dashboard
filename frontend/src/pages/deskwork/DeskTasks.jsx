@@ -374,7 +374,7 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   const [selectedSubLocs, setSelectedSubLocs] = useState([])
 
   useEffect(() => {
-    api.get('/api/schools/', { params: { limit: 300 } }).then(r => setSchools(r.data?.items || []))
+    api.get('/api/schools/', { params: { limit: 2000 } }).then(r => setSchools(r.data?.items || []))
   }, [])
 
   // Sites with sub-locations (hospitals, temples) get picked as a whole here, but
@@ -438,12 +438,12 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   }
 
   const emp = employees.find(e => String(e.id) === String(empId))
-  // Full list of schools in the technician's mandal — rotation eligibility is
-  // enforced server-side and shown via the suggestion chips above, not by
-  // hiding schools here (that made the dropdown look empty in edge cases).
-  const mandalSchools = emp?.mandal_id
-    ? schools.filter(s => s.mandal_id === emp.mandal_id)
-    : schools
+  // Full list of every school/site — rotation eligibility is enforced server-side
+  // and shown via the suggestion chips above, not by hiding schools here. A
+  // technician's real assigned sites often span several mandals (their own
+  // employee_mandals list, not just their single legacy mandal_id), so filtering
+  // this dropdown down to one mandal was hiding most of their actual sites.
+  const mandalSchools = schools
 
   return (
     <div className="modal-backdrop" onClick={e => e.target.className === 'modal-backdrop' && onClose()}>

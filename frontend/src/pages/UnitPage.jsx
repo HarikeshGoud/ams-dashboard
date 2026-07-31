@@ -50,6 +50,10 @@ function contractLabel(s) {
   if (s === 'chargeable') return '💳 Chargeable'
   return s || '—'
 }
+function techLabel(site) {
+  if (!site.technician_name) return '—'
+  return site.technician_2_name ? `${site.technician_name} & ${site.technician_2_name}` : site.technician_name
+}
 
 // ── Inline contract editor ─────────────────────────────────────────────────
 function ContractEditor({ site, onSaved }) {
@@ -247,7 +251,7 @@ function SiteModal({ site, onClose }) {
             ['Total Reports', reports.length, '#2563eb'],
             ['This Month',    thisMonthCount,  '#198754'],
             ['Last Report',   reports[0]?.date || '—', '#fd7e14'],
-            ['Technician',    site.technician_name || '—', '#7c3aed'],
+            ['Technician',    techLabel(site), '#7c3aed'],
             ['Capacity',      site.capacity || '—', '#6c757d'],
           ].map(([lbl, val, col]) => (
             <div key={lbl} style={{ flex: 1, padding: '10px 14px', borderRight: '1px solid var(--border)' }}>
@@ -282,7 +286,7 @@ function SiteModal({ site, onClose }) {
                     >
                       <td style={{ padding: '9px 12px', color: 'var(--muted)', fontSize: 12 }}>{i + 1}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600 }}>{c.name}</td>
-                      <td style={{ padding: '9px 12px', color: 'var(--muted)' }}>{c.technician_name || '—'}</td>
+                      <td style={{ padding: '9px 12px', color: 'var(--muted)' }}>{techLabel(c)}</td>
                       <td style={{ padding: '9px 12px' }}>
                         <span style={{ background: condColor(c.plant_condition), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{condLabel(c.plant_condition)}</span>
                       </td>
@@ -599,7 +603,7 @@ export default function UnitPage() {
                     <ContractEditor site={s} onSaved={onContractSaved} />
                   </td>
 
-                  <td style={{ padding: '10px 12px', color: 'var(--muted)' }} onClick={() => setSelectedSite(s)}>{s.technician_name || '—'}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--muted)' }} onClick={() => setSelectedSite(s)}>{techLabel(s)}</td>
                   <td style={{ padding: '10px 12px' }} onClick={() => setSelectedSite(s)}>
                     <span style={{ background: condColor(s.plant_condition), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{condLabel(s.plant_condition)}</span>
                   </td>

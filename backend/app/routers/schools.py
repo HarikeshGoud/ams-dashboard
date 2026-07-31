@@ -1,7 +1,7 @@
 import os, shutil, json
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from pydantic import BaseModel
 from typing import Optional, List
 from ..database import get_db
@@ -33,6 +33,7 @@ def _clean_sub_location_names(items: Optional[List[str]]) -> List[str]:
 
 def _fmt(s: School, sub_location_count: int = None):
     tech_obj = s.technician if s.technician_id else None
+    tech_obj_2 = s.technician_2 if s.technician_id_2 else None
     return {
         "id": s.id, "name": s.name, "mandal_id": s.mandal_id,
         "mandal_name": s.mandal.name if s.mandal else None,
@@ -40,6 +41,8 @@ def _fmt(s: School, sub_location_count: int = None):
         "client_name": s.client.name if s.client else None,
         "technician_id": s.technician_id,
         "technician_name": tech_obj.name if tech_obj else None,
+        "technician_id_2": s.technician_id_2,
+        "technician_2_name": tech_obj_2.name if tech_obj_2 else None,
         "model": s.model, "capacity": s.capacity, "plant_model": s.plant_model,
         "unit_number": s.unit_number,
         "plant_condition": s.plant_condition,
@@ -68,6 +71,7 @@ def list_schools(
         joinedload(School.mandal),
         joinedload(School.client),
         joinedload(School.technician),
+        joinedload(School.technician_2),
     ).filter(School.is_active == True)
     if parent_id:
         # Sub-locations of one hospital — ignore other filters, they don't apply at this level.
@@ -82,7 +86,7 @@ def list_schools(
     if client_id:
         q = q.filter(School.client_id == client_id)
     if technician_id:
-        q = q.filter(School.technician_id == technician_id)
+        q = q.filter(or_(School.technician_id == technician_id, School.technician_id_2 == technician_id))
     if unit_number:
         q = q.filter(School.unit_number == unit_number)
     if segment:

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, date
@@ -98,9 +99,9 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
     Returns (eligible_schools, all_schools, new_round, visited_count).
     """
     from ..models.school import School
-    # Primary: schools with technician_id pointing to this employee
+    # Primary: schools with technician_id (or the optional 2nd technician) pointing to this employee
     all_schools = db.query(School).filter(
-        School.technician_id == employee_id,
+        or_(School.technician_id == employee_id, School.technician_id_2 == employee_id),
         School.is_active == True
     ).all()
 

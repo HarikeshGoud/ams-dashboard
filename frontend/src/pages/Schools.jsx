@@ -3,6 +3,11 @@ import api from '../api/axios'
 import SearchableSelect from '../components/SearchableSelect'
 import { isOverdue } from '../utils/visitStatus'
 
+function techLabel(site) {
+  if (!site.technician_name) return '—'
+  return site.technician_2_name ? `${site.technician_name} & ${site.technician_2_name}` : site.technician_name
+}
+
 export default function Schools() {
   const [data, setData] = useState({ items: [], total: 0 })
   const [mandals, setMandals] = useState([])
@@ -138,7 +143,7 @@ export default function Schools() {
                     <td><span className={`pill ${s.model === 'temple' ? 'pill-orange' : 'pill-blue'}`}>{s.model || '—'}</span></td>
                     <td><span className={`pill ${s.amc_status === 'amc' ? 'pill-green' : s.amc_status === 'warranty' ? 'pill-orange' : 'pill-red'}`}>{(s.amc_status || '—').toUpperCase()}</span></td>
                     <td>{s.mandal_name || '—'}</td>
-                    <td>{s.technician_name || '—'}</td>
+                    <td>{techLabel(s)}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span>{s.last_visit_date || 'Never'}</span>
