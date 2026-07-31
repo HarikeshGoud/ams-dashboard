@@ -18,7 +18,10 @@ class School(Base):
     unit_number       = Column(String(20), nullable=True)
     technician_id     = Column(Integer, ForeignKey("employees.id"), nullable=True)
     technician_id_2   = Column(Integer, ForeignKey("employees.id"), nullable=True)  # optional 2nd technician for jointly-covered sites
-    model             = Column(String(20), default="normal")  # normal / temple / village
+    # Site type, despite the column name. Live values: school, village, hospital,
+    # hostel, temple, park, other. The "normal" default is legacy and unused — no
+    # row carries it. Only 'school' is picked up by daily auto-task rotation.
+    model             = Column(String(20), default="normal")
     capacity          = Column(String(50), nullable=True)
     plant_model       = Column(String(100), nullable=True)
     plant_condition   = Column(String(20), default="working")  # working / not_working

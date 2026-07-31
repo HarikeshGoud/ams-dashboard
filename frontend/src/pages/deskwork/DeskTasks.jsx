@@ -24,7 +24,8 @@ export default function DeskTasks() {
   const today = todayIST()
   const [taskDate, setTaskDate] = useState(today)
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
+  // Warnings run longer than confirmations — they're a sentence to read, not a tick to glance at.
+  function showToast(msg, ms = 4000) { setToast(msg); setTimeout(() => setToast(''), ms) }
 
   function load() {
     Promise.all([
@@ -235,7 +236,10 @@ export default function DeskTasks() {
         <AssignTaskModal
           employees={employees}
           onClose={() => setShowForm(false)}
-          onSaved={() => { load(); showToast('✅ Task assigned!') }}
+          onSaved={(note) => {
+            load()
+            note ? showToast(`⚠️ Assigned — ${note}`, 10000) : showToast('✅ Task assigned!')
+          }}
           defaultDate={taskDate}
         />
       )}
@@ -365,7 +369,7 @@ function ProofReviewCard({ report, onVerify }) {
 function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   const [empId, setEmpId] = useState('')
   const [schools, setSchools] = useState([])
-  const [suggested, setSuggested] = useState({ schools: [], new_round: false, total_in_mandal: 0, eligible_count: 0 })
+  const [suggested, setSuggested] = useState({ schools: [], new_round: false, total_schools: 0, visited_count: 0, unvisited_count: 0, eligible_count: 0 })
   const [form, setForm] = useState({ title: '', school_id: '', priority: 'medium', due_date: defaultDate, description: '' })
   const [dailyCount, setDailyCount] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -412,14 +416,21 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
     }
     setLoading(true); setError('')
     try {
+      // The server can accept a task and still return a note worth reading (over the
+      // default daily count, or a same-day duplicate for that site). Collect those and
+      // hand them to the parent for a toast — calling setError here achieved nothing,
+      // because onClose() unmounts this modal on the same tick and the message never
+      // got a chance to render.
+      const notes = []
       if (usingSubLocs) {
         for (const slId of selectedSubLocs) {
           const sl = subLocations.find(s => s.id === slId)
-          await api.post('/api/tasks/', {
+          const r = await api.post('/api/tasks/', {
             title: `Visit ${sl.name}`, description: form.description,
             assigned_to_id: Number(empId), school_id: slId,
             priority: form.priority, due_date: form.due_date
           })
+          if (r.data?.warning) notes.push(r.data.warning)
         }
       } else {
         const r = await api.post('/api/tasks/', {
@@ -428,9 +439,9 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
           school_id: form.school_id ? Number(form.school_id) : null,
           priority: form.priority, due_date: form.due_date
         })
-        if (r.data.warning) setError(r.data.warning) // soft warning
+        if (r.data?.warning) notes.push(r.data.warning)
       }
-      onSaved(); onClose()
+      onSaved(notes.join(' ')); onClose()
     } catch (e) {
       setError(e.response?.data?.detail || 'Failed to assign task')
     }
@@ -481,25 +492,36 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
           </div>
         )}
 
-        {/* Rotation status + suggested schools */}
-        {empId && suggested.total_in_mandal > 0 && (
+        {/* Rotation suggestions — shortcuts, never restrictions. Rotation only governs
+            what "Generate Daily" hands out on its own; anything in the School / Site
+            list below can be assigned by hand at any point in the cycle. Previously
+            this whole panel was dead code: it gated on suggested.total_in_mandal,
+            which the API never returns, so undefined > 0 hid the chips entirely. */}
+        {empId && suggested.total_schools > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>
-                🔄 Mandal rotation — {suggested.eligible_count}/{suggested.total_in_mandal} eligible
+                🔄 Rotation round — {suggested.visited_count}/{suggested.total_schools} sites covered
               </span>
               {suggested.new_round
-                ? <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 5, background: 'rgba(52,211,153,.15)', color: 'var(--green)', fontWeight: 700 }}>New round</span>
-                : <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 5, background: 'rgba(251,191,36,.15)', color: 'var(--yellow)', fontWeight: 700 }}>
-                    {suggested.total_in_mandal - suggested.eligible_count} visited — visit remaining first
+                ? <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 5, background: 'rgba(52,211,153,.15)', color: 'var(--green)', fontWeight: 700 }}>Round complete — restarting</span>
+                : <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 5, background: 'rgba(34,211,238,.15)', color: 'var(--accent)', fontWeight: 700 }}>
+                    {suggested.unvisited_count} left this round
                   </span>
               }
             </div>
             {suggested.schools.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--red)', padding: '6px 10px', background: 'rgba(248,113,113,.08)', borderRadius: 8, border: '1px solid rgba(248,113,113,.3)' }}>
-                ⚠️ No eligible schools for rotation in this mandal today.
+              <div style={{ fontSize: 12, color: 'var(--muted)', padding: '6px 10px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                Rotation has nothing left to suggest for this technician today — every site is
+                either covered this round or already on their list. Pick any site below to assign
+                one anyway.
               </div>
             ) : (
+              <>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 5 }}>
+                Next up in rotation — tap to fill the form. You're not limited to these: any site
+                in the list below can be assigned now, whatever the rotation says.
+              </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {suggested.schools.map(s => (
                   <button key={s.id} onClick={() => { set('school_id', String(s.id)); set('title', `Visit ${s.name}`) }}
@@ -520,6 +542,7 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
                   </button>
                 ))}
               </div>
+              </>
             )}
           </div>
         )}

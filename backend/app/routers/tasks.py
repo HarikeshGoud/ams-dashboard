@@ -89,13 +89,32 @@ def daily_task_count(employee_id: int, task_date: str = None, db: Session = Depe
     return {"count": count, "default_limit": DAILY_DEFAULT, "max_limit": DAILY_MAX, "can_add": count < DAILY_MAX}
 
 def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set = None):
-    """
-    Rotation across ALL schools directly assigned to a technician (technician_id).
-    Fallback: schools in their assigned mandals via employee_mandals junction table.
+    """The auto-generation queue for one technician. AUTO-ASSIGNMENT ONLY.
 
-    Rule: a school is only eligible once all other schools have been visited in this cycle.
-    A school counts as "visited in this cycle" if it has last_visit_date set (proof submitted)
-    OR if it has a pending/in_progress task assigned to this technician (already in rotation).
+    This decides what /generate-daily and the startup job hand out on their own,
+    and what the UI offers as suggestions. It is NOT a permission check — manual
+    assignment by deskwork/admin bypasses it entirely and always has a route to
+    any site (see create_task).
+
+    Scope: schools directly assigned to this technician (technician_id or the
+    optional second technician). Fallback when none are assigned: schools in their
+    mandals, via the employee_mandals junction table, then legacy mandal_id.
+
+    Rule: a school becomes eligible only once every other school has been covered
+    in this cycle. "Covered" means it has a last_visit_date (proof submitted) or an
+    open pending/in_progress task for this technician — already spoken for, so
+    don't hand it out twice. When all are covered, the cycle resets (new_round) and
+    the least-recently-visited go first.
+
+    One deliberate exception: a site whose plant_condition is 'not_working' jumps
+    the queue regardless of cycle position, because a dead plant shouldn't wait for
+    the rotation to come round to it.
+
+    Only School.model == 'school' is ever auto-assigned. Hospitals, temples,
+    villages, hostels, parks and 'other' are assigned by hand, as is any site that
+    has sub-locations (technicians report on each sub-location, not on the parent
+    container).
+
     Returns (eligible_schools, all_schools, new_round, visited_count).
     """
     from ..models.school import School
@@ -342,7 +361,8 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
     # picked from the school list.
     if not data.school_id:
         raise HTTPException(400, "Select the school/site for this task — it cannot be left blank.")
-    if not db.query(School).filter(School.id == data.school_id).first():
+    school = db.query(School).filter(School.id == data.school_id).first()
+    if not school:
         raise HTTPException(404, "That school/site was not found.")
 
     # ── Daily cap enforcement ──────────────────────────────────────────────────
@@ -352,34 +372,40 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
             f"Daily limit reached: {DAILY_MAX} tasks max for {task_date}. "
             f"Cannot assign more tasks to this employee.")
 
-    warning = None
+    warnings = []
     if current_count >= DAILY_DEFAULT:
-        warning = f"Warning: task {current_count + 1}/{DAILY_MAX} — over the default limit of {DAILY_DEFAULT}."
+        warnings.append(f"Task {current_count + 1}/{DAILY_MAX} — over the default limit of {DAILY_DEFAULT}.")
 
-    # ── School rotation enforcement (per-technician) ──────────────────────────
-    # Only actual schools go through the rotation queue — hospitals, temples, and
-    # every other site type are deskwork/admin-driven and never rotation-gated.
-    if data.school_id:
-        school = db.query(School).filter(School.id == data.school_id).first()
-        if school and school.model == 'school':
-            already_today = {
-                t.school_id for t in db.query(Task).filter(
-                    Task.assigned_to_id == data.assigned_to_id,
-                    Task.due_date == task_date,
-                    Task.status != "cancelled"
-                ).all() if t.school_id
-            }
-            eligible, all_schools, new_round, _ = _technician_rotation_schools(
-                db, data.assigned_to_id, exclude_school_ids=already_today
-            )
-            eligible_ids = {s.id for s in eligible}
-            if data.school_id not in eligible_ids and len(all_schools) > 1 and not new_round:
-                unvisited = [s for s in all_schools if s.last_visit_date is None]
-                unvisited_names = ", ".join(s.name for s in unvisited[:5])
-                raise HTTPException(400,
-                    f"Rotation blocked: '{school.name}' was already visited. "
-                    f"{len(unvisited)} school(s) must be visited first: "
-                    f"{unvisited_names}{'...' if len(unvisited) > 5 else ''}.")
+    # ── Rotation deliberately does NOT gate manual assignment ─────────────────
+    # Rotation is a rule for AUTO-GENERATED daily tasks only — see
+    # _technician_rotation_schools, used by /generate-daily and the startup job.
+    # A hand-assigned visit is a decision someone made for a reason the rotation
+    # can't see: a complaint came in, a plant is down, a customer rang. Making
+    # those wait for the cycle to come round was the wrong trade.
+    #
+    # The old gate here also produced an error that contradicted itself. It
+    # refused a school that merely had an open task, but worded the refusal as
+    # "was already visited", and built the you-must-visit-these-first list from
+    # last_visit_date alone. So a never-visited school got told it had been
+    # visited, and was itself counted among the schools that had to be visited
+    # first (printed too, whenever it fell in the truncated first five).
+    # Removing the gate removes that message with it.
+    #
+    # A same-day duplicate is still worth surfacing, but as a note rather than a
+    # refusal — two tasks for one site in a day is occasionally intended (a
+    # morning visit and an afternoon repair), so the operator decides, not us.
+    duplicate = db.query(Task).filter(
+        Task.assigned_to_id == data.assigned_to_id,
+        Task.school_id == data.school_id,
+        Task.due_date == task_date,
+        Task.status != "cancelled"
+    ).first()
+    if duplicate:
+        warnings.append(
+            f"This technician already has a task for {school.name} on {task_date} "
+            f"(\"{duplicate.title}\"). Assigned anyway — delete one if it was a slip.")
+
+    warning = " ".join(warnings) if warnings else None
 
     t = Task(title=data.title, description=data.description,
              assigned_to_id=data.assigned_to_id, assigned_by_id=user.id,

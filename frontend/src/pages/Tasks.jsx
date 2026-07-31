@@ -34,7 +34,8 @@ export default function Tasks() {
   const today     = todayIST()
   const yesterday = yesterdayIST()
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
+  // Warnings run longer than confirmations — they're a sentence to read, not a tick to glance at.
+  function showToast(msg, ms = 4000) { setToast(msg); setTimeout(() => setToast(''), ms) }
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
 
   // Sites with sub-locations (hospitals, temples) get picked as a whole here, but
@@ -95,23 +96,33 @@ export default function Tasks() {
     }
     if (!usingSubLocs && !form.title.trim()) { showToast('❌ Enter a task title'); return }
     try {
+      // A task can be accepted and still come back with a note — over the default daily
+      // count, or a same-day duplicate for that site. Surface it instead of overwriting
+      // it with a bare success tick.
+      const notes = []
       if (usingSubLocs) {
         for (const slId of selectedSubLocs) {
           const sl = subLocations.find(s => s.id === slId)
-          await api.post('/api/tasks/', {
+          const r = await api.post('/api/tasks/', {
             ...form, title: `Visit ${sl.name}`,
             assigned_to_id: parseInt(form.assigned_to_id),
             school_id: slId,
           })
+          if (r.data?.warning) notes.push(r.data.warning)
         }
-        showToast(`✅ ${selectedSubLocs.length} tasks created!`)
+        notes.length
+          ? showToast(`⚠️ ${selectedSubLocs.length} tasks created — ${notes.join(' ')}`, 10000)
+          : showToast(`✅ ${selectedSubLocs.length} tasks created!`)
       } else {
-        await api.post('/api/tasks/', {
+        const r = await api.post('/api/tasks/', {
           ...form,
           assigned_to_id: parseInt(form.assigned_to_id),
           school_id: parseInt(form.school_id),
         })
-        showToast('Task created!')
+        if (r.data?.warning) notes.push(r.data.warning)
+        notes.length
+          ? showToast(`⚠️ Task created — ${notes.join(' ')}`, 10000)
+          : showToast('Task created!')
       }
       load(); setModal(false)
     } catch (e) {
