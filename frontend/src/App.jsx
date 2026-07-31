@@ -36,6 +36,7 @@ import DeskStock from './pages/deskwork/DeskStock'
 import DeskTravel from './pages/deskwork/DeskTravel'
 import DeskEmployees from './pages/deskwork/DeskEmployees'
 import DataHealth from './pages/DataHealth'
+import Mapping from './pages/Mapping'
 import ServiceReports from './pages/ServiceReports'
 import LiveTracking from './pages/LiveTracking'
 import InstallPrompt from './components/InstallPrompt'
@@ -111,6 +112,7 @@ export default function App() {
         <Route path="schools"         element={<Schools />} />
         <Route path="clients"         element={<Clients />} />
         <Route path="unit/:unit"      element={<UnitPage />} />
+        <Route path="mapping"         element={<Mapping />} />
         <Route path="data-health"     element={<DataHealth />} />
       </Route>
 
@@ -133,6 +135,7 @@ export default function App() {
         <Route path="service-reports"  element={<ServiceReports />} />
         <Route path="live-tracking"    element={<LiveTracking />} />
         <Route path="unit/:unit"   element={<UnitPage />} />
+        <Route path="mapping"      element={<Mapping />} />
         <Route path="data-health"  element={<DataHealth />} />
       </Route>
 

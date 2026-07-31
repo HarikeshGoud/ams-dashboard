@@ -20,6 +20,7 @@ const NAV = [
   { to: '/proof-review',  icon: '🔍', label: 'Proof Review'    },
   { to: '/service-reports', icon: '📄', label: 'Service Reports' },
   { to: '/live-tracking', icon: '📍', label: 'Live Tracking'   },
+  { to: '/mapping',       icon: '🗺️', label: 'Mapping'         },
   { to: '/data-health',   icon: '🩺', label: 'Data Health'     },
 ]
 
