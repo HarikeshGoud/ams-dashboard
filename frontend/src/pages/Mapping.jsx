@@ -418,17 +418,30 @@ function SitesTab({ showToast, errMsg }) {
   useEffect(() => { api.get('/api/mapping/mandals').then(r => setMandals(r.data.items)) }, [])
 
   const load = useCallback(() => {
-    const params = { limit: 400 }
+    // Load every match, not a page of them. A cap here made "Select all" a lie: it
+    // selected only what had loaded, so a bulk move silently acted on part of the filter.
+    const params = { limit: 3000 }
     if (search.trim()) params.search = search.trim()
     if (filterMandal) params.mandal_id = Number(filterMandal)
     api.get('/api/mapping/sites', { params }).then(r => { setData(r.data); setPicked([]) })
   }, [search, filterMandal])
   useEffect(() => { const id = setTimeout(load, 300); return () => clearTimeout(id) }, [load])
 
+  // "Select all" can now genuinely mean every site in the business, so a stray click on
+  // Move would re-home the lot into one mandal — tedious to unpick by hand. Confirm the
+  // big ones; small corrections stay a single click.
+  const BULK_CONFIRM_AT = 25
+
   async function apply(clear = false) {
     if (!picked.length) { showToast('Select some sites first.'); return }
     if (!clear && !target) { showToast('Pick the mandal to move them into.'); return }
     if (clear && !confirm(`Clear the mandal on ${picked.length} site(s)? They'll drop out of every Mandal filter.`)) return
+    if (!clear && picked.length >= BULK_CONFIRM_AT) {
+      const name = mandals.find(m => String(m.id) === String(target))?.name || 'that mandal'
+      if (!confirm(`Move ${picked.length} site(s) into "${name}"?\n\n` +
+                   `That is a large change and there is no undo — each site would have to be ` +
+                   `moved back by hand.`)) return
+    }
     setBusy(true)
     try {
       const r = await api.post('/api/mapping/assign-mandal', {
@@ -474,8 +487,10 @@ function SitesTab({ showToast, errMsg }) {
 
         {data && (
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 10 }}>
-            Showing {data.showing} of {data.total} matching site(s).
-            {data.truncated && <b style={{ color: 'var(--yellow)' }}> Narrow the search to see the rest.</b>}
+            {data.truncated
+              ? <>Showing {data.showing} of {data.total} matching site(s).
+                  <b style={{ color: 'var(--yellow)' }}> Narrow the search to see the rest.</b></>
+              : <>All {data.total} matching site(s) shown.</>}
           </div>
         )}
       </div>

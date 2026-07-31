@@ -348,13 +348,23 @@ def assign_sites(data: SiteAssignment, db: Session = Depends(get_db),
 
 @router.get("/sites")
 def list_sites(search: Optional[str] = None, mandal_id: Optional[int] = None,
-               unassigned_only: bool = False, limit: int = 400,
+               unassigned_only: bool = False, limit: int = 3000,
                db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
     """Sites with the mandal they sit in, for repairing site → mandal placement.
 
     mandal_id=-1 is the explicit "no mandal" bucket: 0 and None both read as absent in a
     query string, so a sentinel is the only way to ask for it.
+
+    The default limit clears the whole site table on purpose. A lower cap silently made
+    "Select all" mean "select all of the ones that happened to load", so a bulk move would
+    quietly act on a subset of what the operator was filtering for. The Schools page
+    already pulls the full list this way, so the size is not new.
+
+    limit is a plain int rather than a Query(...) so this stays callable straight from
+    Python — a Query default reaches SQLAlchemy as the Query object itself and blows up
+    with "int() argument must be ... not 'Query'".
     """
+    limit = max(1, min(int(limit), 5000))
     q = (db.query(School)
            .options(joinedload(School.mandal), joinedload(School.technician))
            .filter(School.is_active == True, School.parent_school_id.is_(None)))
