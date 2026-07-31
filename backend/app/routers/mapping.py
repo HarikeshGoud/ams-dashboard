@@ -79,8 +79,18 @@ def overview(db: Session = Depends(get_db), user=Depends(require_admin_or_deskwo
             "site_count": primary_counts.get(e.id, 0),
             "shared_site_count": secondary_counts.get(e.id, 0),
             # The exact condition that makes auto task generation silently do nothing.
-            "no_coverage": len(mandals) == 0 and primary_counts.get(e.id, 0) == 0
-                           and secondary_counts.get(e.id, 0) == 0,
+            # It must mirror every branch _technician_rotation_schools actually tries:
+            # direct sites, then mandals[], then the LEGACY mandal_id. Leaving the
+            # legacy field out overstated this — two technicians whose only mapping is
+            # mandal_id do receive a queue through that last fallback.
+            "no_coverage": (len(mandals) == 0 and e.mandal_id is None
+                            and primary_counts.get(e.id, 0) == 0
+                            and secondary_counts.get(e.id, 0) == 0),
+            # Works today, but only through the legacy single-mandal fallback. Worth
+            # showing so it can be mapped properly rather than left to rot.
+            "legacy_mandal_only": (len(mandals) == 0 and e.mandal_id is not None
+                                   and primary_counts.get(e.id, 0) == 0
+                                   and secondary_counts.get(e.id, 0) == 0),
         })
 
     return {
@@ -91,6 +101,7 @@ def overview(db: Session = Depends(get_db), user=Depends(require_admin_or_deskwo
             "sites": total_sites,
             "sites_unassigned": unassigned,
             "technicians_without_coverage": sum(1 for i in items if i["no_coverage"]),
+            "technicians_legacy_mandal_only": sum(1 for i in items if i["legacy_mandal_only"]),
             "technicians_without_primary_mandal": sum(1 for i in items if not i["primary_mandal_id"]),
         },
     }

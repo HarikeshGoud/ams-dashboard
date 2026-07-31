@@ -146,8 +146,8 @@ export default function Mapping() {
           <Kpi label="Technicians" value={t.technicians} sub={`${t.mandals} mandals · ${t.sites} sites`} />
           <Kpi label="No coverage at all" value={t.technicians_without_coverage}
                sub="Get no daily tasks generated" tone={t.technicians_without_coverage ? 'red' : 'green'} />
-          <Kpi label="No primary mandal" value={t.technicians_without_primary_mandal}
-               sub="Travel allowance can't be judged" tone={t.technicians_without_primary_mandal ? 'yellow' : 'green'} />
+          <Kpi label="Legacy mandal only" value={t.technicians_legacy_mandal_only}
+               sub="Working, but not mapped properly" tone={t.technicians_legacy_mandal_only ? 'yellow' : 'green'} />
           <Kpi label="Sites with no technician" value={t.sites_unassigned}
                sub={`of ${t.sites} total`} tone={t.sites_unassigned ? 'yellow' : 'green'} />
         </div>
@@ -182,6 +182,12 @@ export default function Mapping() {
                   <td style={td}>
                     <b>{x.name}</b> <span style={{ color: 'var(--muted)' }}>[{x.employee_code}]</span>
                     {x.no_coverage && <span className="pill pill-red" style={{ marginLeft: 6 }}>no coverage</span>}
+                    {x.legacy_mandal_only && (
+                      <span className="pill pill-yellow" style={{ marginLeft: 6 }}
+                            title="Gets tasks only through the old single-mandal fallback — map their mandals here to make it explicit">
+                        legacy only
+                      </span>
+                    )}
                   </td>
                   <td style={td}>{x.mandal_count || <span style={{ color: 'var(--red)' }}>0</span>}</td>
                   <td style={td}>{x.primary_mandal_name || <span style={{ color: 'var(--yellow)' }}>— none</span>}</td>
