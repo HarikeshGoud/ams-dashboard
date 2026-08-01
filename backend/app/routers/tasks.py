@@ -24,13 +24,110 @@ DAILY_DEFAULT = 5
 DAILY_MAX     = 7
 
 
-def _daily_target(emp) -> int:
-    """How many tasks auto-generation should hand this technician for one day.
+WEEKLY_GAP_DAYS = 7
 
-    A technician pinned to a single site services that one place daily, so generating the
-    usual five would mean four duplicates of the same site every morning.
+
+def _is_due(site, today: date) -> bool:
+    """Whether a sub-location belongs in today's pool.
+
+    Everything is daily unless explicitly marked weekly, and a weekly one comes back round
+    once WEEKLY_GAP_DAYS have passed since its last visit rather than on a fixed weekday —
+    a fixed day that gets missed would push the visit out by a whole extra week.
     """
-    return 1 if getattr(emp, "dedicated_school_id", None) else DAILY_DEFAULT
+    if (site.visit_frequency or "daily").lower() != "weekly":
+        return True
+    if not site.last_visit_date:
+        return True
+    return (today - site.last_visit_date).days >= WEEKLY_GAP_DAYS
+
+
+def _campus_children(db, parent_id: int):
+    """Active sub-locations of a posted campus, in a stable order."""
+    return (db.query(School).filter(School.parent_school_id == parent_id,
+                                    School.is_active == True)
+              .order_by(School.name).all())
+
+
+def _dedicated_pool(db, emp, today: date):
+    """Today's pool for a technician posted to one site or campus.
+
+    A campus like YADADRI TEMPLE is 22 named places, not one stop — the visit happens at
+    each sub-location, and rotation deliberately skips parents that have children. So the
+    pool is the campus's due sub-locations. A posted site with no children is just itself.
+
+    The pool is SHARED: every technician posted to the same campus gets the same list, and
+    whoever reaches a sub-location first files it. That is why nothing here divides the work
+    up — see _drop_sibling_tasks for the half that removes a stop once someone has done it.
+    """
+    parent = db.query(School).filter(School.id == emp.dedicated_school_id,
+                                     School.is_active == True).first()
+    if not parent:
+        return []
+    kids = _campus_children(db, parent.id)
+    if kids:
+        return [k for k in kids if _is_due(k, today)]
+    return [parent]
+
+
+def _posted_technician_count(db, school_id: int) -> int:
+    """How many active technicians share this campus. At least 1, so it's safe to divide by."""
+    n = db.query(Employee).filter(Employee.dedicated_school_id == school_id,
+                                  Employee.role == "technician",
+                                  Employee.is_active == True).count()
+    return max(1, n)
+
+
+def drop_sibling_tasks(db, task) -> int:
+    """Take a stop off the shared pool once somebody has filed it.
+
+    Both technicians posted to a campus are handed every due sub-location, so the same stop
+    exists as a task row for each of them. When one files proof the other's copy has to go,
+    or the partner spends the rest of the day looking at a job that's already done — and
+    auto-attendance would count it against them as unfinished.
+
+    Cancelled rather than deleted: _count_today_tasks ignores cancelled rows, so it leaves
+    the pool correctly while keeping a trace of what was handed out. Returns how many went.
+    """
+    if not task or not task.school_id or not task.assigned_to_id:
+        return 0
+    site = db.query(School).filter(School.id == task.school_id).first()
+    if not site or not site.parent_school_id:
+        return 0        # not a campus sub-location — nothing is shared
+
+    # Only ever touch other people posted to the SAME campus. A rotating technician who
+    # happens to have been hand-assigned this stop keeps their task.
+    partner_ids = [e.id for e in db.query(Employee).filter(
+        Employee.dedicated_school_id == site.parent_school_id,
+        Employee.role == "technician", Employee.is_active == True,
+        Employee.id != task.assigned_to_id).all()]
+    if not partner_ids:
+        return 0
+
+    siblings = db.query(Task).filter(
+        Task.school_id == task.school_id,
+        Task.due_date == task.due_date,
+        Task.assigned_to_id.in_(partner_ids),
+        Task.status.in_(["pending", "in_progress"]),
+    ).all()
+    for s in siblings:
+        s.status = "cancelled"
+    return len(siblings)
+
+
+def _attendance_target(db, emp, due_count: int) -> int:
+    """Visits that count as a full day for this technician.
+
+    Assigned-vs-completed can't measure one person against a shared pool: two technicians
+    handed the same 16 stops who between them do all 16 would each score 8/16 and be marked
+    half a day. So a posted technician is scored against their own share instead — an
+    explicit target if set, otherwise the pool split by however many are posted there.
+    """
+    if getattr(emp, "daily_task_target", None):
+        return max(1, int(emp.daily_task_target))
+    if getattr(emp, "dedicated_school_id", None):
+        share = -(-due_count // _posted_technician_count(db, emp.dedicated_school_id))  # ceil
+        return max(1, share)
+    return DAILY_DEFAULT
 
 class TaskCreate(BaseModel):
     title: str
@@ -111,7 +208,12 @@ def daily_task_count(employee_id: int, task_date: str = None, db: Session = Depe
     """Return today's task count for an employee (used for cap validation UI)."""
     d = date.fromisoformat(task_date) if task_date else today_ist()
     count = _count_today_tasks(db, employee_id, d)
-    return {"count": count, "default_limit": DAILY_DEFAULT, "max_limit": DAILY_MAX, "can_add": count < DAILY_MAX}
+    # A posted technician has no cap — their own campus pool can exceed DAILY_MAX on its
+    # own, and reporting can_add=false would grey out the Assign button for them all day.
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    posted = bool(emp and emp.dedicated_school_id)
+    return {"count": count, "default_limit": DAILY_DEFAULT, "max_limit": DAILY_MAX,
+            "can_add": True if posted else count < DAILY_MAX, "posted": posted}
 
 def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set = None):
     """The auto-generation queue for one technician. AUTO-ASSIGNMENT ONLY.
@@ -144,20 +246,20 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
     """
     from ..models.school import School
 
-    # ── Dedicated single-site technician ──────────────────────────────────────
-    # Someone who looks after one site (a temple, typically) every single day. Rotation is
-    # meaningless here: the answer is always that one site, and it must stay eligible even
-    # though it was visited yesterday, which is exactly what rotation would rule out.
+    # ── Technician posted to one site or campus ───────────────────────────────
+    # Rotation is meaningless here. The answer is the same place every day, and it must stay
+    # eligible even though it was visited yesterday — which is exactly what rotation rules
+    # out. For a campus the pool is its due sub-locations, shared with anyone else posted
+    # there. new_round=True so callers treat the cycle as always complete: there is no queue
+    # to work through and nothing is ever "still to be visited first".
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if emp and emp.dedicated_school_id:
-        site = db.query(School).filter(School.id == emp.dedicated_school_id,
-                                       School.is_active == True).first()
-        if not site:
-            return [], [], True, 0            # site was deleted or archived
-        excluded = site.id in (exclude_school_ids or set())
-        # new_round=True so callers treat the cycle as always complete — there is no queue
-        # to work through and nothing is ever "still to be visited first".
-        return ([] if excluded else [site]), [site], True, (1 if excluded else 0)
+        pool = _dedicated_pool(db, emp, today_ist())
+        if not pool:
+            return [], [], True, 0            # campus archived, or nothing due today
+        exclude_ids = exclude_school_ids or set()
+        eligible = [s for s in pool if s.id not in exclude_ids]
+        return eligible, pool, True, len(pool) - len(eligible)
 
     # Primary: schools with technician_id (or the optional 2nd technician) pointing to this employee
     all_schools = db.query(School).filter(
@@ -312,9 +414,16 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
 
     results = []
     for emp in technicians:
-        target = _daily_target(emp)
         existing_count = _count_today_tasks(db, emp.id, d)
-        if existing_count >= target:
+
+        # A posted technician gets the campus's whole due pool, however big — 22 named stops
+        # at a temple is a normal day, not an error. Everyone else gets the usual 5.
+        if emp.dedicated_school_id:
+            slots_needed = max(0, len(_dedicated_pool(db, emp, d)) - existing_count)
+        else:
+            slots_needed = max(0, DAILY_DEFAULT - existing_count)
+
+        if slots_needed == 0:
             results.append({
                 "employee": emp.name, "employee_id": emp.id,
                 "skipped": True, "reason": f"Already has {existing_count} tasks",
@@ -322,7 +431,6 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
             })
             continue
 
-        slots_needed = target - existing_count
         already_today = {
             t.school_id for t in db.query(Task).filter(
                 Task.assigned_to_id == emp.id,
@@ -408,14 +516,20 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
         raise HTTPException(404, "That school/site was not found.")
 
     # ── Daily cap enforcement ──────────────────────────────────────────────────
+    # The cap protects a rotating technician from being over-loaded. It makes no sense for
+    # someone posted to a campus: YADADRI TEMPLE alone is 22 stops, so a 7-task ceiling
+    # would block their own generated pool, never mind anything added by hand.
+    assignee = db.query(Employee).filter(Employee.id == data.assigned_to_id).first()
+    posted = bool(assignee and assignee.dedicated_school_id)
+
     current_count = _count_today_tasks(db, data.assigned_to_id, task_date)
-    if current_count >= DAILY_MAX:
+    if not posted and current_count >= DAILY_MAX:
         raise HTTPException(400,
             f"Daily limit reached: {DAILY_MAX} tasks max for {task_date}. "
             f"Cannot assign more tasks to this employee.")
 
     warnings = []
-    if current_count >= DAILY_DEFAULT:
+    if not posted and current_count >= DAILY_DEFAULT:
         warnings.append(f"Task {current_count + 1}/{DAILY_MAX} — over the default limit of {DAILY_DEFAULT}.")
 
     # ── Rotation deliberately does NOT gate manual assignment ─────────────────
@@ -514,14 +628,22 @@ def auto_attendance(task_date: str = None, db: Session = Depends(get_db), user=D
     ).all()
     results = []
     for emp in technicians:
-        tasks = db.query(Task).filter(Task.assigned_to_id == emp.id, Task.due_date == d).all()
+        tasks = db.query(Task).filter(Task.assigned_to_id == emp.id, Task.due_date == d,
+                                      Task.status != "cancelled").all()
         assigned  = len(tasks)
         completed = len([t for t in tasks if t.status == "completed"])
         if assigned == 0:
             continue
-        if completed >= DAILY_DEFAULT:
+
+        # Posted technicians share one campus pool, so a fixed 5-a-day bar doesn't fit: a
+        # 22-stop temple split two ways is 11 each, not 5. Score them against their share.
+        full_day_at = DAILY_DEFAULT
+        if emp.dedicated_school_id:
+            full_day_at = _attendance_target(db, emp, len(_dedicated_pool(db, emp, d)))
+
+        if completed >= full_day_at:
             value, label, status = 1.0, "Full Day", "present"
-        elif completed >= 3:
+        elif completed >= max(1, full_day_at // 2):
             value, label, status = 0.5, "Half Day", "half_day"
         else:
             value = round(completed / assigned, 2) if assigned > 0 else 0

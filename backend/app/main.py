@@ -30,7 +30,7 @@ def _auto_generate_daily_tasks():
     """On startup: generate 5 daily tasks for every active technician if not already done today."""
     from .models.employee import Employee
     from .models.task import Task
-    from .routers.tasks import _technician_rotation_schools, _daily_target
+    from .routers.tasks import _technician_rotation_schools, _dedicated_pool, DAILY_DEFAULT
 
     db = SessionLocal()
     try:
@@ -46,12 +46,14 @@ def _auto_generate_daily_tasks():
                 Task.status != "cancelled"
             ).count()
 
-            # 1 for a technician pinned to a single site, the usual 5 otherwise.
-            target = _daily_target(emp)
-            if existing >= target:
+            # A technician posted to a campus gets its whole due pool — 22 stops at a temple
+            # is a normal day. Everyone else gets the usual 5.
+            if emp.dedicated_school_id:
+                slots_needed = max(0, len(_dedicated_pool(db, emp, today)) - existing)
+            else:
+                slots_needed = max(0, DAILY_DEFAULT - existing)
+            if slots_needed == 0:
                 continue
-
-            slots_needed = target - existing
             already_today = {
                 t.school_id for t in db.query(Task).filter(
                     Task.assigned_to_id == emp.id,

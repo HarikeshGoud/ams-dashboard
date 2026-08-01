@@ -27,6 +27,9 @@ class School(Base):
     plant_condition   = Column(String(20), default="working")  # working / not_working
     sub_locations     = Column(Text, nullable=True)  # deprecated: JSON list of strings, replaced by parent_school_id children
     parent_school_id  = Column(Integer, ForeignKey("schools.id"), nullable=True)  # set on a sub-location row, pointing at its parent hospital
+    # 'weekly' keeps a sub-location out of the daily pool until 7 days after its last visit.
+    # NULL (the default) means daily. Only meaningful on sub-locations of a posted campus.
+    visit_frequency   = Column(String(10), nullable=True)
     total_purifiers   = Column(Integer, default=1)
     working_purifiers = Column(Integer, default=1)
     amc_status        = Column(String(20), default="active")

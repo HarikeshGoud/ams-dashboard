@@ -17,7 +17,8 @@ import SearchableSelect from './SearchableSelect'
 // Expects form to carry: role, coverage ('mandals' | 'dedicated'), mandal_ids[],
 // primary_mandal_id, dedicated_school_id.
 export const BLANK_COVERAGE = {
-  mandal_ids: [], primary_mandal_id: '', coverage: 'mandals', dedicated_school_id: '',
+  mandal_ids: [], primary_mandal_id: '', coverage: 'mandals',
+  dedicated_school_id: '', daily_task_target: '',
 }
 
 // Turn an employee row from /api/employees/ into the coverage half of the form.
@@ -27,6 +28,7 @@ export function coverageFromEmployee(e) {
     primary_mandal_id: e.mandal_id || '',
     coverage: e.dedicated_school_id ? 'dedicated' : 'mandals',
     dedicated_school_id: e.dedicated_school_id || '',
+    daily_task_target: e.daily_task_target || '',
   }
 }
 
@@ -39,6 +41,9 @@ export function coveragePayload(form) {
     mandal_id: form.primary_mandal_id ? parseInt(form.primary_mandal_id) : null,
     dedicated_school_id: dedicated && form.dedicated_school_id
       ? parseInt(form.dedicated_school_id) : null,
+    // Blank means "work it out from the campus", so send null rather than 0.
+    daily_task_target: dedicated && form.daily_task_target
+      ? parseInt(form.daily_task_target) : null,
   }
 }
 
@@ -67,6 +72,8 @@ export default function EmployeeCoverageFields({ form, setForm, mandals, sites }
   const visible = (mandals || []).filter(m =>
     !mandalSearch.trim() || m.name.toLowerCase().includes(mandalSearch.trim().toLowerCase()))
 
+  const picked = (sites || []).find(s => String(s.id) === String(form.dedicated_school_id))
+
   return (
     <>
       {form.role === 'technician' && (
@@ -92,31 +99,68 @@ export default function EmployeeCoverageFields({ form, setForm, mandals, sites }
               onChange={() => setForm(f => ({ ...f, coverage: 'dedicated' }))}
               style={{ marginTop: 3, width: 'auto' }} />
             <span>
-              <b style={{ fontSize: 13 }}>One site, every day</b>
+              <b style={{ fontSize: 13 }}>Posted to one site / campus</b>
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                For a technician posted to a single temple or site. They get 1 task for that
-                site daily. Proof photos are still required; the service report is optional for
-                temples. Deskwork can add other tasks by hand any time.
+                For a technician stationed at a temple or hospital every day. If it has
+                sub-locations they get those as their daily round, shared with anyone else
+                posted there. Proof photos are still required; the service report is optional
+                for temples. Deskwork can add other tasks by hand any time.
               </div>
             </span>
           </label>
 
           {form.coverage === 'dedicated' && (
-            <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
-              <label>Site they look after *</label>
-              <SearchableSelect
-                value={String(form.dedicated_school_id || '')}
-                onChange={val => setForm(f => ({ ...f, dedicated_school_id: val }))}
-                placeholder="Search for the temple / site…"
-                options={(sites || []).map(s => ({
-                  value: String(s.id),
-                  label: `${s.name}${s.model && s.model !== 'school' ? ` · ${s.model}` : ''}` +
-                         `${s.mandal_name ? ` — ${s.mandal_name}` : ''}`,
-                }))} />
-              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>
+            <>
+              <div className="form-group" style={{ marginTop: 10, marginBottom: 8 }}>
+                <label>Site / campus they are posted to *</label>
+                <SearchableSelect
+                  value={String(form.dedicated_school_id || '')}
+                  onChange={val => setForm(f => ({ ...f, dedicated_school_id: val }))}
+                  placeholder="Search for the temple / site…"
+                  options={(sites || []).map(s => ({
+                    value: String(s.id),
+                    label: `${s.name}${s.model && s.model !== 'school' ? ` · ${s.model}` : ''}` +
+                           `${s.sub_location_count ? ` · ${s.sub_location_count} sub-locations` : ''}` +
+                           `${s.mandal_name ? ` — ${s.mandal_name}` : ''}`,
+                  }))} />
+              </div>
+
+              {/* Say plainly what the day will look like — a 22-stop campus behaves very
+                  differently from a single site, and the difference isn't obvious. */}
+              {picked && (picked.sub_location_count > 0 ? (
+                <div style={{ fontSize: 11.5, background: 'rgba(34,211,238,.08)', border: '1px solid var(--accent)',
+                              borderRadius: 8, padding: '8px 10px', marginBottom: 8, lineHeight: 1.6 }}>
+                  <b>{picked.name}</b> has <b>{picked.sub_location_count} sub-locations</b>. Their daily
+                  round is those stops — everyone posted here shares the same list, and a stop drops
+                  off it as soon as one of them files the proof.
+                  <div style={{ color: 'var(--muted)', marginTop: 3 }}>
+                    Mark any stops that only need a weekly visit on the Mapping page → Sites → open this site.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
+                  <b>{picked.name}</b> has no sub-locations, so they get one task for it each day.
+                </div>
+              ))}
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Visits that count as a full day (optional)</label>
+                <input type="number" min="1" value={form.daily_task_target}
+                  onChange={e => setForm(f => ({ ...f, daily_task_target: e.target.value }))}
+                  placeholder={picked && picked.sub_location_count > 0
+                    ? 'Leave blank to split the round between everyone posted here'
+                    : 'Leave blank for the default'} />
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>
+                  Attendance is judged on what this person files, not on the shared list — otherwise
+                  two people who together cover everything would each show half a day. Blank divides
+                  the round by however many are posted here.
+                </div>
+              </div>
+
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 8 }}>
                 Still set a mandal below — the ⭐ primary one decides their travel allowance.
               </div>
-            </div>
+            </>
           )}
         </div>
       )}

@@ -414,6 +414,7 @@ function SitesTab({ showToast, errMsg }) {
   const [picked, setPicked] = useState([])
   const [target, setTarget] = useState('')
   const [busy, setBusy] = useState(false)
+  const [campus, setCampus] = useState(null)   // the site whose stops are being managed
 
   useEffect(() => { api.get('/api/mapping/mandals').then(r => setMandals(r.data.items)) }, [])
 
@@ -533,17 +534,21 @@ function SitesTab({ showToast, errMsg }) {
                       <span style={{ color: on ? 'var(--accent)' : 'var(--muted)' }}>{on ? '☑' : '☐'}</span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {s.name}
-                        {s.sub_location_count > 0 && (
-                          <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>
-                            ({s.sub_location_count} sub-locations — they follow)
-                          </span>
-                        )}
                         {s.technician_name && (
                           <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>· {s.technician_name}</span>
                         )}
                       </span>
                     </span>
-                    <span style={{ flexShrink: 0 }}>
+                    <span style={{ flexShrink: 0, display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {/* A campus is where the daily/weekly split per stop is set. */}
+                      {s.sub_location_count > 0 && (
+                        <button onClick={e => { e.stopPropagation(); setCampus(s) }}
+                          style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                                   background: 'rgba(167,139,250,.15)', color: 'var(--purple)',
+                                   border: '1px solid var(--purple)', cursor: 'pointer' }}>
+                          🏛 {s.sub_location_count} stops
+                        </button>
+                      )}
                       {s.mandal_name ? <span className="pill pill-cyan">{s.mandal_name}</span>
                                      : <span className="pill pill-red">no mandal</span>}
                     </span>
@@ -553,7 +558,128 @@ function SitesTab({ showToast, errMsg }) {
             </div>
           )}
       </div>
+
+      {campus && (
+        <CampusModal site={campus} onClose={() => setCampus(null)}
+          showToast={showToast} errMsg={errMsg} />
+      )}
     </>
+  )
+}
+
+/* ─────────────────── Campus stops: daily vs weekly ──────────────────────── */
+
+// A campus like YADADRI TEMPLE is 22 named stops covered by a team every day. This is where
+// the ones that only need a weekly visit get marked — they then stay out of the daily round
+// until 7 days after their last visit, so nobody has to remember a fixed day.
+function CampusModal({ site, onClose, showToast, errMsg }) {
+  const [data, setData] = useState(null)
+  const [sel, setSel] = useState([])
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(() => {
+    api.get(`/api/mapping/campus/${site.id}`).then(r => { setData(r.data); setSel([]) })
+      .catch(e => showToast(errMsg(e, 'Could not load this site')))
+  }, [site.id, showToast, errMsg])
+  useEffect(() => { load() }, [load])
+
+  async function setFreq(freq) {
+    if (!sel.length) { showToast('Select some stops first.'); return }
+    setBusy(true)
+    try {
+      const r = await api.post('/api/mapping/visit-frequency', {
+        school_ids: sel, visit_frequency: freq,
+      })
+      showToast(`✅ ${r.data.changed} stop(s) set to ${freq}`)
+      load()
+    } catch (e) { showToast(errMsg(e, 'Could not change that'), 8000) }
+    setBusy(false)
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={e => e.target.className === 'modal-backdrop' && onClose()}>
+      <div className="modal-box" style={{ maxWidth: 620 }}>
+        <button className="modal-close" onClick={onClose}>✕</button>
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>🏛 {site.name}</h3>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+          Which stops are visited daily, and which only once a week.
+        </div>
+
+        {!data ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading…</div> : (
+          <>
+            <div className="kpi-grid" style={{ marginBottom: 12 }}>
+              <Kpi label="Stops" value={data.sub_location_count} sub="On this campus" />
+              <Kpi label="Due today" value={data.due_today} sub="The shared round" />
+              <Kpi label="Weekly" value={data.weekly_count}
+                   sub={`Return after ${data.weekly_gap_days} days`} tone={data.weekly_count ? 'yellow' : undefined} />
+              <Kpi label="Posted here" value={data.posted_technicians.length}
+                   sub={data.posted_technicians.length ? 'Share the round' : 'Nobody posted yet'}
+                   tone={data.posted_technicians.length ? 'green' : 'yellow'} />
+            </div>
+
+            {data.posted_technicians.length > 0 && (
+              <div style={{ fontSize: 11.5, background: 'rgba(52,211,153,.08)', border: '1px solid var(--green)',
+                            borderRadius: 8, padding: '8px 10px', marginBottom: 12, lineHeight: 1.6 }}>
+                {data.posted_technicians.map(p => (
+                  <div key={p.id}>
+                    <b>{p.name}</b> [{p.employee_code}] — full day at <b>{p.effective_target}</b> visits
+                    {!p.daily_task_target && <span style={{ color: 'var(--muted)' }}> (derived from the round)</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+              <button className="btn btn-outline btn-sm" disabled={busy || !sel.length}
+                onClick={() => setFreq('weekly')}>📅 Mark weekly ({sel.length})</button>
+              <button className="btn btn-outline btn-sm" disabled={busy || !sel.length}
+                onClick={() => setFreq('daily')}>🔁 Mark daily ({sel.length})</button>
+              <button className="btn btn-outline btn-sm"
+                onClick={() => setSel(sel.length === data.items.length ? [] : data.items.map(i => i.id))}>
+                {sel.length === data.items.length ? 'Deselect all' : `Select all ${data.items.length}`}
+              </button>
+            </div>
+
+            <div style={{ maxHeight: 340, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+              {data.items.map(i => {
+                const on = sel.includes(i.id)
+                return (
+                  <div key={i.id} onClick={() => setSel(p => on ? p.filter(x => x !== i.id) : [...p, i.id])}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                      padding: '7px 10px', cursor: 'pointer', fontSize: 12.5,
+                      borderBottom: '1px solid var(--border)',
+                      background: on ? 'var(--accent-soft)' : 'transparent',
+                    }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                      <span style={{ color: on ? 'var(--accent)' : 'var(--muted)' }}>{on ? '☑' : '☐'}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {i.name}
+                      </span>
+                    </span>
+                    <span style={{ flexShrink: 0, display: 'flex', gap: 5, alignItems: 'center' }}>
+                      {i.visit_frequency === 'weekly'
+                        ? <span className="pill pill-yellow">weekly</span>
+                        : <span className="pill pill-cyan">daily</span>}
+                      {i.due_today
+                        ? <span className="pill pill-green">due today</span>
+                        : <span className="pill pill-gray">
+                            {i.days_since_visit != null ? `${i.days_since_visit}d ago` : 'not due'}
+                          </span>}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 8, lineHeight: 1.6 }}>
+              Weekly stops rejoin the round {data.weekly_gap_days} days after their last visit — no fixed
+              day to remember, and a missed day doesn't push them out by a whole extra week.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 

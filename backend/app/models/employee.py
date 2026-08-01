@@ -26,6 +26,9 @@ class Employee(Base):
     # site each day and skips rotation entirely — see _technician_rotation_schools.
     # Added at runtime by schema_guard.ensure_columns, since there are no migrations here.
     dedicated_school_id = Column(Integer, ForeignKey("schools.id"), nullable=True)
+    # Visits that count as a full day for a posted technician. NULL = derive it from the
+    # campus: due sub-locations divided by however many technicians are posted there.
+    daily_task_target   = Column(Integer, nullable=True)
 
     mandal         = relationship("Mandal", back_populates="employees")
     dedicated_school = relationship("School", foreign_keys=[dedicated_school_id])

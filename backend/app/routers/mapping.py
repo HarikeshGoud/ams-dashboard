@@ -439,6 +439,92 @@ def assign_mandal(data: MandalAssignment, db: Session = Depends(get_db),
             "not_found": sorted(set(data.school_ids) - {s.id for s in sites})}
 
 
+# ── Campus sub-locations and their visit frequency ───────────────────────────
+
+@router.get("/campus/{school_id}")
+def campus_detail(school_id: int, db: Session = Depends(get_db),
+                  user=Depends(require_admin_or_deskwork)):
+    """A campus's sub-locations, who is posted to it, and today's pool.
+
+    A site like YADADRI TEMPLE is 22 named stops covered by a team. This is where the
+    daily/weekly split per stop is set: everything is daily unless marked weekly, and a
+    weekly stop returns to the pool 7 days after its last visit.
+    """
+    from .tasks import _is_due, WEEKLY_GAP_DAYS
+    from ..ist_time import today_ist
+
+    parent = db.query(School).filter(School.id == school_id).first()
+    if not parent:
+        raise HTTPException(404, "Site not found")
+
+    kids = (db.query(School)
+              .filter(School.parent_school_id == school_id, School.is_active == True)
+              .order_by(School.name).all())
+    today = today_ist()
+
+    posted = (db.query(Employee)
+                .filter(Employee.dedicated_school_id == school_id,
+                        Employee.role == "technician", Employee.is_active == True)
+                .order_by(Employee.employee_code).all())
+
+    items = []
+    for k in kids:
+        weekly = (k.visit_frequency or "daily").lower() == "weekly"
+        items.append({
+            "id": k.id, "name": k.name,
+            "visit_frequency": "weekly" if weekly else "daily",
+            "last_visit_date": k.last_visit_date.isoformat() if k.last_visit_date else None,
+            "due_today": _is_due(k, today),
+            "days_since_visit": (today - k.last_visit_date).days if k.last_visit_date else None,
+        })
+
+    due = sum(1 for i in items if i["due_today"])
+    return {
+        "site": {"id": parent.id, "name": parent.name, "model": parent.model},
+        "sub_location_count": len(items),
+        "weekly_count": sum(1 for i in items if i["visit_frequency"] == "weekly"),
+        "due_today": due,
+        "weekly_gap_days": WEEKLY_GAP_DAYS,
+        "posted_technicians": [
+            {"id": e.id, "employee_code": e.employee_code, "name": e.name,
+             "daily_task_target": e.daily_task_target,
+             # What they'd actually be scored against today, target or derived.
+             "effective_target": e.daily_task_target or max(1, -(-due // max(1, len(posted)))) }
+            for e in posted
+        ],
+        "items": items,
+    }
+
+
+class VisitFrequency(BaseModel):
+    school_ids: List[int]
+    visit_frequency: str          # 'daily' | 'weekly'
+
+
+@router.post("/visit-frequency")
+def set_visit_frequency(data: VisitFrequency, db: Session = Depends(get_db),
+                        user=Depends(require_admin_or_deskwork)):
+    """Mark sub-locations as daily or weekly."""
+    freq = (data.visit_frequency or "").strip().lower()
+    if freq not in ("daily", "weekly"):
+        raise HTTPException(400, "visit_frequency must be 'daily' or 'weekly'")
+    if not data.school_ids:
+        raise HTTPException(400, "No sub-locations selected.")
+
+    sites = db.query(School).filter(School.id.in_(data.school_ids)).all()
+    changed = 0
+    for s in sites:
+        # Stored as NULL for daily so the column stays empty for the ~1250 sites this
+        # doesn't apply to, rather than writing 'daily' across the whole table.
+        new = "weekly" if freq == "weekly" else None
+        if s.visit_frequency != new:
+            s.visit_frequency = new
+            changed += 1
+    db.commit()
+    return {"ok": True, "visit_frequency": freq, "changed": changed,
+            "not_found": sorted(set(data.school_ids) - {s.id for s in sites})}
+
+
 # ── Mandal administration ────────────────────────────────────────────────────
 
 def _norm_mandal(name: str) -> str:

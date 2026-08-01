@@ -24,9 +24,16 @@ logger = logging.getLogger("ams")
 # (table, column, type, extra) — extra carries REFERENCES for a foreign key.
 # Keep the type spelling valid in BOTH Postgres and SQLite; INTEGER and TEXT are.
 REQUIRED_COLUMNS = [
-    # A technician who looks after one site every day instead of rotating through mandals.
-    # Their daily task generation is that single site — see tasks.py.
+    # A technician posted to one site or campus every day instead of rotating through
+    # mandals. If that site has sub-locations, the daily pool is those — see tasks.py.
     ("employees", "dedicated_school_id", "INTEGER", "REFERENCES schools(id)"),
+    # How many visits count as a full day for a posted technician. A campus pool is shared
+    # between everyone posted there, so assigned-vs-completed can't measure one person.
+    # NULL means "work it out": due sub-locations / technicians posted to that campus.
+    ("employees", "daily_task_target", "INTEGER", None),
+    # 'weekly' on a sub-location keeps it out of the daily pool until 7 days since its last
+    # visit. NULL/anything else means daily.
+    ("schools", "visit_frequency", "TEXT", None),
 ]
 
 

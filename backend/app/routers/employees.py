@@ -58,8 +58,10 @@ class EmployeeCreate(BaseModel):
     # rotation works from. Send both; if only mandal_ids is sent the first becomes primary.
     mandal_id: Optional[int] = None
     mandal_ids: Optional[List[int]] = None
-    # Set to pin this technician to ONE site they service every day instead of rotating.
+    # Post this technician to one site or campus they service every day instead of rotating.
     dedicated_school_id: Optional[int] = None
+    # Visits that count as a full day for them. None = derive it from the campus pool.
+    daily_task_target: Optional[int] = None
 
 class EmployeeUpdate(EmployeeCreate):
     pass
@@ -87,19 +89,27 @@ def _apply_mandals(db: Session, emp: Employee, mandal_ids, primary_id):
 
 
 def _validate_dedicated(db: Session, school_id):
+    """A posted site may be a single place OR a campus with sub-locations.
+
+    An earlier version refused campuses, on the grounds that rotation skips parents with
+    children. That was backwards — a campus is the main case. YADADRI TEMPLE is 22 named
+    stops covered by a team every day, so the daily pool is its sub-locations rather than
+    the parent row itself (see tasks._dedicated_pool).
+    """
     from ..models.school import School
     site = db.query(School).filter(School.id == school_id, School.is_active == True).first()
     if not site:
         raise HTTPException(404, "That site was not found.")
-    # Rotation skips a parent that has sub-locations, because technicians report on each
-    # child individually. Pinning someone to the parent would generate a daily task they
-    # can't file a proper report against.
-    kids = db.query(School).filter(School.parent_school_id == site.id,
-                                   School.is_active == True).count()
-    if kids:
+    if site.parent_school_id:
+        # Posting to one stop inside a campus is allowed and works, but it's almost always a
+        # mis-click on the search results — say so rather than silently narrowing their day
+        # to a single sub-location.
+        parent = db.query(School).filter(School.id == site.parent_school_id).first()
         raise HTTPException(400,
-            f"'{site.name}' has {kids} sub-location(s), so it's a container rather than a "
-            f"place to visit. Pin the technician to one of its sub-locations instead.")
+            f"'{site.name}' is one sub-location inside "
+            f"'{parent.name if parent else 'another site'}'. Post the technician to "
+            f"'{parent.name if parent else 'the parent site'}' instead and they'll get its "
+            f"sub-locations daily. Deskwork can still assign a single stop by hand.")
     return site
 
 
@@ -122,6 +132,7 @@ def list_employees(db: Session = Depends(get_db), user=Depends(require_admin_or_
              "dedicated_school_id": e.dedicated_school_id,
              "dedicated_school_name": e.dedicated_school.name if e.dedicated_school else None,
              "dedicated_school_model": e.dedicated_school.model if e.dedicated_school else None,
+             "daily_task_target": e.daily_task_target,
              } for e in emps]
 
 
@@ -135,6 +146,7 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db),
     # mandal_ids is a relationship, not a column — it can't go through Employee(**payload).
     mandal_ids = payload.pop("mandal_ids", None)
     dedicated_id = payload.pop("dedicated_school_id", None)
+    target = payload.pop("daily_task_target", None)
 
     emp = Employee(**payload)
     # Give every new employee a working login — without a code and password they
@@ -156,6 +168,7 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db),
             raise HTTPException(400, "Only a technician can be pinned to a single site.")
         _validate_dedicated(db, dedicated_id)
         emp.dedicated_school_id = dedicated_id
+    emp.daily_task_target = int(target) if target else None
 
     db.commit(); db.refresh(emp)
     return {"id": emp.id, "name": emp.name, "role": emp.role,
@@ -180,6 +193,8 @@ def update_employee(emp_id: int, data: EmployeeUpdate, db: Session = Depends(get
     mandal_ids   = payload.pop("mandal_ids", None)
     has_dedicated = "dedicated_school_id" in payload
     dedicated_id  = payload.pop("dedicated_school_id", None)
+    has_target    = "daily_task_target" in payload
+    target        = payload.pop("daily_task_target", None)
 
     for k, v in payload.items():
         setattr(emp, k, v)
@@ -195,10 +210,13 @@ def update_employee(emp_id: int, data: EmployeeUpdate, db: Session = Depends(get
                 raise HTTPException(400, "Only a technician can be pinned to a single site.")
             _validate_dedicated(db, dedicated_id)
         emp.dedicated_school_id = dedicated_id or None
+    if has_target:
+        emp.daily_task_target = int(target) if target else None
 
     db.commit(); db.refresh(emp)
     return {"id": emp.id, "name": emp.name,
-            "dedicated_school_id": emp.dedicated_school_id}
+            "dedicated_school_id": emp.dedicated_school_id,
+            "daily_task_target": emp.daily_task_target}
 
 
 @router.delete("/{emp_id}")

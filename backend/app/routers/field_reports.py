@@ -1,4 +1,4 @@
-import os, aiofiles
+import os, logging, aiofiles
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
@@ -17,6 +17,8 @@ from ..dependencies import get_current_user, require_admin, require_admin_or_des
 router = APIRouter(prefix="/api/field-reports", tags=["field-reports"])
 
 from ..storage import UPLOADS_DIR
+
+logger = logging.getLogger("ams")
 
 class VerifyRequest(BaseModel):
     status: str          # verified / rejected
@@ -130,19 +132,31 @@ def _auto_mark_attendance(employee_id: int, today: date, db: Session):
     if total_tasks == 0:
         return  # No tasks assigned today — don't touch attendance
 
-    # Determine status based on ratio
-    if submitted_tasks >= total_tasks:
+    # A technician posted to a campus is handed the WHOLE shared pool, the same list as
+    # everyone else posted there. Judging them on it would mark two people who between them
+    # covered all 22 stops as half a day each. Score them against their own share instead.
+    from ..models.employee import Employee
+    from .tasks import _attendance_target, _dedicated_pool
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    target = total_tasks
+    if emp and emp.dedicated_school_id:
+        try:
+            target = _attendance_target(db, emp, len(_dedicated_pool(db, emp, today)))
+        except Exception:
+            target = total_tasks
+
+    if submitted_tasks >= target:
         status = "present"
-        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Full day)"
-    elif submitted_tasks >= total_tasks / 2:
+        note = f"Auto: {submitted_tasks}/{target} visits submitted (Full day)"
+    elif submitted_tasks >= target / 2:
         status = "half_day"
-        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Half day)"
+        note = f"Auto: {submitted_tasks}/{target} visits submitted (Half day)"
     elif submitted_tasks > 0:
         status = "absent"
-        note = f"Auto: {submitted_tasks}/{total_tasks} tasks submitted (Partial — less than half)"
+        note = f"Auto: {submitted_tasks}/{target} visits submitted (Partial — less than half)"
     else:
         status = "absent"
-        note = f"Auto: 0/{total_tasks} tasks submitted"
+        note = f"Auto: 0/{target} visits submitted"
 
     existing = db.query(Attendance).filter(
         Attendance.employee_id == employee_id,
@@ -256,6 +270,16 @@ async def submit_field_report(
                 raise HTTPException(500, f"Photo save failed ({photo_type}): {e}")
 
         task.status = "submitted"
+
+        # A campus pool is shared, so this stop must leave the other posted technician's list
+        # now rather than at verification time — otherwise they spend the rest of the day
+        # looking at a job their partner already did.
+        try:
+            from .tasks import drop_sibling_tasks
+            drop_sibling_tasks(db, task)
+        except Exception as e:
+            logger.warning(f"shared-pool cleanup skipped for task {task.id}: {e}")
+
         db.commit()
         db.refresh(report)  # refresh immediately after commit while session is clean
         base_url = str(request.base_url).rstrip("/")
