@@ -178,9 +178,12 @@ export default function ProofReview() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>
-                  👤 {emp?.name || `Employee #${r.employee_id}`}
+                  {/* Prefer the name the report itself carries. The `emp` lookup goes against
+                      the ACTIVE employee list, so a technician since deactivated fell through
+                      to a bare "Employee #75". */}
+                  👤 {r.employee_name || emp?.name || `Employee #${r.employee_id}`}
                   <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>
-                    [{emp?.employee_code}]
+                    [{r.employee_code || emp?.employee_code || '—'}]
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>

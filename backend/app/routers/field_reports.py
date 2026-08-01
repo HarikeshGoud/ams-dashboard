@@ -82,13 +82,38 @@ def _fmt_photo(p: WorkProof, base_url: str = "http://localhost:8000"):
     }
 
 @router.get("/")
-def list_reports(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def list_reports(request: Request,
+                 report_date: Optional[str] = None,
+                 employee_id: Optional[int] = None,
+                 verification_status: Optional[str] = None,
+                 limit: int = 100,
+                 db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Field reports, newest first.
+
+    All the filters are optional and OFF by default, because the technician pages and the
+    admin views all read this same endpoint and expect their recent history. Proof Review
+    passes a date so it can show one day accurately — without a filter the bare list is
+    capped, and a pending proof older than the cap could never be reviewed at all.
+    """
     from ..models.service_report import ServiceReport
     base_url = str(request.base_url).rstrip("/")
     q = db.query(FieldReport)
     if user.role not in ("admin", "deskwork"):
         q = q.filter(FieldReport.employee_id == user.id)
-    reports = q.order_by(FieldReport.created_at.desc()).limit(100).all()
+
+    if report_date:
+        try:
+            q = q.filter(FieldReport.report_date == date.fromisoformat(report_date))
+        except ValueError:
+            raise HTTPException(400, f"Invalid date '{report_date}' — use YYYY-MM-DD")
+    if employee_id:
+        q = q.filter(FieldReport.employee_id == employee_id)
+    if verification_status:
+        q = q.filter(FieldReport.verification_status == verification_status)
+
+    # Return shape stays a bare array — six callers depend on it, so no envelope here.
+    limit = max(1, min(int(limit), 500))
+    reports = q.order_by(FieldReport.created_at.desc()).limit(limit).all()
     # Build set of field_report_ids that have a service report
     report_ids = [r.id for r in reports]
     sr_ids = set(

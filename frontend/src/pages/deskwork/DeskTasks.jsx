@@ -23,21 +23,32 @@ export default function DeskTasks() {
   const [summaryModal, setSummaryModal] = useState(false)
   const today = todayIST()
   const [taskDate, setTaskDate] = useState(today)
+  // Proof Review has its own date/technician filters, independent of the Task Assignment
+  // ones above. Defaults to today so the tab opens on the day's work rather than on months
+  // of backlog.
+  const [proofDate, setProofDate] = useState(today)
+  const [proofEmp, setProofEmp]   = useState('')
 
   // Warnings run longer than confirmations — they're a sentence to read, not a tick to glance at.
   function showToast(msg, ms = 4000) { setToast(msg); setTimeout(() => setToast(''), ms) }
 
   function load() {
+    // Proof Review is scoped server-side: without a date it would return a capped slice of
+    // all history, so a pending proof older than the cap could never be reviewed. Blank date
+    // means "everything", which is the deliberate opt-out.
+    const proofParams = { verification_status: 'pending', limit: 500 }
+    if (proofDate) proofParams.report_date = proofDate
+    if (proofEmp)  proofParams.employee_id = proofEmp
+
     Promise.all([
       api.get('/api/employees/'),
       api.get('/api/tasks/', { params: { task_date: taskDate, ...(filterEmp ? { employee_id: filterEmp } : {}) } }),
-      api.get('/api/field-reports/')
+      api.get('/api/field-reports/', { params: proofParams })
     ]).then(([e, t, r]) => {
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(techs)
       setTasks(t.data)
       setFieldReports(r.data)
-      // Only reports awaiting review
       setPendingReports(r.data.filter(rp => rp.verification_status === 'pending'))
       // Load rotation info for each technician
       Promise.all(techs.map(emp =>
@@ -52,7 +63,7 @@ export default function DeskTasks() {
     })
   }
 
-  useEffect(() => { load() }, [taskDate, filterEmp])
+  useEffect(() => { load() }, [taskDate, filterEmp, proofDate, proofEmp])
 
   async function generateDaily() {
     setGenerating(true)
@@ -126,9 +137,40 @@ export default function DeskTasks() {
       {/* ── PROOF REVIEW TAB ── */}
       {mainTab === 'review' && (
         <div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input type="date" value={proofDate} onChange={e => setProofDate(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
+                       background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }} />
+            <SearchableSelect
+              value={proofEmp} onChange={setProofEmp} placeholder="All technicians"
+              options={employees.map(e => ({ value: String(e.id), label: `${e.name} [${e.employee_code}]` }))}
+              style={{ minWidth: 210 }}
+            />
+            {proofDate !== today && (
+              <button className="btn btn-outline btn-sm" onClick={() => setProofDate(today)}>Today</button>
+            )}
+            {(proofDate || proofEmp) && (
+              <button className="btn btn-outline btn-sm"
+                onClick={() => { setProofDate(''); setProofEmp('') }}>Show all dates</button>
+            )}
+            <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+              {pendingReports.length} awaiting review
+              {proofDate ? ` on ${proofDate}` : ' — all dates'}
+              {proofEmp ? ` · ${employees.find(e => String(e.id) === String(proofEmp))?.name || ''}` : ''}
+            </span>
+          </div>
+
           {pendingReports.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
-              ✅ No proofs awaiting review. All caught up!
+              {proofDate || proofEmp ? (
+                <>
+                  ✅ Nothing awaiting review{proofDate ? ` on ${proofDate}` : ''}
+                  {proofEmp ? ' for that technician' : ''}.
+                  <div style={{ fontSize: 12, marginTop: 6 }}>
+                    Older proofs are still there — clear the filters with <b>Show all dates</b>.
+                  </div>
+                </>
+              ) : '✅ No proofs awaiting review. All caught up!'}
             </div>
           ) : (
             pendingReports.map(report => (
@@ -276,7 +318,11 @@ function ProofReviewCard({ report, onVerify }) {
             🏫 {report.school_name || 'Unknown School'}
           </div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 2 }}>
-            👤 Employee #{report.employee_id} · 📅 {report.report_date}
+            {/* employee_name comes off the report's own relationship, so it resolves even for
+                someone who has since been deactivated — an id lookup against the active
+                employee list would fall back to a bare number for exactly those people. */}
+            👤 {report.employee_name || `Employee #${report.employee_id}`}
+            {report.employee_code ? ` [${report.employee_code}]` : ''} · 📅 {report.report_date}
           </div>
           {report.item_installed && (
             <div style={{ fontSize: 12, color: 'var(--accent2)', marginBottom: 2 }}>
