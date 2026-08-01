@@ -439,6 +439,272 @@ def assign_mandal(data: MandalAssignment, db: Session = Depends(get_db),
             "not_found": sorted(set(data.school_ids) - {s.id for s in sites})}
 
 
+def _norm_name(name: str) -> str:
+    """Case- and spacing-insensitive key for spotting the same name entered twice.
+
+    Used for both mandals and sites — the duplicates in this data arose the same way in
+    both: an upper-case entry and a Title-case one for the same real place.
+    """
+    return " ".join((name or "").strip().upper().split())
+
+
+# ── Site administration: duplicates, rename, merge, delete ───────────────────
+
+# Every column that points at schools.id. A merge has to move all of them and a delete has
+# to refuse while any of them still does, or the work history is silently orphaned.
+def _site_reference_counts(db: Session, school_id: int) -> dict:
+    from ..models.task import Task
+    from ..models.service_report import ServiceReport
+    from ..models.field_report import FieldReport
+    from ..models.visit import Visit
+    from ..models.amc_report import AMCReport
+    from ..models.complaint import Complaint
+    return {
+        "tasks":            db.query(Task).filter(Task.school_id == school_id).count(),
+        "service_reports":  db.query(ServiceReport).filter(ServiceReport.school_id == school_id).count(),
+        "proof_reviews":    db.query(FieldReport).filter(FieldReport.school_id == school_id).count(),
+        "visits":           db.query(Visit).filter(Visit.school_id == school_id).count(),
+        "amc_reports":      db.query(AMCReport).filter(AMCReport.school_id == school_id).count(),
+        "complaints":       db.query(Complaint).filter(Complaint.school_id == school_id).count(),
+        "sub_locations":    db.query(School).filter(School.parent_school_id == school_id).count(),
+        "posted_technicians": db.query(Employee).filter(Employee.dedicated_school_id == school_id).count(),
+    }
+
+
+_REF_LABELS = {
+    "tasks": "task", "service_reports": "service report", "proof_reviews": "proof review",
+    "visits": "visit", "amc_reports": "AMC report", "complaints": "complaint",
+    "sub_locations": "sub-location", "posted_technicians": "posted technician",
+}
+
+
+def _ref_phrases(counts: dict):
+    out = []
+    for key, n in counts.items():
+        if n:
+            out.append(f"{n} {_REF_LABELS[key]}{'s' if n != 1 else ''}")
+    return out
+
+
+@router.get("/site-duplicates")
+def site_duplicates(db: Session = Depends(get_db), user=Depends(require_admin_or_deskwork)):
+    """Active top-level sites sharing a name, with what each one actually holds.
+
+    Creating the same site twice is easy — the search shows both and nothing objects — and
+    the damage is quiet: half the history lands on one row and half on the other.
+    """
+    sites = (db.query(School)
+               .options(joinedload(School.mandal))
+               .filter(School.is_active == True, School.parent_school_id.is_(None))
+               .order_by(School.name).all())
+
+    groups = {}
+    for s in sites:
+        groups.setdefault(_norm_name(s.name), []).append(s)
+
+    out = []
+    for key, members in sorted(groups.items()):
+        if len(members) < 2:
+            continue
+        rows = []
+        for s in members:
+            counts = _site_reference_counts(db, s.id)
+            rows.append({
+                "id": s.id, "name": s.name, "model": s.model,
+                "mandal_name": s.mandal.name if s.mandal else None,
+                "unit_number": s.unit_number,
+                "last_visit_date": s.last_visit_date.isoformat() if s.last_visit_date else None,
+                "counts": counts,
+                "total_refs": sum(counts.values()),
+                "blocked_by": _ref_phrases(counts),
+                "deletable": sum(counts.values()) == 0,
+            })
+        # Suggest keeping whichever row carries the most history, so a merge moves the least.
+        rows.sort(key=lambda r: -r["total_refs"])
+        out.append({"name": key, "keep_id": rows[0]["id"], "sites": rows})
+
+    return {"groups": out, "group_count": len(out)}
+
+
+@router.get("/site/{school_id}/usage")
+def site_usage(school_id: int, db: Session = Depends(get_db),
+               user=Depends(require_admin_or_deskwork)):
+    """What references a site — shown before offering to delete or merge it."""
+    s = db.query(School).options(joinedload(School.mandal)).filter(School.id == school_id).first()
+    if not s:
+        raise HTTPException(404, "Site not found")
+    counts = _site_reference_counts(db, school_id)
+    return {
+        "id": s.id, "name": s.name, "model": s.model, "is_active": s.is_active,
+        "mandal_name": s.mandal.name if s.mandal else None,
+        "parent_school_id": s.parent_school_id,
+        "counts": counts, "total_refs": sum(counts.values()),
+        "blocked_by": _ref_phrases(counts),
+        "deletable": sum(counts.values()) == 0,
+    }
+
+
+class SiteEdit(BaseModel):
+    name: Optional[str] = None
+    model: Optional[str] = None          # school / hospital / temple / village / hostel / park / other
+    unit_number: Optional[str] = None
+
+
+SITE_TYPES = ("school", "hospital", "temple", "village", "hostel", "park", "other")
+
+
+@router.patch("/site/{school_id}")
+def edit_site(school_id: int, data: SiteEdit, db: Session = Depends(get_db),
+              user=Depends(require_admin_or_deskwork)):
+    """Rename a site or correct its type."""
+    s = db.query(School).filter(School.id == school_id).first()
+    if not s:
+        raise HTTPException(404, "Site not found")
+
+    if data.name is not None:
+        new_name = data.name.strip()
+        if not new_name:
+            raise HTTPException(400, "Site name cannot be blank.")
+        s.name = new_name
+    if data.model is not None:
+        m = data.model.strip().lower()
+        if m not in SITE_TYPES:
+            raise HTTPException(400, f"Site type must be one of: {', '.join(SITE_TYPES)}")
+        # Changing to or from 'temple' changes whether a service report is required, and
+        # 'school' is the only type daily rotation picks up — worth being explicit about.
+        s.model = m
+        # Sub-locations inherit their parent's type; leaving them behind would split a
+        # campus across two types and break the temple report exemption for half of it.
+        for child in db.query(School).filter(School.parent_school_id == s.id).all():
+            child.model = m
+    if data.unit_number is not None:
+        s.unit_number = data.unit_number.strip() or None
+
+    db.commit(); db.refresh(s)
+    return {"ok": True, "id": s.id, "name": s.name, "model": s.model,
+            "unit_number": s.unit_number}
+
+
+@router.delete("/site/{school_id}")
+def delete_site(school_id: int, archive: bool = False, db: Session = Depends(get_db),
+                user=Depends(require_admin_or_deskwork)):
+    """Remove a site.
+
+    A site nothing references — the duplicate you just created by mistake — is deleted
+    outright. One that carries history is refused, because deleting it would strip the site
+    from real tasks and reports. Merge it into the row you're keeping instead, or pass
+    archive=true to just hide it while leaving its history intact.
+    """
+    s = db.query(School).filter(School.id == school_id).first()
+    if not s:
+        raise HTTPException(404, "Site not found")
+
+    counts = _site_reference_counts(db, school_id)
+    total = sum(counts.values())
+
+    if archive:
+        s.is_active = False
+        # A hidden parent with visible children would leave orphans in every site list.
+        hidden_children = 0
+        for child in db.query(School).filter(School.parent_school_id == s.id,
+                                             School.is_active == True).all():
+            child.is_active = False
+            hidden_children += 1
+        db.commit()
+        return {"ok": True, "archived": s.name, "hidden_sub_locations": hidden_children,
+                "kept_history": total}
+
+    if total:
+        raise HTTPException(400,
+            f"'{s.name}' still has {', '.join(_ref_phrases(counts))} attached. Deleting it "
+            f"would strip the site off that history. Merge it into the site you're keeping, "
+            f"or archive it to hide it without losing anything.")
+
+    name = s.name
+    db.delete(s); db.commit()
+    return {"ok": True, "deleted": name}
+
+
+class SiteMerge(BaseModel):
+    into_school_id: int
+
+
+@router.post("/site/{school_id}/merge")
+def merge_site(school_id: int, data: SiteMerge, db: Session = Depends(get_db),
+               user=Depends(require_admin_or_deskwork)):
+    """Move everything off a duplicate site onto the one being kept, then delete it.
+
+    All eight columns that reference schools.id are repointed. Anything missed here would
+    either block the delete on a constraint or, worse, leave a task or report pointing at a
+    row that no longer exists.
+    """
+    from ..models.task import Task
+    from ..models.service_report import ServiceReport
+    from ..models.field_report import FieldReport
+    from ..models.visit import Visit
+    from ..models.amc_report import AMCReport
+    from ..models.complaint import Complaint
+
+    src = db.query(School).filter(School.id == school_id).first()
+    if not src:
+        raise HTTPException(404, "Site to merge was not found")
+    if data.into_school_id == school_id:
+        raise HTTPException(400, "Pick a different site to merge into.")
+    dst = db.query(School).filter(School.id == data.into_school_id).first()
+    if not dst:
+        raise HTTPException(404, "Target site was not found")
+    if dst.parent_school_id == src.id:
+        raise HTTPException(400,
+            f"'{dst.name}' is a sub-location of '{src.name}'. Merging a site into its own "
+            f"child would leave the campus pointing at itself.")
+
+    moved = {}
+    for label, model, col in (
+        ("tasks", Task, Task.school_id),
+        ("service_reports", ServiceReport, ServiceReport.school_id),
+        ("proof_reviews", FieldReport, FieldReport.school_id),
+        ("visits", Visit, Visit.school_id),
+        ("amc_reports", AMCReport, AMCReport.school_id),
+        ("complaints", Complaint, Complaint.school_id),
+    ):
+        rows = db.query(model).filter(col == src.id).all()
+        for r in rows:
+            r.school_id = dst.id
+        moved[label] = len(rows)
+
+    # Sub-locations follow, and inherit the surviving parent's type so the campus stays
+    # consistent (the temple report exemption reads each row's own model).
+    kids = db.query(School).filter(School.parent_school_id == src.id).all()
+    for k in kids:
+        k.parent_school_id = dst.id
+        k.model = dst.model
+    moved["sub_locations"] = len(kids)
+
+    posted = db.query(Employee).filter(Employee.dedicated_school_id == src.id).all()
+    for e in posted:
+        e.dedicated_school_id = dst.id
+    moved["posted_technicians"] = len(posted)
+
+    # Keep whichever visit date is later — the surviving row should reflect the most recent
+    # real visit, whichever duplicate it was filed against.
+    if src.last_visit_date and (not dst.last_visit_date or src.last_visit_date > dst.last_visit_date):
+        dst.last_visit_date = src.last_visit_date
+    # Fill blanks on the survivor from the row being removed rather than losing the detail.
+    for field in ("mandal_id", "client_id", "unit_number", "capacity", "plant_model",
+                  "address", "latitude", "longitude", "contact_person", "phone",
+                  "technician_id", "technician_id_2"):
+        if getattr(dst, field, None) in (None, "") and getattr(src, field, None) not in (None, ""):
+            setattr(dst, field, getattr(src, field))
+
+    db.flush()
+    src_name = src.name
+    db.delete(src)
+    db.commit()
+
+    return {"ok": True, "merged": src_name, "into": dst.name, "moved": moved,
+            "total_moved": sum(moved.values())}
+
+
 # ── Campus sub-locations and their visit frequency ───────────────────────────
 
 @router.get("/campus/{school_id}")
@@ -527,10 +793,6 @@ def set_visit_frequency(data: VisitFrequency, db: Session = Depends(get_db),
 
 # ── Mandal administration ────────────────────────────────────────────────────
 
-def _norm_mandal(name: str) -> str:
-    return " ".join((name or "").strip().upper().split())
-
-
 def _staff_phrase(total: int, inactive: int, noun: str) -> str:
     """e.g. '3 inactive employees' / '2 employees (1 inactive)' / '1 employee'."""
     if inactive == total:
@@ -604,11 +866,11 @@ def list_mandals_admin(db: Session = Depends(get_db), user=Depends(require_admin
 
     groups = {}
     for m in mandals:
-        groups.setdefault(_norm_mandal(m.name), []).append(m.id)
+        groups.setdefault(_norm_name(m.name), []).append(m.id)
 
     items = []
     for m in mandals:
-        key = _norm_mandal(m.name)
+        key = _norm_name(m.name)
         sites = site_counts.get(m.id, 0)
         links = link_counts.get(m.id, 0)
         legacy = legacy_counts.get(m.id, 0)
@@ -676,7 +938,7 @@ def create_mandal(data: MandalCreate, db: Session = Depends(get_db),
     # Mandal.name is UNIQUE, so a near-duplicate would hit an opaque IntegrityError.
     # Check case-insensitively too, since that is how the existing duplicates happened.
     for m in db.query(Mandal).all():
-        if _norm_mandal(m.name) == _norm_mandal(name):
+        if _norm_name(m.name) == _norm_name(name):
             raise HTTPException(400, f"'{m.name}' already exists (id {m.id}) — "
                                      f"use that one instead of creating a near-duplicate.")
     m = Mandal(name=name, district=(data.district or "").strip() or None,
@@ -702,7 +964,7 @@ def edit_mandal(mandal_id: int, data: MandalEdit, db: Session = Depends(get_db),
         if not new_name:
             raise HTTPException(400, "Mandal name cannot be blank.")
         clash = next((o for o in db.query(Mandal).filter(Mandal.id != mandal_id).all()
-                      if _norm_mandal(o.name) == _norm_mandal(new_name)), None)
+                      if _norm_name(o.name) == _norm_name(new_name)), None)
         if clash:
             raise HTTPException(400, f"'{clash.name}' (id {clash.id}) already uses that name — "
                                      f"merge them instead of renaming.")

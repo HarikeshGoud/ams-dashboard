@@ -12,9 +12,10 @@ import SearchableSelect from '../components/SearchableSelect'
 // technician first, and only if there are none does it fall back to every site in their
 // mandals. So mapping mandals alone is enough to get a technician working.
 const TABS = [
-  { key: 'techs',   label: '👷 Technicians → Mandals' },
-  { key: 'sites',   label: '🏫 Sites → Mandals'       },
-  { key: 'mandals', label: '📍 Manage Mandals'        },
+  { key: 'techs',     label: '👷 Technicians → Mandals' },
+  { key: 'sites',     label: '🏫 Sites → Mandals'       },
+  { key: 'sitesadmin',label: '🏗 Manage Sites'          },
+  { key: 'mandals',   label: '📍 Manage Mandals'        },
 ]
 
 export default function Mapping() {
@@ -52,9 +53,10 @@ export default function Mapping() {
         ))}
       </div>
 
-      {tab === 'techs'   && <TechniciansTab   showToast={showToast} errMsg={errMsg} />}
-      {tab === 'sites'   && <SitesTab         showToast={showToast} errMsg={errMsg} />}
-      {tab === 'mandals' && <MandalsTab       showToast={showToast} errMsg={errMsg} />}
+      {tab === 'techs'      && <TechniciansTab showToast={showToast} errMsg={errMsg} />}
+      {tab === 'sites'      && <SitesTab       showToast={showToast} errMsg={errMsg} />}
+      {tab === 'sitesadmin' && <SitesAdminTab  showToast={showToast} errMsg={errMsg} />}
+      {tab === 'mandals'    && <MandalsTab     showToast={showToast} errMsg={errMsg} />}
 
       {toast && (
         <div style={{
@@ -563,6 +565,255 @@ function SitesTab({ showToast, errMsg }) {
         <CampusModal site={campus} onClose={() => setCampus(null)}
           showToast={showToast} errMsg={errMsg} />
       )}
+    </>
+  )
+}
+
+/* ────────────────────────────── Manage Sites ───────────────────────────── */
+
+const SITE_TYPES = ['school', 'hospital', 'temple', 'village', 'hostel', 'park', 'other']
+
+// Renaming, retyping, merging duplicates and deleting sites. Creating the same site twice is
+// easy — the search offers both and nothing objects — and the damage is quiet: half the
+// history lands on one row and half on the other, so neither tells the whole story.
+function SitesAdminTab({ showToast, errMsg }) {
+  const [dupes, setDupes] = useState(null)
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState(null)
+  const [usage, setUsage] = useState({})        // {siteId: usage}
+  const [editing, setEditing] = useState(null)  // siteId
+  const [draft, setDraft] = useState({ name: '', model: 'school', unit_number: '' })
+  const [mergeInto, setMergeInto] = useState({})
+  const [busy, setBusy] = useState(false)
+
+  const loadDupes = useCallback(() => {
+    api.get('/api/mapping/site-duplicates').then(r => setDupes(r.data))
+      .catch(e => showToast(errMsg(e, 'Could not check for duplicates')))
+  }, [showToast, errMsg])
+  useEffect(() => { loadDupes() }, [loadDupes])
+
+  const runSearch = useCallback(() => {
+    if (!search.trim()) { setResults(null); return }
+    api.get('/api/mapping/sites', { params: { search: search.trim(), limit: 200 } })
+      .then(r => setResults(r.data.items))
+  }, [search])
+  useEffect(() => { const t = setTimeout(runSearch, 350); return () => clearTimeout(t) }, [runSearch])
+
+  async function loadUsage(id) {
+    const r = await api.get(`/api/mapping/site/${id}/usage`)
+    setUsage(u => ({ ...u, [id]: r.data }))
+    return r.data
+  }
+
+  async function save(id) {
+    setBusy(true)
+    try {
+      const r = await api.patch(`/api/mapping/site/${id}`, draft)
+      showToast(`✅ Saved ${r.data.name}`)
+      setEditing(null); runSearch(); loadDupes()
+    } catch (e) { showToast(errMsg(e, 'Could not save'), 9000) }
+    setBusy(false)
+  }
+
+  async function remove(site) {
+    const u = usage[site.id] || await loadUsage(site.id)
+    if (u.total_refs > 0) {
+      const ok = confirm(
+        `"${site.name}" can't just be deleted — it has:\n  • ${u.blocked_by.join('\n  • ')}\n\n` +
+        `Deleting would strip the site off that history. Archive it instead? ` +
+        `It disappears from the lists but everything stays attached.`)
+      if (!ok) return
+      setBusy(true)
+      try {
+        const r = await api.delete(`/api/mapping/site/${site.id}`, { params: { archive: true } })
+        showToast(`✅ Archived ${r.data.archived}` +
+          (r.data.hidden_sub_locations ? ` — ${r.data.hidden_sub_locations} sub-location(s) hidden too` : ''), 8000)
+        runSearch(); loadDupes()
+      } catch (e) { showToast(errMsg(e, 'Could not archive'), 9000) }
+      setBusy(false)
+      return
+    }
+    if (!confirm(`Delete "${site.name}"? Nothing references it, so this removes it for good.`)) return
+    setBusy(true)
+    try {
+      const r = await api.delete(`/api/mapping/site/${site.id}`)
+      showToast(`✅ Deleted ${r.data.deleted}`)
+      runSearch(); loadDupes()
+    } catch (e) { showToast(errMsg(e, 'Could not delete'), 9000) }
+    setBusy(false)
+  }
+
+  async function doMerge(src, targetId, targetName) {
+    const u = usage[src.id] || await loadUsage(src.id)
+    const lines = u.blocked_by.length ? `\n\nMoving across:\n  • ${u.blocked_by.join('\n  • ')}` : ''
+    if (!confirm(`Merge "${src.name}" into "${targetName}"?${lines}\n\n` +
+                 `Then "${src.name}" is deleted. This cannot be undone.`)) return
+    setBusy(true)
+    try {
+      const r = await api.post(`/api/mapping/site/${src.id}/merge`, { into_school_id: Number(targetId) })
+      showToast(`✅ Merged ${r.data.merged} into ${r.data.into} — ${r.data.total_moved} record(s) moved`, 9000)
+      setMergeInto(p => ({ ...p, [src.id]: '' }))
+      runSearch(); loadDupes()
+    } catch (e) { showToast(errMsg(e, 'Merge failed'), 10000) }
+    setBusy(false)
+  }
+
+  return (
+    <>
+      <div className="alert alert-blue" style={{ marginBottom: 16, display: 'block' }}>
+        <div style={{ fontSize: 12.5, lineHeight: 1.65 }}>
+          Fix site records here: rename, correct the type, merge a site created twice, or delete one
+          added by mistake. A site with history can't be deleted outright — <b>merge</b> it into the
+          one you're keeping so its tasks and reports move across, or <b>archive</b> it to hide it
+          without losing anything.
+        </div>
+      </div>
+
+      {/* Duplicates first — this is the problem people actually come here with */}
+      {dupes && (dupes.group_count > 0 ? (
+        <div className="card" style={{ marginBottom: 16, border: '1px solid var(--red)' }}>
+          <div className="card-title" style={{ color: 'var(--red)' }}>
+            ⚠ Sites entered more than once ({dupes.group_count})
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.6 }}>
+            Same name, different records. Keep the one carrying the most history and merge the other
+            into it — nothing is lost, everything moves across.
+          </div>
+          {dupes.groups.map(g => {
+            const keep = g.sites.find(s => s.id === g.keep_id)
+            return (
+              <div key={g.name} style={{ border: '1px solid var(--border)', borderRadius: 10,
+                                         padding: 10, marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{g.name}</div>
+                {g.sites.map(s => (
+                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between',
+                                           alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                                           padding: '5px 0', fontSize: 12 }}>
+                    <span>
+                      <b style={{ color: s.id === g.keep_id ? 'var(--green)' : 'var(--muted)' }}>
+                        {s.id === g.keep_id ? '★ keep · ' : ''}{s.name}
+                      </b>
+                      <span style={{ color: 'var(--muted)' }}>
+                        {' '}· {s.model}{s.mandal_name ? ` · ${s.mandal_name}` : ' · no mandal'}
+                        {' '}· {s.total_refs === 0 ? 'nothing attached'
+                              : s.blocked_by.join(', ')}
+                      </span>
+                    </span>
+                    {s.id !== g.keep_id && (
+                      <button className="btn btn-danger btn-sm" disabled={busy}
+                        onClick={() => doMerge(s, g.keep_id, keep?.name)}>
+                        Merge into "{keep?.name}"
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="alert alert-green" style={{ marginBottom: 16 }}>
+          <span>✅</span><div>No sites share a name — nothing to merge.</div>
+        </div>
+      ))}
+
+      <div className="card">
+        <div className="card-title">Find a site to rename, merge or delete</div>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+               placeholder="Search sites by name… e.g. ANNAVARAM" style={{ marginBottom: 10 }} />
+
+        {!search.trim() ? (
+          <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Type a name to find the site.</div>
+        ) : !results ? (
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>Searching…</div>
+        ) : results.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>No site matches that.</div>
+        ) : (
+          <div style={{ maxHeight: 460, overflowY: 'auto' }}>
+            {results.map(s => {
+              const u = usage[s.id]
+              return (
+                <div key={s.id} style={{ border: '1px solid var(--border)', borderRadius: 10,
+                                         padding: 10, marginBottom: 8 }}>
+                  {editing === s.id ? (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <div className="form-group" style={{ flex: '2 1 200px', marginBottom: 0 }}>
+                        <label>Name</label>
+                        <input value={draft.name}
+                          onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
+                      </div>
+                      <div className="form-group" style={{ flex: '1 1 130px', marginBottom: 0 }}>
+                        <label>Type</label>
+                        <select value={draft.model}
+                          onChange={e => setDraft(d => ({ ...d, model: e.target.value }))}>
+                          {SITE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div className="form-group" style={{ flex: '0 1 90px', marginBottom: 0 }}>
+                        <label>Unit</label>
+                        <input value={draft.unit_number}
+                          onChange={e => setDraft(d => ({ ...d, unit_number: e.target.value }))} />
+                      </div>
+                      <button className="btn btn-primary btn-sm" disabled={busy}
+                        onClick={() => save(s.id)}>Save</button>
+                      <button className="btn btn-outline btn-sm"
+                        onClick={() => setEditing(null)}>Cancel</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between',
+                                    alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13 }}>
+                          <b>{s.name}</b>
+                          <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>
+                            {' '}· {s.model}
+                            {s.mandal_name ? ` · ${s.mandal_name}` : ' · no mandal'}
+                            {s.sub_location_count ? ` · ${s.sub_location_count} sub-locations` : ''}
+                            {s.technician_name ? ` · ${s.technician_name}` : ''}
+                          </span>
+                        </span>
+                        <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => {
+                            setEditing(s.id)
+                            setDraft({ name: s.name, model: s.model || 'school',
+                                       unit_number: s.unit_number || '' })
+                          }}>Rename / type</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => loadUsage(s.id)}>
+                            What's attached?
+                          </button>
+                          <select value={mergeInto[s.id] || ''} style={{ maxWidth: 170, fontSize: 11 }}
+                            onChange={e => setMergeInto(p => ({ ...p, [s.id]: e.target.value }))}>
+                            <option value="">Merge into…</option>
+                            {results.filter(o => o.id !== s.id)
+                              .map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                          </select>
+                          {mergeInto[s.id] && (
+                            <button className="btn btn-danger btn-sm" disabled={busy}
+                              onClick={() => doMerge(s, mergeInto[s.id],
+                                results.find(o => String(o.id) === String(mergeInto[s.id]))?.name)}>
+                              Go
+                            </button>
+                          )}
+                          <button className="btn btn-danger btn-sm" disabled={busy}
+                            onClick={() => remove(s)}>Delete</button>
+                        </span>
+                      </div>
+                      {u && (
+                        <div style={{ fontSize: 11, marginTop: 6,
+                                      color: u.total_refs ? 'var(--yellow)' : 'var(--green)' }}>
+                          {u.total_refs
+                            ? `🔒 ${u.blocked_by.join(' · ')} — merge or archive, can't delete outright`
+                            : '🔓 Nothing attached — safe to delete'}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </>
   )
 }
