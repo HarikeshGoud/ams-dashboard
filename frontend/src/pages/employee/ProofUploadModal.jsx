@@ -8,6 +8,19 @@ function batchLabel(b) {
   return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
 }
 
+// Servicing / cleaning visits replace nothing, so there is no per-part Before/After/Close-up
+// set to build the photo list from. These six fixed slots are the proof instead: they walk
+// the plant end to end so a desk reviewer can see the work without knowing what was done.
+// Extra photos stay available on top for anything these don't cover.
+const SERVICE_SLOTS = [
+  { key: 'service_before',    label: 'Before servicing',        desc: 'Whole plant as you found it',            icon: '📷' },
+  { key: 'service_prefilter', label: 'Pre-filters / housings',  desc: 'Filter housings opened or cleaned',      icon: '🧴' },
+  { key: 'service_membrane',  label: 'Membrane housing',        desc: 'Membrane housing / RO section',          icon: '🧪' },
+  { key: 'service_pump',      label: 'Pump & electrical panel',  desc: 'Pump, panel, wiring you worked on',      icon: '⚡' },
+  { key: 'service_tank',      label: 'Tank / outlet',           desc: 'Storage tank, taps or outlet plumbing',  icon: '🚰' },
+  { key: 'service_after',     label: 'After servicing',         desc: 'Plant running, water flowing',           icon: '✅' },
+]
+
 // ── Photo slot ────────────────────────────────────────────────────────────────
 function PhotoSlot({ label, desc, icon, preview, onOpen }) {
   return (
@@ -51,6 +64,10 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [stockDeducted, setStockDeducted] = useState([]) // items auto-deducted on submit
   const [stockFailed, setStockFailed] = useState([]) // items that had a batch picked but the deduction call failed
   const [activeCat, setActiveCat] = useState(null) // null = not chosen yet
+  // 'parts'   — something was installed/replaced, so photos are per selected part.
+  // 'service' — cleaning / servicing / repair with NO parts replaced. There is no parts
+  //             list to show, so this jumps straight to a fixed set of proof photos.
+  const [proofMode, setProofMode] = useState('parts')
   const [gps, setGps] = useState(null)
   const [gpsError, setGpsError] = useState('')
   const [gpsLoading, setGpsLoading] = useState(true)
@@ -99,10 +116,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [srSubmitting,      setSrSubmitting]      = useState(false)
   const [pdfUrl,            setPdfUrl]            = useState(null)
 
+  // CAT_A / CAT_B are the category values stored on the stock items, so they must match
+  // the database exactly. `short` is only the button caption, which is why the smaller
+  // units can be relabelled to cover 250 and 500 LPH without touching any stock records.
   const CAT_A = '50/100 LPH RO Units'
   const CAT_B = '1000/1500/2000 LPH RO Units'
   const CAT_META = {
-    [CAT_A]: { icon: '🔵', short: '50 / 100 LPH RO', color: 'var(--accent)', bg: 'rgba(34,211,238,.15)' },
+    [CAT_A]: { icon: '🔵', short: '50/100/250/500 LPH RO', color: 'var(--accent)', bg: 'rgba(34,211,238,.15)' },
     [CAT_B]: { icon: '🟢', short: '1000 – 2000 LPH RO', color: 'var(--green)', bg: 'rgba(52,211,153,.15)' },
   }
   function catMeta(cat) {
@@ -210,40 +230,81 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
   function proceedToPhotos() {
     if (selectedItems.length === 0) { setError('Please select at least one item.'); return }
-    setError(''); setStep(2)
+    setProofMode('parts'); setError(''); setStep(2)
   }
 
-  const selectedNames = selectedItems.map(i => i.name)
+  // Servicing / cleaning: no parts list to work through, so go straight to the photos.
+  // Any parts picked before changing their mind are dropped, otherwise they'd be reported
+  // as replaced and deducted from the technician's stock on submit.
+  function startServiceProof() {
+    setSelectedItems([])
+    setInstallDetails({})
+    setActiveCat(null)
+    setProofMode('service')
+    setError('')
+    setStep(2)
+  }
 
-  // For each item i, we need: before_i, after_i, photo_i
-  const allPhotosDone = selectedItems.length > 0 && selectedItems.every((_, i) =>
-    photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
-  )
-  const totalPhotos = selectedItems.length * 3
+  // Going back to pick parts must leave service mode, or the parts list would be rendered
+  // while the photo checks still expect the six servicing slots.
+  function backToItems() {
+    setProofMode('parts'); setError(''); setStep(1)
+  }
+
+  const isService = proofMode === 'service'
+  const selectedNames = selectedItems.map(i => i.name)
+  // What goes in the report's "item installed" line. A servicing visit replaced nothing, and
+  // leaving this blank would make the proof read as an unexplained visit in Proof Review.
+  const SERVICE_LABEL = 'Servicing / cleaning — no parts replaced'
+
+  // parts mode: for each item i we need before_i, after_i, photo_i.
+  // service mode: the six fixed slots above.
+  const allPhotosDone = isService
+    ? SERVICE_SLOTS.every(s => photos[s.key])
+    : selectedItems.length > 0 && selectedItems.every((_, i) =>
+        photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
+      )
+  const totalPhotos = isService ? SERVICE_SLOTS.length : selectedItems.length * 3
 
   async function handleSubmit() {
     if (!gps) {
       setError('GPS location is required before submitting — wait for "GPS locked" above, or tap Retry.')
       return
     }
-    const missing = selectedItems.find((item, i) =>
-      !photos[`before_${i}`] || !photos[`after_${i}`] || !photos[`photo_${i}`]
-    )
-    if (missing) { setError(`Complete all 3 photos for: ${missing.name}`); return }
+    if (isService) {
+      const gap = SERVICE_SLOTS.filter(s => !photos[s.key])
+      if (gap.length) {
+        setError(`${gap.length} photo(s) still needed: ${gap.map(s => s.label).join(', ')}`)
+        return
+      }
+    } else {
+      const missing = selectedItems.find((item, i) =>
+        !photos[`before_${i}`] || !photos[`after_${i}`] || !photos[`photo_${i}`]
+      )
+      if (missing) { setError(`Complete all 3 photos for: ${missing.name}`); return }
+    }
 
     setSubmitting(true)
 
     const buildFormData = () => {
       const fd = new FormData()
       fd.append('task_id', task.id)
-      fd.append('item_installed', selectedNames.join(', '))
+      fd.append('item_installed', isService ? SERVICE_LABEL : selectedNames.join(', '))
       fd.append('remarks', remarks)
       if (gps) { fd.append('latitude', gps.lat); fd.append('longitude', gps.lng) }
-      selectedItems.forEach((_, i) => {
-        if (photos[`before_${i}`]) fd.append(`before_photo_${i}`, photos[`before_${i}`])
-        if (photos[`after_${i}`])  fd.append(`after_photo_${i}`,  photos[`after_${i}`])
-        if (photos[`photo_${i}`])  fd.append(`item_photo_${i}`,   photos[`photo_${i}`])
-      })
+      if (isService) {
+        // The submit endpoint takes the form field name as the photo_type, so these need no
+        // backend change — they store as service_before, service_prefilter, and so on.
+        SERVICE_SLOTS.forEach(s => {
+          if (photos[s.key]) fd.append(s.key, photos[s.key])
+        })
+      } else {
+        selectedItems.forEach((_, i) => {
+          if (photos[`before_${i}`]) fd.append(`before_photo_${i}`, photos[`before_${i}`])
+          if (photos[`after_${i}`])  fd.append(`after_photo_${i}`,  photos[`after_${i}`])
+          if (photos[`photo_${i}`])  fd.append(`item_photo_${i}`,   photos[`photo_${i}`])
+        })
+      }
       extraPhotos.slice(0, 5).forEach((ep, i) => {
         if (ep.file) fd.append(`extra_photo_${i}`, ep.file)
       })
@@ -317,7 +378,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     if (!complaintNo.trim())     missing.push('Complaint No')
     if (!problemDesc.trim())     missing.push('Problem Reported')
     if (!observation.trim())     missing.push('Observation & Action Taken')
-    if (!sparesRequired.trim() && selectedNames.length === 0) missing.push('Spares Required / Consumed')
+    // A servicing/cleaning visit consumed no spares, so demanding a value here would force
+    // the technician to invent one. It defaults to NIL on the report instead.
+    if (!isService && !sparesRequired.trim() && selectedNames.length === 0) missing.push('Spares Required / Consumed')
     if (!plantCapacity.trim())   missing.push('Plant Capacity')
     if (!designRwTds.trim())     missing.push('Design R/W TDS')
     if (!freeChlorine.trim())    missing.push('Free Chlorine R/W')
@@ -348,7 +411,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         problem_description:      problemDesc,
         observation,
         action_taken:             actionTaken,
-        spare_parts:              sparesRequired || selectedNames.join(', '),
+        spare_parts:              sparesRequired || selectedNames.join(', ')
+                                  || (isService ? 'NIL — servicing / cleaning only' : ''),
         plant_capacity:           plantCapacity,
         design_rw_tds:            designRwTds,
         free_chlorine_rw:         freeChlorine,
@@ -377,9 +441,11 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     setSrSubmitting(false)
   }
 
-  const doneCount = selectedItems.reduce((acc, _, i) =>
-    acc + (photos[`before_${i}`] ? 1 : 0) + (photos[`after_${i}`] ? 1 : 0) + (photos[`photo_${i}`] ? 1 : 0), 0
-  )
+  const doneCount = isService
+    ? SERVICE_SLOTS.filter(s => photos[s.key]).length
+    : selectedItems.reduce((acc, _, i) =>
+        acc + (photos[`before_${i}`] ? 1 : 0) + (photos[`after_${i}`] ? 1 : 0) + (photos[`photo_${i}`] ? 1 : 0), 0
+      )
 
   return (
     <>
@@ -403,7 +469,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
           {/* Step indicator */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-            {['1. Select Items', '2. Take Photos', '3. Service Report'].map((label, i) => {
+            {/* Step 1 is skipped in servicing mode, so don't tick it off as "Select Items" done. */}
+            {[isService ? '1. Servicing' : '1. Select Items', '2. Take Photos', '3. Service Report'].map((label, i) => {
               const active = step === i + 1, done = step > i + 1
               return (
                 <div key={i} style={{
@@ -460,6 +527,19 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                     </button>
                   )
                 })}
+
+                {/* Nothing was replaced — skip the parts list entirely and go to photos. */}
+                <button onClick={startServiceProof} style={{
+                  flex: '1 1 auto', minWidth: 100, padding: '10px 8px', borderRadius: 10, fontSize: 12,
+                  fontWeight: 700, cursor: 'pointer', border: '2px solid var(--yellow)',
+                  background: 'rgba(251,191,36,.15)', color: 'var(--yellow)',
+                  textAlign: 'center', lineHeight: 1.4
+                }}>
+                  🧽 Servicing / Cleaning
+                  <div style={{ fontSize: 10, fontWeight: 500, marginTop: 2, opacity: 0.85 }}>
+                    no parts — {SERVICE_SLOTS.length} photos
+                  </div>
+                </button>
               </div>
 
               {/* Items for selected category */}
@@ -538,8 +618,39 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 </div>
               </div>
 
+              {/* Servicing / cleaning — six fixed slots, no parts involved */}
+              {isService && (
+                <div style={{
+                  border: `1.5px solid ${allPhotosDone ? 'var(--green)' : 'var(--yellow)'}`,
+                  borderRadius: 12, padding: 12, marginBottom: 12,
+                  background: allPhotosDone ? 'rgba(52,211,153,.04)' : 'rgba(251,191,36,.05)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 16 }}>🧽</span>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>Servicing / Cleaning</span>
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 10,
+                      background: 'rgba(251,191,36,.2)', color: 'var(--yellow)', border: '1px solid var(--yellow)'
+                    }}>NO PARTS REPLACED</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+                    All {SERVICE_SLOTS.length} photos are required. Add extra photos below for anything else worth showing.
+                  </div>
+                  {SERVICE_SLOTS.map(s => (
+                    <PhotoSlot
+                      key={s.key}
+                      label={s.label}
+                      desc={s.desc}
+                      icon={s.icon}
+                      preview={previews[s.key]}
+                      onOpen={() => setActiveCamera(s.key)}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Per-item photo groups */}
-              {selectedItems.map((item, i) => {
+              {!isService && selectedItems.map((item, i) => {
                 const itemDone = photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
                 const inHandEntry = myStock.find(m => m.item_id === item.id)
                 const batches = itemBatches[item.id] || []
@@ -683,7 +794,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
               {error && <div className="alert alert-red" style={{ marginBottom: 10 }}><span>⚠️</span><div>{error}</div></div>}
 
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-outline" onClick={() => { setStep(1); setError('') }} disabled={submitting}>← Back</button>
+                <button className="btn btn-outline" onClick={backToItems} disabled={submitting}>← Back</button>
                 <button className="btn btn-primary" style={{ flex: 1, padding: 12, fontSize: 13, opacity: (allPhotosDone && gps) ? 1 : 0.6 }}
                   onClick={handleSubmit} disabled={submitting}>
                   {submitting ? '⏳ Uploading… please wait' : '✅ Submit Proof & Mark Done'}
@@ -699,8 +810,12 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   ⚠️ All {totalPhotos} photos required before submitting
                 </div>
               )}
+              {/* This used to read "Photos submitted!" while sitting directly under the
+                  "all photos required" warning — telling the technician the upload was done
+                  before they had taken a single photo. It's a forward-looking hint, so word
+                  it as one. */}
               <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
-                Photos submitted! Now fill the service report in Step 3.
+                After submitting, Step 3 is the service report — signatures and stamp included.
               </div>
             </>
           )}
