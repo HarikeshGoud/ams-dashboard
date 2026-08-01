@@ -24,7 +24,7 @@ export default function MyStock() {
     Promise.all([
       api.get('/api/stock/my-stock'),
       api.get('/api/stock/items'),
-      api.get('/api/schools/?limit=200'),
+      api.get('/api/schools/?limit=3000'),
     ]).then(([ms, it, sch]) => {
       setData(ms.data)
       setItems(it.data)

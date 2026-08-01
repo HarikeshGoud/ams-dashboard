@@ -209,7 +209,7 @@ export default function AMCReports() {
 
   useEffect(() => {
     load()
-    api.get('/api/schools/?limit=200').then(r => setSchools(r.data?.items || r.data || []))
+    api.get('/api/schools/?limit=3000').then(r => setSchools(r.data?.items || r.data || []))
     api.get('/api/employees/').then(r => setEmployees((r.data || []).filter(e => e.role === 'technician' || e.role === 'admin')))
   }, [])
 

@@ -14,7 +14,11 @@ function StartVisitModal({ onClose, onStarted, employeeId }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api.get('/api/schools/?limit=300').then(r => setSchools(r.data?.items || r.data || []))
+    // Every visitable place, sub-locations included. This used to ask for 300 of 1300+ and
+    // the type-to-search then filtered only what had loaded — so any site past the cutoff
+    // was simply unpickable, and a technician called back to it had no way to log the visit.
+    api.get('/api/schools/', { params: { limit: 3000, include_sub_locations: true } })
+      .then(r => setSchools(r.data?.items || r.data || []))
   }, [])
 
   async function start() {
@@ -48,8 +52,17 @@ function StartVisitModal({ onClose, onStarted, employeeId }) {
 
         <div className="form-group" style={{ marginBottom: 10 }}>
           <label>School *</label>
-          <SearchableSelect value={schoolId} onChange={setSchoolId} placeholder="Select school…"
-            options={schools.map(s => ({ value: String(s.id), label: s.name }))} />
+          <SearchableSelect value={schoolId} onChange={setSchoolId} placeholder="Search any site…"
+            options={schools.map(s => ({
+              value: String(s.id),
+              // A sub-location name on its own ("Goshala") means nothing in a list this long,
+              // so show the campus it belongs to.
+              label: s.parent_name ? `${s.name} — ${s.parent_name}` : s.name,
+            }))} />
+          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>
+            {schools.length} sites available. You can log a repeat visit to a site you've
+            already been to today — pick it and submit fresh proof.
+          </div>
         </div>
 
         <div className="form-group" style={{ marginBottom: 16 }}>

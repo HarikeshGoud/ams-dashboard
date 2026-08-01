@@ -31,11 +31,14 @@ def _clean_sub_location_names(items: Optional[List[str]]) -> List[str]:
         return []
     return [s.strip() for s in items if s and s.strip()]
 
-def _fmt(s: School, sub_location_count: int = None):
+def _fmt(s: School, sub_location_count: int = None, parent_name: str = None):
     tech_obj = s.technician if s.technician_id else None
     tech_obj_2 = s.technician_2 if s.technician_id_2 else None
     return {
         "id": s.id, "name": s.name, "mandal_id": s.mandal_id,
+        # Set only when this row is a sub-location, so a picker can show which campus it
+        # belongs to — "Goshala" on its own is meaningless in a list of 1500 sites.
+        "parent_name": parent_name,
         "mandal_name": s.mandal.name if s.mandal else None,
         "client_id": s.client_id,
         "client_name": s.client.name if s.client else None,
@@ -55,8 +58,12 @@ def _fmt(s: School, sub_location_count: int = None):
 @router.get("/")
 def list_schools(
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=2000),
+    limit: int = Query(50, ge=1, le=3000),
     search: Optional[str] = None,
+    # Sub-locations are hidden from the normal listing — they show when you drill into their
+    # parent. A picker that has to offer every visitable place needs them too, because a
+    # technician can be called back to one specific temple stop.
+    include_sub_locations: bool = False,
     mandal_id: Optional[int] = None,
     client_id: Optional[int] = None,
     technician_id: Optional[int] = None,
@@ -76,7 +83,7 @@ def list_schools(
     if parent_id:
         # Sub-locations of one hospital — ignore other filters, they don't apply at this level.
         q = q.filter(School.parent_school_id == parent_id)
-    else:
+    elif not include_sub_locations:
         # Top-level sites only — sub-location rows are hidden here, they show when you drill into their parent.
         q = q.filter(School.parent_school_id.is_(None))
     if search:
@@ -103,8 +110,16 @@ def list_schools(
         ).group_by(School.parent_school_id).all()
         sub_counts = {pid: cnt for pid, cnt in rows}
 
+    # Name of each returned row's parent, so sub-locations can be labelled with their campus.
+    parent_names = {}
+    parent_ids = {s.parent_school_id for s in schools if s.parent_school_id}
+    if parent_ids:
+        parent_names = {pid: nm for pid, nm in
+                        db.query(School.id, School.name).filter(School.id.in_(parent_ids)).all()}
+
     return {"total": total, "page": page, "limit": limit,
-            "items": [_fmt(s, sub_location_count=sub_counts.get(s.id)) for s in schools]}
+            "items": [_fmt(s, sub_location_count=sub_counts.get(s.id),
+                           parent_name=parent_names.get(s.parent_school_id)) for s in schools]}
 
 @router.post("/")
 def create_school(data: SchoolCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):

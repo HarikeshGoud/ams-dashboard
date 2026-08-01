@@ -15,7 +15,7 @@ export default function Complaints() {
   function f(k) { return e => setForm({ ...form, [k]: e.target.value }) }
 
   function load() {
-    Promise.all([api.get('/api/complaints/'), api.get('/api/schools/?limit=200')]).then(([c, s]) => {
+    Promise.all([api.get('/api/complaints/'), api.get('/api/schools/?limit=3000')]).then(([c, s]) => {
       setComplaints(c.data); setSchools(s.data.items); setLoading(false)
     })
   }

@@ -19,7 +19,7 @@ export default function Visits() {
     Promise.all([
       api.get('/api/visits/'),
       api.get('/api/employees/'),
-      api.get('/api/schools/?limit=200')
+      api.get('/api/schools/?limit=3000')
     ]).then(([v, e, s]) => {
       setVisits(v.data.items); setEmployees(e.data); setSchools(s.data.items); setLoading(false)
     })

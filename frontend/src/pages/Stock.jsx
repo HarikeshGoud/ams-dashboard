@@ -60,7 +60,7 @@ export default function Stock() {
       api.get('/api/stock/distributions'),
       api.get('/api/stock/employee-stock'),
       api.get('/api/employees/'),
-      api.get('/api/schools/?limit=200'),
+      api.get('/api/schools/?limit=3000'),
       api.get('/api/stock-purchases/'),
       api.get('/api/reorder/'),
       api.get('/api/stock/accounts'),
