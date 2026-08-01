@@ -62,6 +62,10 @@ def _fmt_report(r: FieldReport, base_url: str = "http://localhost:8000"):
         "school_phone": r.school.phone if r.school_id and hasattr(r, 'school') and r.school else None,
         "school_contact": r.school.contact_person if r.school_id and hasattr(r, 'school') and r.school else None,
         "has_service_report": False,  # populated by caller
+        # Temples are exempt from the full service report, so the technician's dashboard
+        # must not keep nagging them to "Complete Service Report" for one.
+        "service_report_required": not (school is not None and school.model == 'temple'),
+        "school_model": school.model if school else None,
         "photos": [_fmt_photo(p, base_url) for p in r.work_photos]
     }
 

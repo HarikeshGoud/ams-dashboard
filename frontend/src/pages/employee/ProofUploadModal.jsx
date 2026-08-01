@@ -55,6 +55,11 @@ function PhotoSlot({ label, desc, icon, preview, onOpen }) {
 // ── Main modal ────────────────────────────────────────────────────────────────
 export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const resumeStep3 = task?._resumeStep3 === true
+  // Temples are exempt from the full service report — a daily clean doesn't warrant plant
+  // readings, spares and two signatures every morning. The backend decides (tasks._fmt),
+  // so this can't drift from what Proof Review and the dashboard think. Defaults to
+  // required when the flag is absent, so an older payload never accidentally waives it.
+  const reportRequired = task?.service_report_required !== false
   const [step, setStep] = useState(resumeStep3 ? 3 : 1)
   const [selectedItems, setSelectedItems] = useState([])
   const [stockItems, setStockItems] = useState([])
@@ -138,9 +143,11 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       return a.localeCompare(b)
     })
 
-  // Block browser back/refresh when on Step 3 and PDF not yet generated
+  // Block browser back/refresh when on Step 3 and PDF not yet generated.
+  // Skipped where the report is optional (temples) — trapping someone in a form they are
+  // not required to fill is the worst possible version of this lock.
   useEffect(() => {
-    if (step !== 3 || pdfUrl) return
+    if (step !== 3 || pdfUrl || !reportRequired) return
     // Push a dummy history state so back button hits it first
     window.history.pushState({ srLock: true }, '')
     const onPop = (e) => {
@@ -158,7 +165,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       window.removeEventListener('popstate', onPop)
       window.removeEventListener('beforeunload', onBeforeUnload)
     }
-  }, [step, pdfUrl])
+  }, [step, pdfUrl, reportRequired])
 
   useEffect(() => {
     captureGPS()
@@ -460,8 +467,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
 
       <div className="modal-backdrop">
         <div className="modal-box" style={{ maxWidth: 500 }}>
-          {/* Hide close button on Step 3 until PDF is generated — service report is mandatory */}
-          {(step !== 3 || pdfUrl) && (
+          {/* Hide close on Step 3 until the PDF exists — but only where the report is
+              actually mandatory, otherwise a temple visit would have no way out. */}
+          {(step !== 3 || pdfUrl || !reportRequired) && (
             <button className="modal-close" onClick={onClose}>✕</button>
           )}
           <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>📸 Submit Work Proof</h3>
@@ -823,12 +831,30 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           {/* ── STEP 3: Service report + signatures ── */}
           {step === 3 && (
             <>
-              {/* Mandatory notice */}
-              {!pdfUrl && (
+              {/* Mandatory notice — or, for a temple, an explicit way out */}
+              {!pdfUrl && (reportRequired ? (
                 <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid var(--red)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>
                   🔒 Service report is mandatory — fill all fields and get signatures to complete this task.
                 </div>
-              )}
+              ) : (
+                <div style={{ background: 'rgba(52,211,153,.1)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--green)', marginBottom: 4 }}>
+                    ✅ Photos saved — service report is optional here
+                  </div>
+                  <div style={{ color: 'var(--text)', lineHeight: 1.55 }}>
+                    {task?.school_model === 'temple'
+                      ? 'This is a temple, so the full service report isn\'t required for a routine visit.'
+                      : 'A full service report isn\'t required for this visit.'}
+                    {' '}Fill it in below only if there is something to record.
+                  </div>
+                  {/* Same handler the post-PDF Close button uses — the proof is already
+                      saved and the task already sits at "submitted" awaiting review, so
+                      leaving here loses nothing. */}
+                  <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={onSubmitted}>
+                    ✅ Done — skip the report
+                  </button>
+                </div>
+              ))}
               {/* Stock auto-deduction notice */}
               {stockDeducted.length > 0 && (
                 <div style={{ background: 'rgba(52,211,153,.1)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12 }}>

@@ -21,8 +21,14 @@ class Employee(Base):
     home_location  = Column(String(300), nullable=True)           # home address text
     home_lat       = Column(Float, nullable=True)                 # home GPS lat
     home_lng       = Column(Float, nullable=True)                 # home GPS lng
+    # Set when this technician looks after ONE site every day (a temple, typically) rather
+    # than rotating through their mandals. Daily task generation then produces that single
+    # site each day and skips rotation entirely — see _technician_rotation_schools.
+    # Added at runtime by schema_guard.ensure_columns, since there are no migrations here.
+    dedicated_school_id = Column(Integer, ForeignKey("schools.id"), nullable=True)
 
     mandal         = relationship("Mandal", back_populates="employees")
+    dedicated_school = relationship("School", foreign_keys=[dedicated_school_id])
     mandals        = relationship("Mandal", secondary="employee_mandals", backref="technicians")
     visits         = relationship("Visit", back_populates="employee")
     attendance     = relationship("Attendance", back_populates="employee", foreign_keys="Attendance.employee_id")

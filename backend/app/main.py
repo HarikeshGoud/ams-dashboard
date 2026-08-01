@@ -30,7 +30,7 @@ def _auto_generate_daily_tasks():
     """On startup: generate 5 daily tasks for every active technician if not already done today."""
     from .models.employee import Employee
     from .models.task import Task
-    from .routers.tasks import _technician_rotation_schools, DAILY_DEFAULT
+    from .routers.tasks import _technician_rotation_schools, _daily_target
 
     db = SessionLocal()
     try:
@@ -46,10 +46,12 @@ def _auto_generate_daily_tasks():
                 Task.status != "cancelled"
             ).count()
 
-            if existing >= DAILY_DEFAULT:
+            # 1 for a technician pinned to a single site, the usual 5 otherwise.
+            target = _daily_target(emp)
+            if existing >= target:
                 continue
 
-            slots_needed = DAILY_DEFAULT - existing
+            slots_needed = target - existing
             already_today = {
                 t.school_id for t in db.query(Task).filter(
                     Task.assigned_to_id == emp.id,
@@ -87,6 +89,11 @@ def _auto_generate_daily_tasks():
 async def lifespan(app: FastAPI):
     # Create all tables
     Base.metadata.create_all(bind=engine)
+    # create_all adds missing TABLES but never a missing COLUMN on an existing one, so a
+    # new field would deploy green and then 500 on every query that touches it. This adds
+    # the handful of known-missing columns, additively and idempotently.
+    from .schema_guard import ensure_columns
+    ensure_columns(engine)
     if os.environ.get("SKIP_AUTO_TASKS") != "1":
         _auto_generate_daily_tasks()
     yield

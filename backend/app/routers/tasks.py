@@ -23,6 +23,15 @@ def _with_relations(q):
 DAILY_DEFAULT = 5
 DAILY_MAX     = 7
 
+
+def _daily_target(emp) -> int:
+    """How many tasks auto-generation should hand this technician for one day.
+
+    A technician pinned to a single site services that one place daily, so generating the
+    usual five would mean four duplicates of the same site every morning.
+    """
+    return 1 if getattr(emp, "dedicated_school_id", None) else DAILY_DEFAULT
+
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -31,17 +40,30 @@ class TaskCreate(BaseModel):
     priority: str = "medium"
     due_date: Optional[str] = None
 
+def _service_report_required(school) -> bool:
+    """Whether a full service report must be filed for a visit to this site.
+
+    Temples are exempt: the visit is a short daily clean rather than a plant service, so a
+    full report with plant readings, spares and two signatures every single day is busywork
+    that ends up filled with dummy values. Proof photos are still mandatory — the exemption
+    is only the paperwork on top of them.
+    """
+    return not (school is not None and school.model == 'temple')
+
+
 def _fmt(t: Task):
     school_name = None
     school_lat = None
     school_lng = None
     school_mandal = None
     school_address = None
+    school_model = None
     if t.school_id and hasattr(t, 'school') and t.school:
         school_name    = t.school.name
         school_lat     = t.school.latitude
         school_lng     = t.school.longitude
         school_address = t.school.address
+        school_model   = t.school.model
         if t.school.mandal:
             school_mandal = t.school.mandal.name
     return {
@@ -54,6 +76,9 @@ def _fmt(t: Task):
         "school_lng": school_lng,
         "school_mandal": school_mandal,
         "school_address": school_address,
+        "school_model": school_model,
+        # Drives whether the technician's proof flow locks them into Step 3.
+        "service_report_required": _service_report_required(getattr(t, 'school', None)),
         "priority": t.priority, "status": t.status,
         "due_date": t.due_date.isoformat() if t.due_date else None,
         "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -118,6 +143,22 @@ def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set =
     Returns (eligible_schools, all_schools, new_round, visited_count).
     """
     from ..models.school import School
+
+    # ── Dedicated single-site technician ──────────────────────────────────────
+    # Someone who looks after one site (a temple, typically) every single day. Rotation is
+    # meaningless here: the answer is always that one site, and it must stay eligible even
+    # though it was visited yesterday, which is exactly what rotation would rule out.
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if emp and emp.dedicated_school_id:
+        site = db.query(School).filter(School.id == emp.dedicated_school_id,
+                                       School.is_active == True).first()
+        if not site:
+            return [], [], True, 0            # site was deleted or archived
+        excluded = site.id in (exclude_school_ids or set())
+        # new_round=True so callers treat the cycle as always complete — there is no queue
+        # to work through and nothing is ever "still to be visited first".
+        return ([] if excluded else [site]), [site], True, (1 if excluded else 0)
+
     # Primary: schools with technician_id (or the optional 2nd technician) pointing to this employee
     all_schools = db.query(School).filter(
         or_(School.technician_id == employee_id, School.technician_id_2 == employee_id),
@@ -271,8 +312,9 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
 
     results = []
     for emp in technicians:
+        target = _daily_target(emp)
         existing_count = _count_today_tasks(db, emp.id, d)
-        if existing_count >= DAILY_DEFAULT:
+        if existing_count >= target:
             results.append({
                 "employee": emp.name, "employee_id": emp.id,
                 "skipped": True, "reason": f"Already has {existing_count} tasks",
@@ -280,7 +322,7 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
             })
             continue
 
-        slots_needed = DAILY_DEFAULT - existing_count
+        slots_needed = target - existing_count
         already_today = {
             t.school_id for t in db.query(Task).filter(
                 Task.assigned_to_id == emp.id,

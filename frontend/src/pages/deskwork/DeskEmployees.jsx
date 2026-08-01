@@ -1,17 +1,23 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
-import SearchableSelect from '../../components/SearchableSelect'
+import EmployeeCoverageFields, {
+  BLANK_COVERAGE, coverageFromEmployee, coveragePayload, validateCoverage,
+} from '../../components/EmployeeCoverageFields'
 
 // Deskwork view of the employee directory.
 // The API only returns technicians to a deskwork user, so this list is
 // technicians-only by design — deskwork staff can view/edit them, and can add a
 // new technician OR a new deskwork colleague (the new deskwork account simply
 // won't appear in this list, since deskwork can't view deskwork accounts).
-const BLANK = { name: '', phone: '', email: '', role: 'technician', designation: '', mandal_id: '' }
+const BLANK = {
+  name: '', phone: '', email: '', role: 'technician', designation: '',
+  ...BLANK_COVERAGE,
+}
 
 export default function DeskEmployees() {
   const [employees, setEmployees] = useState([])
   const [mandals, setMandals] = useState([])
+  const [sites, setSites] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState(BLANK)
@@ -26,8 +32,16 @@ export default function DeskEmployees() {
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3500) }
 
   function load() {
-    Promise.all([api.get('/api/employees/'), api.get('/api/mandals/')])
-      .then(([e, m]) => { setEmployees(e.data || []); setMandals(m.data || []); setLoading(false) })
+    Promise.all([
+      api.get('/api/employees/'),
+      api.get('/api/mandals/'),
+      api.get('/api/schools/', { params: { limit: 2000 } }),
+    ])
+      .then(([e, m, s]) => {
+        setEmployees(e.data || []); setMandals(m.data || [])
+        setSites(s.data?.items || [])
+        setLoading(false)
+      })
       .catch(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
@@ -36,15 +50,22 @@ export default function DeskEmployees() {
   function openEdit(e) {
     setForm({
       name: e.name, phone: e.phone || '', email: e.email || '',
-      role: e.role, designation: e.designation || '', mandal_id: e.mandal_id || ''
+      role: e.role, designation: e.designation || '',
+      ...coverageFromEmployee(e),
     })
     setEditId(e.id); setError(''); setModal(true)
   }
 
   async function save(ev) {
     ev.preventDefault()
+    const bad = validateCoverage(form)
+    if (bad) { setError(bad); return }
     setSaving(true); setError('')
-    const data = { ...form, mandal_id: form.mandal_id ? parseInt(form.mandal_id) : null }
+    const data = {
+      name: form.name, phone: form.phone, email: form.email,
+      role: form.role, designation: form.designation,
+      ...coveragePayload(form),
+    }
     try {
       if (editId) {
         await api.put(`/api/employees/${editId}`, data)
@@ -138,7 +159,7 @@ export default function DeskEmployees() {
         <div className="table-wrap scroll-table">
           <table>
             <thead>
-              <tr><th>#</th><th>Emp ID</th><th>Name</th><th>Designation</th><th>Mandal</th><th>Phone</th><th>Action</th></tr>
+              <tr><th>#</th><th>Emp ID</th><th>Name</th><th>Designation</th><th>Covers</th><th>Phone</th><th>Action</th></tr>
             </thead>
             <tbody>
               {filtered.map((e, i) => (
@@ -147,7 +168,23 @@ export default function DeskEmployees() {
                   <td><span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--accent)', fontSize: 12 }}>{e.employee_code || '—'}</span></td>
                   <td style={{ fontWeight: 500 }}>{e.name}</td>
                   <td>{e.designation || '—'}</td>
-                  <td>{e.mandal_name || '—'}</td>
+                  <td>
+                    {e.dedicated_school_id ? (
+                      <span>
+                        <span className="pill pill-purple">📍 daily</span>{' '}
+                        {e.dedicated_school_name}
+                        {e.dedicated_school_model === 'temple' && (
+                          <span style={{ fontSize: 10, color: 'var(--muted)' }}> · report optional</span>
+                        )}
+                      </span>
+                    ) : (e.mandals || []).length > 0 ? (
+                      <span title={(e.mandals || []).map(m => m.name).join(', ')}>
+                        {e.mandals.length === 1
+                          ? e.mandals[0].name
+                          : `${e.mandal_name || e.mandals[0].name} +${e.mandals.length - 1} more`}
+                      </span>
+                    ) : (e.mandal_name || <span style={{ color: 'var(--yellow)' }}>— none</span>)}
+                  </td>
                   <td>{e.phone || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn btn-outline btn-sm" onClick={() => openEdit(e)}>Edit</button>{' '}
@@ -210,12 +247,10 @@ export default function DeskEmployees() {
                 <div className="form-group"><label>Designation</label>
                   <input value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} />
                 </div>
-                <div className="form-group form-full"><label>Mandal</label>
-                  <SearchableSelect value={form.mandal_id} onChange={val => setForm({ ...form, mandal_id: val })}
-                    placeholder="Select mandal…"
-                    options={mandals.map(m => ({ value: String(m.id), label: m.name }))} />
-                </div>
               </div>
+
+              <EmployeeCoverageFields
+                form={form} setForm={setForm} mandals={mandals} sites={sites} />
 
               {!editId && form.role === 'deskwork' && (
                 <div className="alert alert-blue" style={{ margin: '14px 0 0', display: 'block', fontSize: 12 }}>

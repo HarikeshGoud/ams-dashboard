@@ -190,15 +190,18 @@ export default function EmployeeDashboard() {
               verified: { label: '✅ Confirmed by school',          color: 'var(--green)',   bg: 'rgba(52,211,153,.12)' },
               rejected: { label: '❌ Rejected by school',           color: 'var(--red)',     bg: 'rgba(248,113,113,.12)' },
             }[vs]
+            // A temple visit needs no service report, so its absence isn't a problem to
+            // flag — otherwise every one of them shows a red card and a warning forever.
+            const srMissing = !r.has_service_report && r.service_report_required !== false
             return (
-            <div key={r.id} style={{ background: 'var(--surface2)', border: `1px solid ${r.has_service_report ? vsConfig.color : 'var(--red)'}`, borderRadius: 10, padding: 14, marginBottom: 10 }}>
+            <div key={r.id} style={{ background: 'var(--surface2)', border: `1px solid ${srMissing ? 'var(--red)' : vsConfig.color}`, borderRadius: 10, padding: 14, marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>
                   {r.item_installed || 'Field Report'} — {r.report_date}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span className="pill pill-green">Submitted</span>
-                  {!r.has_service_report && (
+                  {srMissing && (
                     <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 8, background: 'rgba(239,68,68,.15)', color: 'var(--red)', border: '1px solid var(--red)' }}>
                       ⚠️ Service Report Pending
                     </span>
@@ -209,13 +212,23 @@ export default function EmployeeDashboard() {
                   }}>{vsConfig.label}</span>
                 </div>
               </div>
+              {/* Required and missing -> a red demand. Exempt (temples) -> still offered,
+                  just quietly, so "optional" doesn't mean the route to it disappears. */}
               {!r.has_service_report && r.task_id && (
                 <div style={{ marginBottom: 8 }}>
                   <button onClick={() => {
                     const task = tasks.find(t => t.id === r.task_id)
                     if (task) setSelectedTask({ ...task, _resumeStep3: true, _fieldReportId: r.id })
-                  }} style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8, background: 'rgba(239,68,68,.15)', color: 'var(--red)', border: '1px solid var(--red)', cursor: 'pointer' }}>
-                    📋 Complete Service Report
+                  }} style={srMissing ? {
+                    fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 8,
+                    background: 'rgba(239,68,68,.15)', color: 'var(--red)',
+                    border: '1px solid var(--red)', cursor: 'pointer',
+                  } : {
+                    fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 8,
+                    background: 'var(--surface2)', color: 'var(--muted)',
+                    border: '1px solid var(--border)', cursor: 'pointer',
+                  }}>
+                    {srMissing ? '📋 Complete Service Report' : '📋 Add service report (optional)'}
                   </button>
                 </div>
               )}
