@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { attachBasemaps, ZOOM } from '../utils/basemaps'
+import { attachBasemaps, ZOOM, MAX_ZOOM } from '../utils/basemaps'
 import { lookupPlace } from '../utils/placeName'
 import api from '../api/axios'
 
@@ -51,11 +51,15 @@ export default function LiveTracking() {
   // FIRST render's `places` — reading the state directly there would always see {} and the
   // popup would never show a place name. The ref is what it reads instead.
   const placesRef = useRef({})
+  const [mapNotice, setMapNotice] = useState('')
 
   useEffect(() => {
     if (mapInstanceRef.current) return
-    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 8, maxZoom: 19 })
-    attachBasemaps(map)
+    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 8, maxZoom: MAX_ZOOM })
+    // onNotice fires if Mapbox gets dropped — out of monthly quota, or a rejected token. The
+    // map keeps working on the free layers, but the operator is told why it changed look
+    // rather than left wondering whether something broke.
+    attachBasemaps(map, undefined, { onNotice: setMapNotice })
     mapInstanceRef.current = map
     return () => { map.remove(); mapInstanceRef.current = null }
   }, [])
@@ -177,6 +181,18 @@ export default function LiveTracking() {
       </div>
 
       {error && <div className="alert alert-red" style={{ marginBottom: 12 }}>{error}</div>}
+
+      {/* Not an error — the map fell back to the free layers on purpose. Said out loud so a
+          changed look doesn't read as a bug, and so it's obvious the quota is what ran out. */}
+      {mapNotice && (
+        <div style={{
+          marginBottom: 12, padding: '8px 12px', borderRadius: 9, fontSize: 12,
+          background: 'rgba(234,179,8,.10)', color: 'var(--muted)',
+          border: '1px solid rgba(234,179,8,.30)',
+        }}>
+          🗺️ {mapNotice}
+        </div>
+      )}
 
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div ref={mapRef} style={{ height: 460, width: '100%' }} />

@@ -1,4 +1,7 @@
 import L from 'leaflet'
+import {
+  MAPBOX_TOKEN, mapboxEnabled, countMapboxTile, reportMapboxTileError, onMapboxDisabled,
+} from './mapboxQuota'
 
 // Basemaps for every Leaflet map in the app, with a layer switcher.
 //
@@ -21,32 +24,45 @@ const OSM_ATTR   = '© OpenStreetMap contributors'
 const ESRI_ATTR  = 'Imagery © Esri, Maxar, Earthstar Geographics'
 const STORE_KEY  = 'shc_basemap'
 
-// Mapbox is opt-in: set VITE_MAPBOX_TOKEN and its layers appear automatically. Left unset,
-// nothing about the map changes. Mapbox serves 512px tiles, hence the zoomOffset.
-const MAPBOX_TOKEN = import.meta.env?.VITE_MAPBOX_TOKEN || ''
+// The free layers all top out well before this, but they're allowed up to it and upscaled past
+// their real ceiling (see maxNativeZoom below) so zooming in softens the image instead of
+// hitting a grey wall. Mapbox satellite has genuine detail this deep, which is the actual
+// reason to pay for it.
+export const MAX_ZOOM = 22
 
+// Mapbox is opt-in: set VITE_MAPBOX_TOKEN and its layers appear automatically, becoming the
+// default. Left unset, nothing about the map changes. Metering and the automatic fallback to
+// the free layers live in ./mapboxQuota — nothing here has to think about the bill.
+const FREE_DEFAULT = 'Satellite + street names'
+const MAPBOX_DEFAULT = 'Mapbox Satellite'
+
+// Mapbox serves 512px tiles, hence tileSize/zoomOffset.
 function mapboxLayer(styleId) {
-  return L.tileLayer(
+  const layer = L.tileLayer(
     `https://api.mapbox.com/styles/v1/mapbox/${styleId}/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`,
-    { attribution: '© Mapbox © OpenStreetMap', tileSize: 512, zoomOffset: -1, maxZoom: 19 }
+    { attribution: '© Mapbox © OpenStreetMap', tileSize: 512, zoomOffset: -1, maxZoom: MAX_ZOOM }
   )
+  // Every rendered tile is a billed request, so it is counted where it actually happens rather
+  // than estimated from map moves.
+  layer.on('tileload', countMapboxTile)
+  layer.on('tileerror', reportMapboxTileError)
+  return layer
 }
 
 function buildLayers() {
+  // maxNativeZoom on each free layer is the zoom past which the provider has nothing. OSM
+  // stops at 19; Esri has no imagery beyond 18 over these villages — every z19 tile there came
+  // back as an identical 2,521-byte "Map data not yet available" placeholder, which is what
+  // turned the whole map grey. Capping the REQUEST and letting Leaflet upscale keeps it usable.
   const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: OSM_ATTR, maxZoom: 19,
+    attribution: OSM_ATTR, maxZoom: MAX_ZOOM, maxNativeZoom: 19,
   })
 
   // Esri's own imagery, not OSM-derived — this is what actually reveals buildings that
   // nobody has mapped yet, which is most of them outside the towns.
-  //
-  // maxNativeZoom matters: Esri has no z19 imagery over these villages. Every z19 tile
-  // there comes back as an identical 2,521-byte "Map data not yet available" placeholder,
-  // which is what turned the whole map grey. Capping the REQUEST at 18 and letting Leaflet
-  // upscale keeps it usable past that instead.
   const imagery = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution: ESRI_ATTR, maxZoom: 19, maxNativeZoom: 18 })
+    { attribution: ESRI_ATTR, maxZoom: MAX_ZOOM, maxNativeZoom: 18 })
 
   // A previous version offered "Satellite + labels" using Esri's Reference/World_Transportation
   // and World_Boundaries_and_Places overlays. Both return 872-byte near-empty tiles over these
@@ -56,7 +72,7 @@ function buildLayers() {
   // is the only free source that carries village and landmark names here, and its tiles have
   // opaque land fill, so it has to be transparent enough to see the ground through.
   const streetsFaded = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: OSM_ATTR, maxZoom: 19, opacity: 0.45,
+    attribution: OSM_ATTR, maxZoom: MAX_ZOOM, maxNativeZoom: 19, opacity: 0.45,
   })
 
   const layers = {
@@ -65,12 +81,14 @@ function buildLayers() {
     'Streets': streets,
     'Streets (Esri)': L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-      { attribution: ESRI_ATTR, maxZoom: 19, maxNativeZoom: 18 }),
+      { attribution: ESRI_ATTR, maxZoom: MAX_ZOOM, maxNativeZoom: 18 }),
   }
 
-  if (MAPBOX_TOKEN) {
+  if (mapboxEnabled()) {
+    // Satellite-streets carries Mapbox's own imagery with labels burnt in, and has real detail
+    // past Esri's z18 ceiling — the one thing a paid provider genuinely adds here.
+    layers[MAPBOX_DEFAULT] = mapboxLayer('satellite-streets-v12')
     layers['Mapbox Streets'] = mapboxLayer('streets-v12')
-    layers['Mapbox Satellite'] = mapboxLayer('satellite-streets-v12')
   }
 
   return layers
@@ -81,21 +99,48 @@ function buildLayers() {
  * Remembers the operator's choice, so picking Satellite once keeps it across pages.
  *
  * @param {L.Map} map
- * @param {string} fallback  layer name to use when nothing has been chosen yet
+ * @param {string} freeFallback  free layer to use when nothing is remembered, and to fall back
+ *                               to if Mapbox gets disabled mid-session
+ * @param {{onNotice?: (reason: string) => void}} [opts]  told when Mapbox is dropped, so the
+ *                               page can say why the map just changed instead of it looking
+ *                               like a glitch
  */
-export function attachBasemaps(map, fallback = 'Satellite + street names') {
+export function attachBasemaps(map, freeFallback = FREE_DEFAULT, opts = {}) {
   const layers = buildLayers()
   let chosen = null
   try { chosen = localStorage.getItem(STORE_KEY) } catch { /* private mode */ }
-  // A remembered name can disappear — e.g. the Mapbox token was removed since.
-  const initial = (chosen && layers[chosen]) ? chosen : (layers[fallback] ? fallback : 'Streets')
+  // A remembered name can disappear — the Mapbox token was removed, or the budget ran out
+  // since it was saved — so it's only honoured if that layer still exists.
+  const preferred = layers[MAPBOX_DEFAULT] ? MAPBOX_DEFAULT : freeFallback
+  const initial = (chosen && layers[chosen]) ? chosen
+                : (layers[preferred] ? preferred : 'Streets')
 
   layers[initial].addTo(map)
-  L.control.layers(layers, {}, { position: 'topright', collapsed: true }).addTo(map)
+  const control = L.control.layers(layers, {}, { position: 'topright', collapsed: true }).addTo(map)
+
+  // The swap itself. Mapbox can run out mid-pan, so this has to move the LIVE layer, not just
+  // stop offering it on the next page load.
+  const unsubscribe = onMapboxDisabled(reason => {
+    const freeName = layers[freeFallback] ? freeFallback : 'Streets'
+    let wasShowing = false
+    Object.keys(layers).filter(n => n.startsWith('Mapbox')).forEach(name => {
+      const layer = layers[name]
+      if (map.hasLayer(layer)) { map.removeLayer(layer); wasShowing = true }
+      control.removeLayer(layer)
+      delete layers[name]
+    })
+    if (wasShowing) {
+      layers[freeName].addTo(map)
+      // Remember the free layer too, so the next page load doesn't start on a dead choice.
+      try { localStorage.setItem(STORE_KEY, freeName) } catch { /* ignore */ }
+    }
+    if (opts.onNotice) opts.onNotice(reason)
+  })
 
   map.on('baselayerchange', e => {
     try { localStorage.setItem(STORE_KEY, e.name) } catch { /* ignore */ }
   })
+  map.on('unload', unsubscribe)
 
   return layers
 }

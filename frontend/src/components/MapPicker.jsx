@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { attachBasemaps, ZOOM } from '../utils/basemaps'
+import { attachBasemaps, ZOOM, MAX_ZOOM } from '../utils/basemaps'
 
 // Fix default marker icons broken by webpack/vite bundling
 delete L.Icon.Default.prototype._getIconUrl
@@ -20,13 +20,16 @@ export default function MapPicker({ onConfirm, onClose, initialLabel = '' }) {
   const [pinned, setPinned] = useState(null)   // { lat, lng, label }
   const [gpsLoading, setGpsLoading] = useState(false)
   const [err, setErr] = useState('')
+  // Kept apart from `err`: the map falling back to the free layers isn't a failure, and
+  // dressing it in red would make someone think the pin didn't save.
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     if (mapInstanceRef.current) return
-    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 12, maxZoom: 19 })
+    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 12, maxZoom: MAX_ZOOM })
     // Satellite by default here: you're pinning a plant on a specific rooftop, and imagery
     // shows the building whether or not anyone has traced it into OpenStreetMap.
-    attachBasemaps(map, 'Satellite + street names')
+    attachBasemaps(map, 'Satellite + street names', { onNotice: setNotice })
 
     map.on('click', async (e) => {
       const { lat, lng } = e.latlng
@@ -143,6 +146,7 @@ export default function MapPicker({ onConfirm, onClose, initialLabel = '' }) {
         </div>
 
         {err && <div style={{ padding: '6px 12px', fontSize: 12, color: 'var(--red)', background: 'rgba(239,68,68,.08)' }}>⚠️ {err}</div>}
+        {notice && <div style={{ padding: '6px 12px', fontSize: 11.5, color: 'var(--muted)', background: 'rgba(234,179,8,.08)' }}>🗺️ {notice}</div>}
 
         {/* Map */}
         <div ref={mapRef} style={{ height: 320, width: '100%' }} />
