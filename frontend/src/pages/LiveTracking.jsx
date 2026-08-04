@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { attachBasemaps, ZOOM } from '../utils/basemaps'
 import api from '../api/axios'
 
 const POLL_MS = 15000
@@ -44,10 +45,8 @@ export default function LiveTracking() {
 
   useEffect(() => {
     if (mapInstanceRef.current) return
-    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 8 })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map)
+    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 8, maxZoom: 19 })
+    attachBasemaps(map)
     mapInstanceRef.current = map
     return () => { map.remove(); mapInstanceRef.current = null }
   }, [])
@@ -112,14 +111,19 @@ export default function LiveTracking() {
     if (!firstFitRef.current && withLoc.length > 0) {
       firstFitRef.current = true
       const bounds = L.latLngBounds(withLoc.map(e => [e.latitude, e.longitude]))
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 })
+      // Was capped at 14, which is below the zoom where buildings (16) and place names (17)
+      // are drawn at all — so the map looked empty however good the tiles were. With one
+      // technician on screen there's no reason not to go all the way in.
+      const maxZoom = withLoc.length === 1 ? ZOOM.SINGLE_TARGET : ZOOM.LABELS
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom })
     }
   }
 
   function locate(e) {
     if (e.latitude == null) return
     const map = mapInstanceRef.current
-    map.setView([e.latitude, e.longitude], 15)
+    // 18, not 15 — close enough to read the shop and landmark names around them.
+    map.setView([e.latitude, e.longitude], ZOOM.SINGLE_TARGET)
     markersRef.current[e.employee_id]?.openPopup()
   }
 

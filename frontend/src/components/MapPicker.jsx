@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { attachBasemaps, ZOOM } from '../utils/basemaps'
 
 // Fix default marker icons broken by webpack/vite bundling
 delete L.Icon.Default.prototype._getIconUrl
@@ -22,10 +23,10 @@ export default function MapPicker({ onConfirm, onClose, initialLabel = '' }) {
 
   useEffect(() => {
     if (mapInstanceRef.current) return
-    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 12 })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map)
+    const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 12, maxZoom: 19 })
+    // Satellite by default here: you're pinning a plant on a specific rooftop, and imagery
+    // shows the building whether or not anyone has traced it into OpenStreetMap.
+    attachBasemaps(map, 'Satellite + labels')
 
     map.on('click', async (e) => {
       const { lat, lng } = e.latlng
@@ -52,7 +53,8 @@ export default function MapPicker({ onConfirm, onClose, initialLabel = '' }) {
   function placeMarker(map, lat, lng) {
     if (markerRef.current) markerRef.current.remove()
     markerRef.current = L.marker([lat, lng]).addTo(map)
-    map.setView([lat, lng], Math.max(map.getZoom(), 14))
+    // Land close enough that the rooftop being pinned is actually distinguishable.
+    map.setView([lat, lng], Math.max(map.getZoom(), ZOOM.LABELS))
   }
 
   async function searchLocation() {
