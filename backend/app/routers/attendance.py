@@ -163,11 +163,18 @@ def mark_attendance(data: AttendanceMark, db: Session = Depends(get_db), user=De
 
 @router.patch("/base-salary/{emp_id}")
 def update_base_salary(emp_id: int, salary: float, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    if user.role not in ("admin",):
-        raise HTTPException(403, "Admin only")
+    # Deskwork too, so the Salary page works the same for both roles.
+    if user.role not in ("admin", "deskwork"):
+        raise HTTPException(403, "Admin or deskwork only")
     emp = db.query(Employee).filter(Employee.id == emp_id).first()
     if not emp:
         raise HTTPException(404, "Employee not found")
+    # Deskwork is limited to technicians. The Salary page only ever lists active technicians, so
+    # this costs the page nothing — but the endpoint takes an arbitrary emp_id, and without the
+    # check a deskworker could hand-craft a request to raise their own or the admin's pay.
+    # Admin keeps full reach.
+    if user.role == "deskwork" and emp.role != "technician":
+        raise HTTPException(403, "Deskwork can only change a technician's base salary")
     emp.base_salary = salary
     db.commit()
     return {"employee_id": emp_id, "base_salary": salary}

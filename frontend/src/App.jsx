@@ -105,6 +105,9 @@ export default function App() {
         <Route path="tasks"      element={<DeskTasks />} />
         <Route path="employees"  element={<DeskEmployees />} />
         <Route path="attendance" element={<DeskAttendance />} />
+        {/* The same component admin uses — it needs no role-specific branches, and the
+            endpoints behind it now accept deskwork. */}
+        <Route path="salary"     element={<Salary />} />
         <Route path="stock"      element={<DeskStock />} />
         <Route path="travel"          element={<DeskTravel />} />
         <Route path="service-reports" element={<ServiceReports />} />
