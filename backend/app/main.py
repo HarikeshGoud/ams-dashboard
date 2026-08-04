@@ -4,13 +4,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
-import os
 
 logger = logging.getLogger("ams")
 
-from .ist_time import today_ist
-
-from .database import engine, Base, SessionLocal
+# today_ist, SessionLocal and os were imported here only for the startup task generator that
+# was removed above — see the note there before adding anything like it back.
+from .database import engine, Base
 from . import models  # ensure all models are registered
 
 from .routers import auth, employees, clients, schools, visits, complaints
@@ -26,65 +25,22 @@ from .routers import data_health
 from .routers import mapping
 
 
-def _auto_generate_daily_tasks():
-    """On startup: generate 5 daily tasks for every active technician if not already done today."""
-    from .models.employee import Employee
-    from .models.task import Task
-    from .routers.tasks import _technician_rotation_schools, _dedicated_pool, DAILY_DEFAULT
-
-    db = SessionLocal()
-    try:
-        today = today_ist()
-        technicians = db.query(Employee).filter(
-            Employee.role == "technician", Employee.is_active == True
-        ).all()
-
-        for emp in technicians:
-            existing = db.query(Task).filter(
-                Task.assigned_to_id == emp.id,
-                Task.due_date == today,
-                Task.status != "cancelled"
-            ).count()
-
-            # A technician posted to a campus gets its whole due pool — 22 stops at a temple
-            # is a normal day. Everyone else gets the usual 5.
-            if emp.dedicated_school_id:
-                slots_needed = max(0, len(_dedicated_pool(db, emp, today)) - existing)
-            else:
-                slots_needed = max(0, DAILY_DEFAULT - existing)
-            if slots_needed == 0:
-                continue
-            already_today = {
-                t.school_id for t in db.query(Task).filter(
-                    Task.assigned_to_id == emp.id,
-                    Task.due_date == today,
-                    Task.status != "cancelled"
-                ).all() if t.school_id
-            }
-
-            eligible, _, _, _ = _technician_rotation_schools(
-                db, emp.id, exclude_school_ids=already_today
-            )
-
-            for school in eligible[:slots_needed]:
-                db.add(Task(
-                    title=f"Visit {school.name}",
-                    description="Daily scheduled visit",
-                    assigned_to_id=emp.id,
-                    assigned_by_id=None,
-                    school_id=school.id,
-                    priority="medium",
-                    status="pending",
-                    due_date=today
-                ))
-
-        db.commit()
-        print(f"[startup] Daily tasks auto-generated for {today}")
-    except Exception as e:
-        print(f"[startup] Daily task generation failed: {e}")
-        db.rollback()
-    finally:
-        db.close()
+# Daily tasks are NOT generated here any more. Do not put that back.
+#
+# There used to be an _auto_generate_daily_tasks() call in the lifespan below, so every time
+# this process started it handed each active technician five visits. Startup is not once a day:
+# it happens on every deploy, and whenever Azure recycles the app for idle timeout, scaling or
+# platform maintenance. Three deploys in one evening meant three generation runs.
+#
+# It only ever added. Nothing expired or cancelled the tasks nobody got to, so the backlog grew
+# on its own — one technician reached 107 pending, 102 of them overdue, and because a school
+# with an open task was still eligible the next day, the same school was re-issued up to three
+# times. 82% of all tasks in the database were created this way (the startup job left
+# assigned_by_id NULL; a human pressing the button stamps their own id).
+#
+# Tasks now come only from POST /api/tasks/generate-daily — the "Generate Daily Tasks" button
+# on the admin and deskwork Tasks pages — or from assigning one by hand. If scheduled
+# generation is wanted, schedule it ONCE A DAY against that endpoint; don't tie it to boot.
 
 
 @asynccontextmanager
@@ -96,8 +52,6 @@ async def lifespan(app: FastAPI):
     # the handful of known-missing columns, additively and idempotently.
     from .schema_guard import ensure_columns
     ensure_columns(engine)
-    if os.environ.get("SKIP_AUTO_TASKS") != "1":
-        _auto_generate_daily_tasks()
     yield
 
 
