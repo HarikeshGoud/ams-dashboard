@@ -4,9 +4,25 @@ import { useAuthStore } from '../../store/authStore'
 import SearchableSelect from '../../components/SearchableSelect'
 import SendSummaryModal from '../../components/SendSummaryModal'
 import { buildDailyTaskSummary } from '../../utils/dailySummary'
-import { todayIST } from '../../utils/istTime'
+import { todayIST, formatISTDate, formatISTDateTime } from '../../utils/istTime'
 
 const PRIORITY_COLOR = { high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--green)' }
+
+// The three Proof Review piles. `badge` is what the card shows; `action` is the decision that
+// can still be made from that pile — a verified proof can be pulled back to rejected and a
+// rejected one approved, because Reject is a single click and mistakes need an undo.
+const PROOF_SECTIONS = [
+  { key: 'pending',  label: 'Pending',  icon: '🔍', noun: 'awaiting review',
+    color: 'var(--yellow)', bg: 'rgba(251,191,36,.15)',
+    badge: '🔍 Pending Review', empty: '✅ Nothing awaiting review' },
+  { key: 'verified', label: 'Verified', icon: '✅', noun: 'verified',
+    color: 'var(--green)', bg: 'rgba(52,211,153,.15)',
+    badge: '✅ Verified', empty: 'No verified proofs' },
+  { key: 'rejected', label: 'Rejected', icon: '❌', noun: 'rejected',
+    color: 'var(--red)', bg: 'rgba(248,113,113,.15)',
+    badge: '❌ Rejected', empty: 'No rejected proofs' },
+]
+const PROOF_SECTION = Object.fromEntries(PROOF_SECTIONS.map(s => [s.key, s]))
 
 export default function DeskTasks() {
   const { user } = useAuthStore()
@@ -15,7 +31,11 @@ export default function DeskTasks() {
   const [tasks, setTasks] = useState([])
   const [rotationMap, setRotationMap] = useState({})
   const [fieldReports, setFieldReports] = useState([])
-  const [pendingReports, setPendingReports] = useState([])
+  // Reports for the Proof Review sub-tab currently open — pending, verified or rejected.
+  const [proofReports, setProofReports] = useState([])
+  // Counts come from the server, not from proofReports.length: the list is capped at 500 and
+  // the Verified pile only grows, so counting the rows on screen would quietly under-report.
+  const [proofCounts, setProofCounts] = useState({ pending: 0, verified: 0, rejected: 0 })
   const [showForm, setShowForm] = useState(false)
   const [filterEmp, setFilterEmp] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -28,6 +48,9 @@ export default function DeskTasks() {
   // of backlog.
   const [proofDate, setProofDate] = useState(today)
   const [proofEmp, setProofEmp]   = useState('')
+  // Which of the three piles is on screen. Pending is the default because it's the only one
+  // that needs action; the other two are there to look things up and to undo a wrong call.
+  const [proofStatus, setProofStatus] = useState('pending')
 
   // Warnings run longer than confirmations — they're a sentence to read, not a tick to glance at.
   function showToast(msg, ms = 4000) { setToast(msg); setTimeout(() => setToast(''), ms) }
@@ -36,20 +59,30 @@ export default function DeskTasks() {
     // Proof Review is scoped server-side: without a date it would return a capped slice of
     // all history, so a pending proof older than the cap could never be reviewed. Blank date
     // means "everything", which is the deliberate opt-out.
-    const proofParams = { verification_status: 'pending', limit: 500 }
+    const proofParams = { verification_status: proofStatus, limit: 500 }
     if (proofDate) proofParams.report_date = proofDate
     if (proofEmp)  proofParams.employee_id = proofEmp
+    // Counts share the date/technician filters but NOT the status one — the tab badges have to
+    // show all three piles while only one of them is being listed.
+    const countParams = {}
+    if (proofDate) countParams.report_date = proofDate
+    if (proofEmp)  countParams.employee_id = proofEmp
 
     Promise.all([
       api.get('/api/employees/'),
       api.get('/api/tasks/', { params: { task_date: taskDate, ...(filterEmp ? { employee_id: filterEmp } : {}) } }),
-      api.get('/api/field-reports/', { params: proofParams })
-    ]).then(([e, t, r]) => {
+      api.get('/api/field-reports/', { params: proofParams }),
+      api.get('/api/field-reports/counts', { params: countParams })
+        .catch(() => ({ data: null })),   // an older backend just means no badge numbers
+    ]).then(([e, t, r, c]) => {
       const techs = e.data.filter(emp => emp.role === 'technician')
       setEmployees(techs)
       setTasks(t.data)
       setFieldReports(r.data)
-      setPendingReports(r.data.filter(rp => rp.verification_status === 'pending'))
+      // The server already filtered by status; re-filtering here would empty the list on any
+      // tab other than Pending.
+      setProofReports(r.data)
+      if (c.data) setProofCounts(c.data)
       // Load rotation info for each technician
       Promise.all(techs.map(emp =>
         api.get('/api/tasks/suggested-schools', { params: { employee_id: emp.id, task_date: taskDate } })
@@ -63,7 +96,7 @@ export default function DeskTasks() {
     })
   }
 
-  useEffect(() => { load() }, [taskDate, filterEmp, proofDate, proofEmp])
+  useEffect(() => { load() }, [taskDate, filterEmp, proofDate, proofEmp, proofStatus])
 
   async function generateDaily() {
     setGenerating(true)
@@ -123,13 +156,15 @@ export default function DeskTasks() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {[
           { key: 'tasks',  label: '📋 Task Assignment' },
-          { key: 'review', label: `🔍 Proof Review${pendingReports.length > 0 ? ` (${pendingReports.length})` : ''}` },
+          // Always the PENDING count, whichever sub-tab is open — it's the number that means
+          // "work waiting for you", and it would be misleading for it to track the Verified pile.
+          { key: 'review', label: `🔍 Proof Review${proofCounts.pending > 0 ? ` (${proofCounts.pending})` : ''}` },
         ].map(tab => (
           <button key={tab.key} onClick={() => setMainTab(tab.key)} style={{
             padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            border: `1.5px solid ${mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--border)'}`,
-            background: mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'rgba(251,191,36,.15)' : 'rgba(34,211,238,.15)') : 'var(--surface2)',
-            color: mainTab === tab.key ? (tab.key === 'review' && pendingReports.length > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--muted)',
+            border: `1.5px solid ${mainTab === tab.key ? (tab.key === 'review' && proofCounts.pending > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--border)'}`,
+            background: mainTab === tab.key ? (tab.key === 'review' && proofCounts.pending > 0 ? 'rgba(251,191,36,.15)' : 'rgba(34,211,238,.15)') : 'var(--surface2)',
+            color: mainTab === tab.key ? (tab.key === 'review' && proofCounts.pending > 0 ? 'var(--yellow)' : 'var(--accent)') : 'var(--muted)',
           }}>{tab.label}</button>
         ))}
       </div>
@@ -154,26 +189,45 @@ export default function DeskTasks() {
                 onClick={() => { setProofDate(''); setProofEmp('') }}>Show all dates</button>
             )}
             <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>
-              {pendingReports.length} awaiting review
+              {proofReports.length} {PROOF_SECTIONS.find(s => s.key === proofStatus).noun}
               {proofDate ? ` on ${proofDate}` : ' — all dates'}
               {proofEmp ? ` · ${employees.find(e => String(e.id) === String(proofEmp))?.name || ''}` : ''}
             </span>
           </div>
 
-          {pendingReports.length === 0 ? (
+          {/* Pending / Verified / Rejected. Each is a separate server-side query rather than a
+              client filter, so the 500-row cap applies per pile instead of being eaten by
+              whichever one happens to be largest. */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            {PROOF_SECTIONS.map(s => {
+              const on = proofStatus === s.key
+              return (
+                <button key={s.key} onClick={() => setProofStatus(s.key)} style={{
+                  padding: '7px 16px', borderRadius: 20, fontSize: 12.5, fontWeight: 700,
+                  cursor: 'pointer', border: `1.5px solid ${on ? s.color : 'var(--border)'}`,
+                  background: on ? s.bg : 'var(--surface2)',
+                  color: on ? s.color : 'var(--muted)',
+                }}>
+                  {s.icon} {s.label} ({proofCounts[s.key] ?? 0})
+                </button>
+              )
+            })}
+          </div>
+
+          {proofReports.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}>
               {proofDate || proofEmp ? (
                 <>
-                  ✅ Nothing awaiting review{proofDate ? ` on ${proofDate}` : ''}
-                  {proofEmp ? ' for that technician' : ''}.
+                  {PROOF_SECTIONS.find(s => s.key === proofStatus).empty}
+                  {proofDate ? ` on ${proofDate}` : ''}{proofEmp ? ' for that technician' : ''}.
                   <div style={{ fontSize: 12, marginTop: 6 }}>
                     Older proofs are still there — clear the filters with <b>Show all dates</b>.
                   </div>
                 </>
-              ) : '✅ No proofs awaiting review. All caught up!'}
+              ) : <>{PROOF_SECTIONS.find(s => s.key === proofStatus).empty}.</>}
             </div>
           ) : (
-            pendingReports.map(report => (
+            proofReports.map(report => (
               <ProofReviewCard key={report.id} report={report} onVerify={verifyReport} />
             ))
           )}
@@ -304,12 +358,34 @@ function ProofReviewCard({ report, onVerify }) {
   const [rejectNote, setRejectNote] = useState('')
   const [showReject, setShowReject] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  // Colour and badge follow the report's own status rather than the open tab, so a card that
+  // has just been approved reads as approved for the moment before the list reloads.
+  const sec = PROOF_SECTION[report.verification_status] || PROOF_SECTION.pending
+  const isPending = (report.verification_status || 'pending') === 'pending'
+
+  // Changing a decision that's already been made is not cosmetic: the same endpoint flips the
+  // technician's attendance for that day and reopens or closes the task, and attendance feeds
+  // payout. So a reversal asks first, naming exactly what else moves. A first-time decision
+  // doesn't — that's the normal job, and rejecting already has the reason step.
+  function decide(status, note) {
+    if (!isPending) {
+      const who = report.employee_name || `Employee #${report.employee_id}`
+      const attendance = status === 'verified' ? 'PRESENT' : 'ABSENT'
+      const task = status === 'verified' ? 'close the task' : 'reopen the task'
+      if (!confirm(
+        `Change this proof from ${report.verification_status} to ${status}?\n\n` +
+        `It will also set ${who}'s attendance for ${report.report_date} to ${attendance} ` +
+        `and ${task}.`
+      )) return
+    }
+    onVerify(report.id, status, note)
+  }
 
   return (
     <div style={{
-      background: 'var(--surface)', border: '1px solid var(--yellow)',
+      background: 'var(--surface)', border: `1px solid ${sec.color}`,
       borderRadius: 12, padding: 16, marginBottom: 14,
-      borderLeft: '4px solid var(--yellow)'
+      borderLeft: `4px solid ${sec.color}`
     }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
@@ -335,8 +411,8 @@ function ProofReviewCard({ report, onVerify }) {
             </div>
           )}
         </div>
-        <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 6, fontWeight: 700, background: 'rgba(251,191,36,.15)', color: 'var(--yellow)', border: '1px solid var(--yellow)', flexShrink: 0 }}>
-          🔍 Pending Review
+        <span style={{ fontSize: 10, padding: '3px 9px', borderRadius: 6, fontWeight: 700, background: sec.bg, color: sec.color, border: `1px solid ${sec.color}`, flexShrink: 0 }}>
+          {sec.badge}
         </span>
       </div>
 
@@ -373,6 +449,21 @@ function ProofReviewCard({ report, onVerify }) {
         <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>💬 {report.remarks}</div>
       )}
 
+      {/* The decision already on record — the reason and when it was made. This is most of the
+          point of the Verified and Rejected piles, and it was never shown before. */}
+      {!isPending && (
+        <div style={{ fontSize: 12, padding: '8px 11px', borderRadius: 8, marginBottom: 10,
+                      background: sec.bg, color: sec.color }}>
+          📝 {report.verification_note || <span style={{ opacity: .8 }}>No reason recorded</span>}
+          {report.verified_at && (
+            <span style={{ marginLeft: 8, opacity: .75 }}>
+              — {formatISTDate(report.verified_at)}{' '}
+              {formatISTDateTime(report.verified_at, { hour: '2-digit', minute: '2-digit', hour12: true })}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Reject note input */}
       {showReject && (
         <div style={{ marginBottom: 10 }}>
@@ -383,21 +474,12 @@ function ProofReviewCard({ report, onVerify }) {
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* Actions. Pending gets the decision; Verified and Rejected get a way to reverse it,
+          because Reject is a single click and a mis-click otherwise sticks permanently. */}
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={() => onVerify(report.id, 'verified')} style={{
-          flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
-          background: 'rgba(52,211,153,.2)', color: 'var(--green)', fontWeight: 700, fontSize: 13
-        }}>✅ Verify & Approve</button>
-
-        {!showReject ? (
-          <button onClick={() => setShowReject(true)} style={{
-            flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
-            background: 'rgba(248,113,113,.15)', color: 'var(--red)', fontWeight: 700, fontSize: 13
-          }}>❌ Reject</button>
-        ) : (
+        {showReject ? (
           <>
-            <button onClick={() => onVerify(report.id, 'rejected', rejectNote)} style={{
+            <button onClick={() => decide('rejected', rejectNote)} style={{
               flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
               background: 'var(--red)', color: '#fff', fontWeight: 700, fontSize: 13
             }}>❌ Confirm Reject</button>
@@ -405,6 +487,21 @@ function ProofReviewCard({ report, onVerify }) {
               padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)',
               background: 'var(--surface2)', color: 'var(--muted)', cursor: 'pointer', fontSize: 12
             }}>Cancel</button>
+          </>
+        ) : (
+          <>
+            {report.verification_status !== 'verified' && (
+              <button onClick={() => decide('verified')} style={{
+                flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: 'rgba(52,211,153,.2)', color: 'var(--green)', fontWeight: 700, fontSize: 13
+              }}>{isPending ? '✅ Verify & Approve' : '✅ Approve instead'}</button>
+            )}
+            {report.verification_status !== 'rejected' && (
+              <button onClick={() => setShowReject(true)} style={{
+                flex: 1, padding: '9px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: 'rgba(248,113,113,.15)', color: 'var(--red)', fontWeight: 700, fontSize: 13
+              }}>{isPending ? '❌ Reject' : '❌ Reject instead'}</button>
+            )}
           </>
         )}
       </div>

@@ -128,6 +128,40 @@ def list_reports(request: Request,
         results.append(d)
     return results
 
+# Declared above GET /{report_id} on purpose: FastAPI matches in declaration order, so if this
+# came later the path would bind to that route and fail on int("counts").
+@router.get("/counts")
+def report_counts(report_date: Optional[str] = None,
+                  employee_id: Optional[int] = None,
+                  db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """How many reports sit in each verification state, under the same filters as the list.
+
+    Proof Review needs these to label its Pending / Verified / Rejected tabs. Counting here
+    rather than in the browser matters: the list endpoint is capped at 500 rows, so counting
+    what was returned would silently under-report once a status passes the cap — and the
+    Verified pile grows without limit.
+    """
+    from sqlalchemy import func
+    q = db.query(FieldReport.verification_status, func.count(FieldReport.id))
+    if user.role not in ("admin", "deskwork"):
+        q = q.filter(FieldReport.employee_id == user.id)
+    if report_date:
+        try:
+            q = q.filter(FieldReport.report_date == date.fromisoformat(report_date))
+        except ValueError:
+            raise HTTPException(400, f"Invalid date '{report_date}' — use YYYY-MM-DD")
+    if employee_id:
+        q = q.filter(FieldReport.employee_id == employee_id)
+
+    out = {"pending": 0, "verified": 0, "rejected": 0}
+    for status, n in q.group_by(FieldReport.verification_status).all():
+        # Rows written before the column existed have NULL here, and _fmt_report already
+        # presents those as pending — so they have to be counted as pending too, or the tab
+        # badge would disagree with the list underneath it.
+        out[status if status in out else "pending"] += n
+    out["total"] = out["pending"] + out["verified"] + out["rejected"]
+    return out
+
 @router.get("/employee/{emp_id}")
 def reports_by_employee(emp_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if user.role != "admin" and user.id != emp_id:
