@@ -152,6 +152,22 @@ def _service_report_required(school) -> bool:
     return not (school is not None and school.model == 'temple')
 
 
+# Every task the rotation produces carries exactly this description; a hand-assigned one
+# carries whatever the desk typed, which is usually nothing. That string is therefore what
+# separates "the system picked this" from "a person chose this", and it is the only marker
+# available — assigned_by_id used to distinguish them, but now that the startup job is gone
+# every task carries the id of whoever pressed the button, so it no longer separates anything.
+#
+# It is a string match, so keep this constant and the one used when generating in step. If
+# this ever needs to be sturdier, the durable fix is a `source` column on tasks via
+# schema_guard, backfilled from this same rule.
+GENERATED_DESCRIPTION = "Daily scheduled visit"
+
+
+def _is_generated(t: Task) -> bool:
+    return (t.description or "").strip() == GENERATED_DESCRIPTION
+
+
 def _fmt(t: Task):
     school_name = None
     school_lat = None
@@ -169,6 +185,9 @@ def _fmt(t: Task):
             school_mandal = t.school.mandal.name
     return {
         "id": t.id, "title": t.title, "description": t.description,
+        # Whether this came off the rotation or someone at the desk chose it. Derived here, in
+        # one place, so no client has to string-match a description to tell them apart.
+        "auto_generated": _is_generated(t),
         "assigned_to_id": t.assigned_to_id,
         "assigned_to_name": t.assigned_to.name if t.assigned_to else None,
         "school_id": t.school_id,
@@ -452,7 +471,7 @@ def generate_daily_tasks(task_date: str = None, employee_id: int = None,
         for school in eligible[:slots_needed]:
             db.add(Task(
                 title=f"Visit {school.name}",
-                description=f"Daily scheduled visit",
+                description=GENERATED_DESCRIPTION,
                 assigned_to_id=emp.id,
                 assigned_by_id=user.id,
                 school_id=school.id,

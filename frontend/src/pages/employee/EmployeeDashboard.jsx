@@ -62,11 +62,21 @@ export default function EmployeeDashboard() {
   const submittedTaskIds = new Set(submittedToday.map(r => r.task_id))
 
   const showingAll = taskFilter === 'all'
-  const visibleTasks = showingAll ? activeTasks : activeTasks.filter(t => t.due_date === taskFilter)
+  const showingAssigned = taskFilter === 'assigned'
+  // Work the office picked out for this technician, as opposed to the daily rotation. Without
+  // this, a real job — "purifier malfunction because of scaling" — sits indistinguishable in a
+  // pile of 77 routine visits.
+  const assignedTasks = activeTasks.filter(t => !t.auto_generated)
+  const visibleTasks = showingAll ? activeTasks
+    : showingAssigned ? assignedTasks
+    : activeTasks.filter(t => t.due_date === taskFilter)
   // Overdue work the current filter is hiding. Narrowing to today is the point, but silently
   // burying 102 overdue visits would be worse than the long list was — so it says so and
   // offers the way to them.
-  const hiddenOverdue = showingAll ? 0
+  // Only meaningful while filtering by DATE. On "All" nothing is hidden, and on "Assigned" the
+  // hiding is by category rather than by date, so a banner phrased "from earlier dates" would
+  // be describing the wrong thing. The overdue total in the header card stays visible either way.
+  const hiddenOverdue = (showingAll || showingAssigned) ? 0
     : activeTasks.filter(t => t.due_date && t.due_date < todayIso && t.due_date !== taskFilter).length
 
   if (loading) return <div className="spinner" />
@@ -132,21 +142,28 @@ export default function EmployeeDashboard() {
           My Tasks
           <span style={{ marginLeft: 8, textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>
             {showingAll ? `— all ${visibleTasks.length} incomplete`
+                        : showingAssigned ? `— assigned by office (${visibleTasks.length})`
                         : taskFilter === todayIso ? `— today (${visibleTasks.length})`
                         : `— ${taskFilter} (${visibleTasks.length})`}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input type="date" value={showingAll ? '' : taskFilter}
+          <input type="date" value={(showingAll || showingAssigned) ? '' : taskFilter}
             onChange={e => setTaskFilter(e.target.value || todayIso)}
             style={{ padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)',
                      background: 'var(--surface)', color: 'var(--text)', fontSize: 12 }} />
-          {!showingAll && taskFilter !== todayIso && (
+          {!showingAll && !showingAssigned && taskFilter !== todayIso && (
             <button onClick={() => setTaskFilter(todayIso)} style={{
               padding: '5px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
               border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--muted)',
             }}>Today</button>
           )}
+          <button onClick={() => setTaskFilter(showingAssigned ? todayIso : 'assigned')} style={{
+            padding: '5px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            border: `1px solid ${showingAssigned ? 'var(--yellow)' : 'var(--border)'}`,
+            background: showingAssigned ? 'rgba(251,191,36,.15)' : 'var(--surface2)',
+            color: showingAssigned ? 'var(--yellow)' : 'var(--muted)',
+          }}>📌 Assigned ({assignedTasks.length})</button>
           <button onClick={() => setTaskFilter(showingAll ? todayIso : 'all')} style={{
             padding: '5px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
             border: `1px solid ${showingAll ? 'var(--accent)' : 'var(--border)'}`,
@@ -155,6 +172,13 @@ export default function EmployeeDashboard() {
           }}>{showingAll ? '📅 Back to today' : `All incomplete (${activeTasks.length})`}</button>
         </div>
       </div>
+
+      {/* "Assigned" isn't self-explanatory — say what separates it from the rest. */}
+      {showingAssigned && (
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
+          Jobs the office assigned to you specifically — not the daily rotation.
+        </div>
+      )}
 
       {/* Overdue work the filter is hiding — reachable in one tap, never silently buried. */}
       {hiddenOverdue > 0 && (
@@ -176,12 +200,14 @@ export default function EmployeeDashboard() {
           <div style={{ fontSize: 40, marginBottom: 12 }}>{hiddenOverdue > 0 ? '📋' : '🎉'}</div>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>
             {showingAll ? 'No incomplete tasks left!'
+              : showingAssigned ? 'Nothing assigned to you directly.'
               : hiddenOverdue > 0 ? `Nothing new due ${taskFilter === todayIso ? 'today' : `on ${taskFilter}`}.`
               : taskFilter === todayIso ? 'All tasks done for today!'
               : `Nothing due on ${taskFilter}.`}
           </div>
           <div style={{ color: 'var(--muted)', fontSize: 13 }}>
             {showingAll ? 'Everything assigned to you is submitted or verified.'
+              : showingAssigned ? `Your open work is all from the daily rotation (${activeTasks.length}).`
               : hiddenOverdue > 0 ? 'Your remaining work is overdue from earlier dates — see above.'
               : taskFilter === todayIso ? 'Check back tomorrow for new assignments.'
               : 'Pick another date, or see everything still open.'}

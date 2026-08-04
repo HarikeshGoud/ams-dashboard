@@ -49,6 +49,9 @@ export default function MyTasks() {
   // Every task still to do. This used to exclude today's, which meant no tab anywhere showed
   // all outstanding work at once.
   const incomplete  = tasks.filter(t => !['completed','submitted'].includes(t.status))
+  // Open work the office chose for this technician, rather than the daily rotation. A real
+  // callout would otherwise be indistinguishable from dozens of routine visits.
+  const assigned    = incomplete.filter(t => !t.auto_generated)
   const completed   = tasks.filter(t => t.status === 'completed')
   const underReview = tasks.filter(t => t.status === 'submitted')
   const rejected    = tasks.filter(t => rejectedTaskIds.has(t.id))
@@ -56,13 +59,14 @@ export default function MyTasks() {
   const TABS = [
     { key: 'today',     label: taskDate === todayIso ? "📅 Today's Visits" : `📅 ${taskDate}`,
       count: dateTasks.length },
+    { key: 'assigned',  label: '📌 Assigned',         count: assigned.length },
     { key: 'review',    label: '🔍 Under Review',     count: underReview.length },
     { key: 'active',    label: '⏳ All Incomplete',   count: incomplete.length },
     { key: 'rejected',  label: '❌ Rejected',          count: rejected.length },
     { key: 'completed', label: '✅ Verified',          count: completed.length },
   ]
 
-  const displayed = tab === 'today' ? dateTasks : tab === 'review' ? underReview : tab === 'active' ? incomplete : tab === 'rejected' ? rejected : completed
+  const displayed = tab === 'today' ? dateTasks : tab === 'assigned' ? assigned : tab === 'review' ? underReview : tab === 'active' ? incomplete : tab === 'rejected' ? rejected : completed
 
   // Today: submitted + completed both count as "done" for progress dots
   const todayDone  = todayTasks.filter(t => ['completed','submitted'].includes(t.status)).length
@@ -182,6 +186,7 @@ export default function MyTasks() {
                  : taskDate === todayIso
                    ? '⏳ No tasks assigned for today yet. Check back soon.'
                    : `📅 Nothing assigned for ${taskDate}.`) :
+           tab === 'assigned' ? '📌 Nothing assigned to you directly — your open work is all from the daily rotation.' :
            tab === 'active' ? '🎉 Nothing left to do — everything is submitted or verified.' :
            tab === 'rejected' ? '✅ No rejected tasks.' : '📋 No completed tasks yet.'}
         </div>
