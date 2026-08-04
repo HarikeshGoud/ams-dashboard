@@ -387,6 +387,83 @@ async def auto_trip_from_reports(
         return _fmt(t)
 
 
+# ── Backfill ─────────────────────────────────────────────────────────────────
+
+@router.post("/backfill")
+async def backfill_trips(date_from: str, date_to: str,
+                         employee_id: Optional[int] = None,
+                         db: Session = Depends(get_db),
+                         user=Depends(require_admin_or_deskwork)):
+    """Recalculate auto travel trips for every technician-day in a date range.
+
+    Auto trips are normally created as a side effect of proof submission. That hook is
+    best-effort: if it fails, the trip is simply never created and the allowance is lost
+    with nothing to show it happened. Between 2026-07-29 and 2026-08-04 that is exactly what
+    occurred — dozens of qualifying days produced no trip at all.
+
+    This makes the calculation re-runnable from the proofs, which are the source of truth
+    anyway. It only ever touches trips still marked pending, so an approved or rejected
+    allowance is never rewritten.
+    """
+    from ..models.field_report import FieldReport
+
+    try:
+        d_from = date.fromisoformat(date_from)
+        d_to   = date.fromisoformat(date_to)
+    except ValueError:
+        raise HTTPException(400, "Dates must be YYYY-MM-DD")
+    if d_to < d_from:
+        raise HTTPException(400, "date_to is before date_from")
+    if (d_to - d_from).days > 92:
+        raise HTTPException(400, "Range too wide — do at most 3 months at a time.")
+
+    # Only the (employee, date) pairs that actually have proofs are worth trying.
+    q = (db.query(FieldReport.employee_id, FieldReport.report_date)
+           .filter(FieldReport.report_date >= d_from, FieldReport.report_date <= d_to)
+           .distinct())
+    if employee_id:
+        q = q.filter(FieldReport.employee_id == employee_id)
+    pairs = sorted(set(q.all()), key=lambda p: (str(p[1]), p[0]))
+
+    created, updated, skipped, failed = 0, 0, [], []
+    for emp_id, d in pairs:
+        if emp_id is None or d is None:
+            continue
+        before = db.query(TravelTrip).filter(
+            TravelTrip.employee_id == emp_id, TravelTrip.trip_date == d,
+            TravelTrip.trip_type == "auto").first()
+        was_there = before is not None
+        was_pending = bool(before and before.status == "pending")
+        try:
+            res = await auto_trip_from_reports(trip_date=str(d), employee_id=emp_id,
+                                               db=db, user=user)
+            if isinstance(res, dict) and res.get("ok") is False:
+                skipped.append({"employee_id": emp_id, "date": str(d),
+                                "reason": res.get("message")})
+            elif was_there:
+                # An approved/rejected trip is returned untouched by auto_trip_from_reports.
+                if was_pending:
+                    updated += 1
+                else:
+                    skipped.append({"employee_id": emp_id, "date": str(d),
+                                    "reason": "already approved/rejected — left alone"})
+            else:
+                created += 1
+        except Exception as e:
+            try: db.rollback()
+            except Exception: pass
+            failed.append({"employee_id": emp_id, "date": str(d),
+                           "error": f"{type(e).__name__}: {e}"})
+
+    return {
+        "ok": True,
+        "range": {"from": str(d_from), "to": str(d_to)},
+        "technician_days_examined": len(pairs),
+        "created": created, "updated": updated,
+        "skipped": skipped, "failed": failed,
+    }
+
+
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 @router.get("/")

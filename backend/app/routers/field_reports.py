@@ -310,22 +310,39 @@ async def submit_field_report(
         base_url = str(request.base_url).rstrip("/")
         result = _fmt_report(report, base_url=base_url)
 
-        # These are non-critical — never let them fail the submission
+        # These are non-critical — never let them fail the submission. But they must not fail
+        # SILENTLY either: travel trips stopped being created after 2026-07-29 and nobody
+        # could tell, because both of these swallowed the exception without a trace. A week
+        # of allowances went missing before anyone noticed the number had stopped moving.
         try:
             _auto_mark_attendance(user.id, today, db)
-        except Exception:
+        except Exception as e:
+            logger.exception(
+                f"auto-attendance failed for employee {user.id} on {today} "
+                f"(report {report.id}): {e}")
             try: db.rollback()
             except Exception: pass
 
         if latitude and longitude:
             try:
                 from .travel import auto_trip_from_reports
-                await auto_trip_from_reports(
+                trip = await auto_trip_from_reports(
                     trip_date=str(today), employee_id=user.id, db=db, user=user
                 )
-            except Exception:
+                # A dict with ok=False is a deliberate skip (first proof of the day, travel
+                # switched off for their area) — worth a line so the gaps are explainable.
+                if isinstance(trip, dict) and trip.get("ok") is False:
+                    logger.info(f"auto-travel skipped for employee {user.id} on {today}: "
+                                f"{trip.get('message')}")
+            except Exception as e:
+                logger.exception(
+                    f"auto-travel failed for employee {user.id} on {today} "
+                    f"(report {report.id}): {e}")
                 try: db.rollback()
                 except Exception: pass
+        else:
+            logger.warning(f"auto-travel not attempted for employee {user.id} on {today}: "
+                           f"lat={latitude!r} lng={longitude!r}")
 
         return result
 

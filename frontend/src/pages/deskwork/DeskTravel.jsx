@@ -20,8 +20,32 @@ export default function DeskTravel() {
   const [fuelSaving, setFuelSaving] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [toast, setToast] = useState('')
+  // Recalculate-from-proofs range. Defaults to the last 14 days, which is the usual window
+  // for noticing that the numbers have stopped moving.
+  const iso = d => d.toISOString().slice(0, 10)
+  const [bfFrom, setBfFrom]   = useState(iso(new Date(Date.now() - 13 * 864e5)))
+  const [bfTo, setBfTo]       = useState(iso(new Date()))
+  const [bfBusy, setBfBusy]   = useState(false)
+  const [bfResult, setBfResult] = useState(null)
 
-  function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+  function showToast(msg, ms = 3000) { setToast(msg); setTimeout(() => setToast(''), ms) }
+
+  async function runBackfill() {
+    if (!confirm(`Recalculate travel from proofs for ${bfFrom} to ${bfTo}?\n\n` +
+                 `Pending trips are rebuilt from the geotagged proofs. Approved and rejected ` +
+                 `allowances are left exactly as they are.`)) return
+    setBfBusy(true); setBfResult(null)
+    try {
+      const r = await api.post('/api/travel/backfill', null,
+                               { params: { date_from: bfFrom, date_to: bfTo }, timeout: 300000 })
+      setBfResult(r.data)
+      showToast(`✅ ${r.data.created} trip(s) created, ${r.data.updated} updated`, 7000)
+      load()
+    } catch (e) {
+      showToast('❌ ' + (e.response?.data?.detail || 'Recalculation failed'), 8000)
+    }
+    setBfBusy(false)
+  }
 
   function load() {
     const params = {}
@@ -148,6 +172,44 @@ export default function DeskTravel() {
             background: hideTravel ? 'rgba(244,63,94,.15)' : 'var(--surface2)', color: hideTravel ? 'var(--red)' : 'var(--muted)',
             fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
           }}>{hideTravel ? '● Hidden — tap to show' : '○ Visible — tap to hide'}</button>
+        </div>
+
+        {/* Trips are normally created as a side effect of proof submission. That hook is
+            best-effort, and when it fails the allowance is simply never created — which is
+            how a week of trips went missing. This recomputes them from the proofs. */}
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>🔄 Recalculate travel from proofs</div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>
+            Rebuilds pending trips from the geotagged proofs for a date range. Approved and
+            rejected allowances are never touched, and running it twice changes nothing.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input type="date" value={bfFrom} onChange={e => setBfFrom(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
+                       background: 'var(--surface)', color: 'var(--text)', fontSize: 12 }} />
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>to</span>
+            <input type="date" value={bfTo} onChange={e => setBfTo(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
+                       background: 'var(--surface)', color: 'var(--text)', fontSize: 12 }} />
+            <button className="btn btn-primary btn-sm" disabled={bfBusy || !bfFrom || !bfTo}
+              onClick={runBackfill}>{bfBusy ? '⏳ Recalculating…' : '🔄 Recalculate'}</button>
+          </div>
+          {bfResult && (
+            <div style={{ fontSize: 11.5, marginTop: 8, lineHeight: 1.6,
+                          color: bfResult.failed?.length ? 'var(--yellow)' : 'var(--green)' }}>
+              Checked {bfResult.technician_days_examined} technician-day(s):{' '}
+              <b>{bfResult.created} created</b>, {bfResult.updated} updated,{' '}
+              {bfResult.skipped?.length || 0} skipped
+              {bfResult.failed?.length ? `, ${bfResult.failed.length} failed` : ''}.
+              {bfResult.failed?.length > 0 && (
+                <div style={{ color: 'var(--red)', marginTop: 4 }}>
+                  {bfResult.failed.slice(0, 3).map((f, i) => (
+                    <div key={i}>employee {f.employee_id} on {f.date}: {f.error}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
