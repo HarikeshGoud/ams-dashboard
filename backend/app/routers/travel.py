@@ -1,4 +1,4 @@
-import json, httpx
+import json, logging, httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -11,6 +11,8 @@ from ..models.mandal import Mandal
 from ..dependencies import get_current_user, require_admin_or_deskwork
 
 router = APIRouter(prefix="/api/travel", tags=["travel"])
+
+logger = logging.getLogger("ams")
 
 EXTRA_AMOUNT = 50  # fixed extra Rs added to every trip
 
@@ -132,6 +134,15 @@ def set_fuel_settings(data: FuelSettingsUpdate, db: Session = Depends(get_db), u
     new_rate = data.rate_per_km or 0.0
     new_fuel = data.fuel_price
     if row:
+        # hide_travel is a single global switch with no history, and while it is on EVERY
+        # technician's trip creation is silently skipped — no error, no trip, nothing to
+        # show it happened. That is how a week of allowances went missing. At minimum the
+        # change has to leave a trace of who flipped it and when.
+        if data.hide_travel is not None and bool(data.hide_travel) != bool(row.hide_travel):
+            logger.warning(
+                f"[travel] hide_travel {bool(row.hide_travel)} -> {bool(data.hide_travel)} "
+                f"by {user.name} (id {user.id}). While ON, NO travel trips are created for "
+                f"anyone — allowances stop accruing silently.")
         row.fuel_price = new_fuel
         row.rate_per_km = new_rate
         if data.hide_travel is not None:

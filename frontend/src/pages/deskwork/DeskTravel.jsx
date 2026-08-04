@@ -134,6 +134,22 @@ export default function DeskTravel() {
         <h3>🏍️ Travel Allowance</h3>
       </div>
 
+      {/* While Travel is hidden, nothing accrues for anyone and there is no other sign of
+          it — the totals just stop moving. This is the sign. */}
+      {hideTravel && (
+        <div style={{ background: 'rgba(244,63,94,.12)', border: '1.5px solid var(--red)',
+                      borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--red)', marginBottom: 4 }}>
+            ⛔ Travel is hidden — no allowance is being calculated for anyone
+          </div>
+          <div style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+            Proof submissions are not producing trips while this is on, and nothing else will
+            warn you: the totals simply stay flat. Switch it back on below, then use
+            <b> Recalculate travel from proofs</b> to recover the days that were missed.
+          </div>
+        </div>
+      )}
+
       {/* Travel rate settings */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 12, textTransform: 'uppercase' }}>💰 Travel Allowance Rate</div>
@@ -165,9 +181,21 @@ export default function DeskTravel() {
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700 }}>🚫 Hide Travel from all technicians</div>
-            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>When ON, no technician sees the Travel page or can submit trips.</div>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+              When ON, no technician sees the Travel page — and <b>no allowance is calculated
+              for anyone</b>, silently, until it's switched back off.
+            </div>
           </div>
-          <button onClick={() => toggleHideTravel(!hideTravel)} style={{
+          <button onClick={() => {
+            // Turning this ON stops every technician's allowance accruing with no error and
+            // nothing on screen to show it. A week of trips was lost to exactly this.
+            if (!hideTravel && !confirm(
+              'Hide Travel from all technicians?\n\n' +
+              'While this is ON, NO travel allowance is calculated for anyone — proof ' +
+              'submissions stop producing trips, silently. Nothing will indicate it except ' +
+              'the totals staying flat.\n\nTurn it on?')) return
+            toggleHideTravel(!hideTravel)
+          }} style={{
             padding: '6px 14px', borderRadius: 999, border: `1.5px solid ${hideTravel ? 'var(--red)' : 'var(--border)'}`,
             background: hideTravel ? 'rgba(244,63,94,.15)' : 'var(--surface2)', color: hideTravel ? 'var(--red)' : 'var(--muted)',
             fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
@@ -201,6 +229,17 @@ export default function DeskTravel() {
               <b>{bfResult.created} created</b>, {bfResult.updated} updated,{' '}
               {bfResult.skipped?.length || 0} skipped
               {bfResult.failed?.length ? `, ${bfResult.failed.length} failed` : ''}.
+              {/* The reasons matter more than the count — this is where a silent cause
+                  (travel switched off, only one GPS point) actually says so. */}
+              {bfResult.skipped?.length > 0 && (
+                <div style={{ color: 'var(--muted)', marginTop: 4 }}>
+                  {Object.entries(bfResult.skipped.reduce((acc, s) => {
+                    acc[s.reason] = (acc[s.reason] || 0) + 1; return acc
+                  }, {})).map(([reason, n]) => (
+                    <div key={reason}>· {n} × {reason}</div>
+                  ))}
+                </div>
+              )}
               {bfResult.failed?.length > 0 && (
                 <div style={{ color: 'var(--red)', marginTop: 4 }}>
                   {bfResult.failed.slice(0, 3).map((f, i) => (
