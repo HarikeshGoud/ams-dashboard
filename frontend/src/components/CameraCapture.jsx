@@ -83,20 +83,32 @@ export default function CameraCapture({ onCapture, onClose, gps, siteName, showG
         </div>
       ) : (
         <>
-          {/* In square mode the box is sized so BOTH sides land on the same value — using
-              width:100% with a maxHeight would let the height cap win on a tall phone and
-              quietly make the preview non-square, no longer matching the capture. */}
+          {/* Keeping this box square takes more than aspectRatio, and getting it wrong is not
+              cosmetic — the dashed frame is what the technician aims the stamp at, so if the
+              frame isn't the region capture() keeps, the stamp gets cropped out of the proof.
+
+              The trap: this div is a flex item in a column container, where min-height defaults
+              to `auto` — the content's own minimum. An in-flow <video> with height:100% made its
+              intrinsic 9:16 shape the box's minimum height, which overrode aspectRatio and gave
+              a 345x613 preview on a phone. Measured, not guessed: 613/345 is exactly 16/9.
+
+              Two independent guards, each verified sufficient on its own:
+                - the video is taken out of flow, so it cannot contribute a content minimum at
+                  all, whatever layout mode any ancestor uses;
+                - minHeight:0 / flexShrink:0 stop the flex container stretching or squeezing it. */}
           <div style={{
             position: 'relative',
             display: ready ? 'block' : 'none',
             ...(square
-              ? { width: 'min(92vw, 70vh, 640px)', aspectRatio: '1 / 1' }
+              ? { width: 'min(92vw, 70vh, 640px)', aspectRatio: '1 / 1', minHeight: 0, flexShrink: 0 }
               : { width: '100%', maxWidth: 640, maxHeight: '70vh' }),
           }}>
+            {/* Absolute only in square mode: in the normal mode the video IS what gives the
+                box its height, so taking it out of flow would collapse the preview to nothing. */}
             <video ref={videoRef} playsInline muted style={{
               width: '100%', height: '100%', objectFit: 'cover',
               borderRadius: 8, display: 'block',
-              ...(square ? {} : { maxHeight: '70vh' }),
+              ...(square ? { position: 'absolute', inset: 0 } : { maxHeight: '70vh' }),
             }} />
             {square && (
               <div style={{
