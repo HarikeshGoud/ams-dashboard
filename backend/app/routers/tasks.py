@@ -20,8 +20,10 @@ def _with_relations(q):
         joinedload(Task.assigned_to),
     )
 
-DAILY_DEFAULT = 5
-DAILY_MAX     = 7
+DAILY_DEFAULT = 5  # how many tasks "Generate Daily Tasks" fills per (non-posted) technician
+DAILY_MAX     = 7  # display/suggestion-chip cap only — no longer a hard block on manual assignment
+ATTENDANCE_FULL_DAY_TASKS = 5  # same value today, but kept separate on purpose — changing the
+                               # generation target above shouldn't silently change pay calculations
 
 
 WEEKLY_GAP_DAYS = 7
@@ -127,7 +129,7 @@ def _attendance_target(db, emp, due_count: int) -> int:
     if getattr(emp, "dedicated_school_id", None):
         share = -(-due_count // _posted_technician_count(db, emp.dedicated_school_id))  # ceil
         return max(1, share)
-    return DAILY_DEFAULT
+    return ATTENDANCE_FULL_DAY_TASKS
 
 class TaskCreate(BaseModel):
     title: str
@@ -208,12 +210,13 @@ def daily_task_count(employee_id: int, task_date: str = None, db: Session = Depe
     """Return today's task count for an employee (used for cap validation UI)."""
     d = date.fromisoformat(task_date) if task_date else today_ist()
     count = _count_today_tasks(db, employee_id, d)
-    # A posted technician has no cap — their own campus pool can exceed DAILY_MAX on its
-    # own, and reporting can_add=false would grey out the Assign button for them all day.
+    # No cap on manual assignment for anyone, posted or not — "Generate Daily Tasks"
+    # filling DAILY_DEFAULT per technician is the only limit; deskwork/admin can always
+    # hand-assign more on top of it, so can_add is never false here.
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     posted = bool(emp and emp.dedicated_school_id)
     return {"count": count, "default_limit": DAILY_DEFAULT, "max_limit": DAILY_MAX,
-            "can_add": True if posted else count < DAILY_MAX, "posted": posted}
+            "can_add": True, "posted": posted}
 
 def _technician_rotation_schools(db, employee_id: int, exclude_school_ids: set = None):
     """The auto-generation queue for one technician. AUTO-ASSIGNMENT ONLY.
@@ -515,22 +518,16 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
     if not school:
         raise HTTPException(404, "That school/site was not found.")
 
-    # ── Daily cap enforcement ──────────────────────────────────────────────────
-    # The cap protects a rotating technician from being over-loaded. It makes no sense for
-    # someone posted to a campus: YADADRI TEMPLE alone is 22 stops, so a 7-task ceiling
-    # would block their own generated pool, never mind anything added by hand.
+    # No cap on manual assignment — deskwork/admin can hand-assign as many tasks as a day
+    # needs. "Generate Daily Tasks" filling DAILY_DEFAULT (or a posted technician's whole
+    # campus pool) is the only limit; anything past that is an explicit human decision.
     assignee = db.query(Employee).filter(Employee.id == data.assigned_to_id).first()
     posted = bool(assignee and assignee.dedicated_school_id)
 
     current_count = _count_today_tasks(db, data.assigned_to_id, task_date)
-    if not posted and current_count >= DAILY_MAX:
-        raise HTTPException(400,
-            f"Daily limit reached: {DAILY_MAX} tasks max for {task_date}. "
-            f"Cannot assign more tasks to this employee.")
-
     warnings = []
     if not posted and current_count >= DAILY_DEFAULT:
-        warnings.append(f"Task {current_count + 1}/{DAILY_MAX} — over the default limit of {DAILY_DEFAULT}.")
+        warnings.append(f"Task {current_count + 1} — over the usual {DAILY_DEFAULT} for the day.")
 
     # ── Rotation deliberately does NOT gate manual assignment ─────────────────
     # Rotation is a rule for AUTO-GENERATED daily tasks only — see
@@ -637,7 +634,7 @@ def auto_attendance(task_date: str = None, db: Session = Depends(get_db), user=D
 
         # Posted technicians share one campus pool, so a fixed 5-a-day bar doesn't fit: a
         # 22-stop temple split two ways is 11 each, not 5. Score them against their share.
-        full_day_at = DAILY_DEFAULT
+        full_day_at = ATTENDANCE_FULL_DAY_TASKS
         if emp.dedicated_school_id:
             full_day_at = _attendance_target(db, emp, len(_dedicated_pool(db, emp, d)))
 

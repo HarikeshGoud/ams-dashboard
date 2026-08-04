@@ -455,11 +455,8 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
     if (!form.school_id) { setError('Select the school / site for this task — pick it from the list below.'); return }
     if (usingSubLocs && selectedSubLocs.length === 0) { setError('Select at least one sub-location — a task can\'t be assigned to the hospital/temple row itself once it has sub-locations.'); return }
     if (!usingSubLocs && !form.title.trim()) { setError('Enter a task title'); return }
-    const taskCount = usingSubLocs ? selectedSubLocs.length : 1
-    if (dailyCount && dailyCount.count + taskCount > dailyCount.max_limit) {
-      setError(`Daily max (${dailyCount.max_limit} tasks) would be exceeded for this employee on ${form.due_date} — currently ${dailyCount.count}, adding ${taskCount}.`)
-      return
-    }
+    // No cap on manual assignment — deskwork can add as many as the day needs, whatever
+    // the count already is. A soft over-default note may still come back from the server.
     setLoading(true); setError('')
     try {
       // The server can accept a task and still return a note worth reading (over the
@@ -524,17 +521,14 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
           </div>
         </div>
 
-        {/* Daily cap indicator */}
+        {/* Daily count — informational only, no cap on manual assignment */}
         {dailyCount && (
           <div style={{
             padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 12,
-            background: !dailyCount.can_add ? 'rgba(248,113,113,.1)' : dailyCount.count >= 5 ? 'rgba(251,191,36,.1)' : 'rgba(52,211,153,.1)',
-            border: `1px solid ${!dailyCount.can_add ? 'var(--red)' : dailyCount.count >= 5 ? 'var(--yellow)' : 'var(--green)'}`,
-            color: !dailyCount.can_add ? 'var(--red)' : dailyCount.count >= 5 ? 'var(--yellow)' : 'var(--green)'
+            background: 'rgba(52,211,153,.1)', border: '1px solid var(--green)', color: 'var(--green)'
           }}>
-            {!dailyCount.can_add
-              ? `🚫 Daily max reached (${dailyCount.count}/7 tasks)`
-              : `📋 ${dailyCount.count}/${dailyCount.max_limit} tasks assigned${dailyCount.count >= 5 ? ' — over default (5)' : ''}`}
+            📋 {dailyCount.count} task{dailyCount.count === 1 ? '' : 's'} assigned today
+            {!dailyCount.posted && dailyCount.count >= dailyCount.default_limit ? ` — beyond the usual ${dailyCount.default_limit}, that's fine` : ''}
           </div>
         )}
 
@@ -650,7 +644,7 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
 
         {error && <div className="alert alert-red" style={{ marginBottom: 12 }}><span>⚠️</span><div>{error}</div></div>}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit} disabled={loading || (dailyCount && !dailyCount.can_add)}>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit} disabled={loading}>
             {loading ? '⏳ Assigning…' : selectedSubLocs.length > 1 ? `✅ Assign ${selectedSubLocs.length} Tasks` : '✅ Assign Task'}
           </button>
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
