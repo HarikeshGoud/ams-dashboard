@@ -132,7 +132,9 @@ def _attendance_target(db, emp, due_count: int) -> int:
     return ATTENDANCE_FULL_DAY_TASKS
 
 class TaskCreate(BaseModel):
-    title: str
+    # Optional: left blank, create_task titles the task after the site. The site is mandatory
+    # there, so there is always a name to fall back on.
+    title: Optional[str] = None
     description: Optional[str] = None
     assigned_to_id: int
     school_id: Optional[int] = None
@@ -560,7 +562,12 @@ def create_task(data: TaskCreate, db: Session = Depends(get_db), user=Depends(ge
 
     warning = " ".join(warnings) if warnings else None
 
-    t = Task(title=data.title, description=data.description,
+    # A blank title becomes the site's name. Done here rather than only in the form so every
+    # caller gets it, and so a whitespace-only title can't be stored either — a task called
+    # " " is worse than an untitled one, because nothing downstream flags it.
+    title = (data.title or "").strip() or school.name
+
+    t = Task(title=title, description=data.description,
              assigned_to_id=data.assigned_to_id, assigned_by_id=user.id,
              school_id=data.school_id, priority=data.priority,
              due_date=task_date)

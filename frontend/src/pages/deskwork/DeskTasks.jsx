@@ -520,6 +520,9 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
   const [subLocations, setSubLocations] = useState([])
   const [selectedSubLocs, setSelectedSubLocs] = useState([])
 
+  // Name of the picked site, used to show what a blank title will become.
+  const selectedSchoolName = schools.find(s => String(s.id) === String(form.school_id))?.name || ''
+
   useEffect(() => {
     api.get('/api/schools/', { params: { limit: 2000 } }).then(r => setSchools(r.data?.items || []))
   }, [])
@@ -551,7 +554,8 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
     // service-report PDF would show no site/customer details).
     if (!form.school_id) { setError('Select the school / site for this task — pick it from the list below.'); return }
     if (usingSubLocs && selectedSubLocs.length === 0) { setError('Select at least one sub-location — a task can\'t be assigned to the hospital/temple row itself once it has sub-locations.'); return }
-    if (!usingSubLocs && !form.title.trim()) { setError('Enter a task title'); return }
+    // No title check: blank is allowed and the server names the task after the site. The
+    // site is already mandatory above, so there is always a name to fall back on.
     // No cap on manual assignment — deskwork can add as many as the day needs, whatever
     // the count already is. A soft over-default note may still come back from the server.
     setLoading(true); setError('')
@@ -686,8 +690,13 @@ function AssignTaskModal({ employees, onClose, onSaved, defaultDate }) {
 
         {subLocations.length === 0 && (
           <div className="form-group" style={{ marginBottom: 10 }}>
-            <label>Task Title *</label>
-            <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Visit Nalgonda PS, Repair pump…" />
+            <label>Task Title <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            {/* Shows the exact title that will be saved if this is left blank, so it isn't a
+                surprise after the fact. */}
+            <input value={form.title} onChange={e => set('title', e.target.value)}
+              placeholder={selectedSchoolName
+                ? `Leave blank to use “${selectedSchoolName}”`
+                : 'Leave blank to use the site name'} />
           </div>
         )}
 

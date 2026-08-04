@@ -94,7 +94,9 @@ export default function Tasks() {
     if (usingSubLocs && selectedSubLocs.length === 0) {
       showToast('❌ Select at least one sub-location'); return
     }
-    if (!usingSubLocs && !form.title.trim()) { showToast('❌ Enter a task title'); return }
+    // No title check: blank is allowed and the server names the task after the site, which is
+    // already mandatory above. Picking a site also pre-fills the box, so blank here means the
+    // title was deliberately cleared.
     try {
       // A task can be accepted and still come back with a note — over the default daily
       // count, or a same-day duplicate for that site. Surface it instead of overwriting
@@ -398,8 +400,14 @@ export default function Tasks() {
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>+ Create Task</h3>
             <form onSubmit={save}>
               <div className="form-grid">
+                {/* `required` removed with the submit-time check: clearing the box is now a
+                    valid way to say "just call it after the site". */}
                 {subLocations.length === 0 && (
-                  <div className="form-group form-full"><label>Title *</label><input required value={form.title} onChange={f('title')} /></div>
+                  <div className="form-group form-full">
+                    <label>Title <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+                    <input value={form.title} onChange={f('title')}
+                      placeholder="Leave blank to use the site name" />
+                  </div>
                 )}
                 <div className="form-group form-full"><label>Description</label><textarea value={form.description} onChange={f('description')} /></div>
                 <div className="form-group"><label>Assign To *</label>
