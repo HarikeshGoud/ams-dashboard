@@ -460,6 +460,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         <CameraCapture
           gps={gps}
           siteName={task?.school_name}
+          // The stamp photo is a close-up of one sheet of paper, so a 1:1 frame is what's
+          // wanted — a full phone frame spends most of the image on floor and ceiling.
+          square={activeCamera === 'stamp'}
           onCapture={(file, url) => handleCaptured(activeCamera, file, url)}
           onClose={() => setActiveCamera(null)}
         />
@@ -1044,10 +1047,15 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                       service report as the school stamp once your proof is verified.
                     </div>
 
+                    {/* Square, matching how it was captured. The old maxHeight+contain box
+                        letterboxed it into a tall frame, which made a square photo look
+                        wrong and a tall one look correct. */}
                     {stampPreview && (
-                      <img src={stampPreview} alt="School stamp"
-                        style={{ width: '100%', maxHeight: 200, objectFit: 'contain',
-                                 borderRadius: 8, border: '1px solid var(--border)', marginBottom: 10 }} />
+                      <div style={{ width: 'min(100%, 260px)', aspectRatio: '1 / 1', margin: '0 auto 10px',
+                                    borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                        <img src={stampPreview} alt="School stamp"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      </div>
                     )}
 
                     <button onClick={() => setActiveCamera('stamp')} style={{

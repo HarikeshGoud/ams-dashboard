@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 
-export default function CameraCapture({ onCapture, onClose, gps, siteName, showGps = true }) {
+// square: frame and capture a 1:1 image. The preview box is square and the video is
+// object-fit: cover inside it, which centre-crops exactly the region capture() takes — so
+// what the technician frames is what gets saved. Used for the school stamp photo, where a
+// tall phone frame wasted most of the image on ceiling and floor.
+export default function CameraCapture({ onCapture, onClose, gps, siteName, showGps = true,
+                                        square = false }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
@@ -21,11 +26,23 @@ export default function CameraCapture({ onCapture, onClose, gps, siteName, showG
   function capture() {
     const video = videoRef.current, canvas = canvasRef.current
     const MAX_W = 1280
-    const scale = video.videoWidth > MAX_W ? MAX_W / video.videoWidth : 1
-    canvas.width = Math.round(video.videoWidth * scale)
-    canvas.height = Math.round(video.videoHeight * scale)
+    const vw = video.videoWidth, vh = video.videoHeight
+
+    // Source rectangle taken from the video frame. In square mode that's the largest
+    // centred square, which is exactly what object-fit: cover shows in a square preview box.
+    let sx = 0, sy = 0, sw = vw, sh = vh
+    if (square) {
+      const side = Math.min(vw, vh)
+      sx = Math.round((vw - side) / 2)
+      sy = Math.round((vh - side) / 2)
+      sw = sh = side
+    }
+
+    const scale = sw > MAX_W ? MAX_W / sw : 1
+    canvas.width  = Math.round(sw * scale)
+    canvas.height = Math.round(sh * scale)
     const ctx = canvas.getContext('2d')
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
 
     const now = new Date(), W = canvas.width, H = canvas.height
     const siteLabel = siteName && siteName.length > 45 ? siteName.slice(0, 44) + '…' : siteName
@@ -66,14 +83,40 @@ export default function CameraCapture({ onCapture, onClose, gps, siteName, showG
         </div>
       ) : (
         <>
-          <video ref={videoRef} playsInline muted style={{ width: '100%', maxWidth: 640, maxHeight: '70vh', objectFit: 'cover', borderRadius: 8, display: ready ? 'block' : 'none' }} />
+          {/* In square mode the box is sized so BOTH sides land on the same value — using
+              width:100% with a maxHeight would let the height cap win on a tall phone and
+              quietly make the preview non-square, no longer matching the capture. */}
+          <div style={{
+            position: 'relative',
+            display: ready ? 'block' : 'none',
+            ...(square
+              ? { width: 'min(92vw, 70vh, 640px)', aspectRatio: '1 / 1' }
+              : { width: '100%', maxWidth: 640, maxHeight: '70vh' }),
+          }}>
+            <video ref={videoRef} playsInline muted style={{
+              width: '100%', height: '100%', objectFit: 'cover',
+              borderRadius: 8, display: 'block',
+              ...(square ? {} : { maxHeight: '70vh' }),
+            }} />
+            {square && (
+              <div style={{
+                position: 'absolute', inset: 0, borderRadius: 8, pointerEvents: 'none',
+                border: '2px dashed rgba(255,255,255,.75)',
+                boxShadow: 'inset 0 0 0 9999px rgba(0,0,0,0)',
+              }} />
+            )}
+          </div>
           {!ready && <div style={{ color: '#94a3b8', fontSize: 14, marginBottom: 20 }}>Starting camera…</div>}
           <canvas ref={canvasRef} style={{ display: 'none' }} />
           <div style={{ display: 'flex', gap: 16, marginTop: 20 }}>
             <button onClick={capture} disabled={!ready} style={{ width: 70, height: 70, borderRadius: '50%', background: ready ? '#fff' : '#475569', border: '4px solid #94a3b8', cursor: ready ? 'pointer' : 'not-allowed', fontSize: 28 }}>📸</button>
             <button className="btn btn-outline" onClick={onClose} style={{ alignSelf: 'center' }}>Cancel</button>
           </div>
-          <div style={{ color: '#64748b', fontSize: 11, marginTop: 12 }}>Tap 📸 to capture — live camera only</div>
+          <div style={{ color: '#64748b', fontSize: 11, marginTop: 12, textAlign: 'center' }}>
+            {square
+              ? 'Square photo — fit the stamp, signature and date inside the dashed frame'
+              : 'Tap 📸 to capture — live camera only'}
+          </div>
         </>
       )}
     </div>
