@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { attachBasemaps, ZOOM } from '../utils/basemaps'
+import { lookupPlace } from '../utils/placeName'
 import api from '../api/axios'
 
 const POLL_MS = 15000
@@ -42,6 +43,14 @@ export default function LiveTracking() {
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [error, setError] = useState('')
+  // employee_id -> "Dharmojiguda, Jothinagar, Choutuppal mandal". The basemap can't name
+  // these hamlets — almost nothing there is mapped — so the coordinate is turned into a
+  // place name instead, which is the part a dispatcher actually needs.
+  const [places, setPlaces] = useState({})
+  // syncMarkers is called from a setInterval created with empty deps, so it closes over the
+  // FIRST render's `places` — reading the state directly there would always see {} and the
+  // popup would never show a place name. The ref is what it reads instead.
+  const placesRef = useRef({})
 
   useEffect(() => {
     if (mapInstanceRef.current) return
@@ -59,8 +68,25 @@ export default function LiveTracking() {
         setError('')
         setLoading(false)
         syncMarkers(res.data || [])
+        resolvePlaces(res.data || [])
       })
       .catch(() => { setError('Could not load live locations.'); setLoading(false) })
+  }
+
+  // Fire and forget — lookupPlace queues, spaces and caches these, so the 15s refresh
+  // doesn't turn into a stream of geocoding requests. Anyone who hasn't moved more than
+  // ~11m is served straight from cache and costs nothing.
+  function resolvePlaces(data) {
+    data.filter(e => e.latitude != null && e.longitude != null).forEach(e => {
+      lookupPlace(e.latitude, e.longitude).then(name => {
+        if (!name || placesRef.current[e.employee_id] === name) return
+        placesRef.current = { ...placesRef.current, [e.employee_id]: name }
+        setPlaces(placesRef.current)
+        // Refresh the open/next popup so it picks the name up without waiting for a poll.
+        const m = markersRef.current[e.employee_id]
+        if (m) m.setPopupContent(popupFor(e, name))
+      })
+    })
   }
 
   useEffect(() => {
@@ -68,6 +94,17 @@ export default function LiveTracking() {
     const id = setInterval(load, POLL_MS)
     return () => clearInterval(id)
   }, [])
+
+  function popupFor(e, place) {
+    return `
+      <div style="font-size:13px;min-width:160px">
+        <div style="font-weight:700;margin-bottom:2px">${e.name}</div>
+        <div style="color:#64748b;font-size:11px;margin-bottom:4px">${e.employee_code || ''} ${e.designation ? '· ' + e.designation : ''}</div>
+        ${place ? `<div style="font-size:11.5px;margin-bottom:4px">📍 ${place}</div>` : ''}
+        <div style="font-size:11px">Last seen: <b>${agoLabel(e.seconds_ago)}</b></div>
+        ${e.accuracy ? `<div style="font-size:11px;color:#64748b">Accuracy: ±${Math.round(e.accuracy)}m</div>` : ''}
+      </div>`
+  }
 
   function syncMarkers(data) {
     const map = mapInstanceRef.current
@@ -78,13 +115,7 @@ export default function LiveTracking() {
     withLoc.forEach(e => {
       seenIds.add(e.employee_id)
       const { color } = statusOf(e)
-      const popupHtml = `
-        <div style="font-size:13px;min-width:160px">
-          <div style="font-weight:700;margin-bottom:2px">${e.name}</div>
-          <div style="color:#64748b;font-size:11px;margin-bottom:4px">${e.employee_code || ''} ${e.designation ? '· ' + e.designation : ''}</div>
-          <div style="font-size:11px">Last seen: <b>${agoLabel(e.seconds_ago)}</b></div>
-          ${e.accuracy ? `<div style="font-size:11px;color:#64748b">Accuracy: ±${Math.round(e.accuracy)}m</div>` : ''}
-        </div>`
+      const popupHtml = popupFor(e, placesRef.current[e.employee_id])
 
       let marker = markersRef.current[e.employee_id]
       if (marker) {
@@ -160,7 +191,7 @@ export default function LiveTracking() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Technician</th><th>Status</th><th>Last Seen</th><th>Action</th></tr>
+                <tr><th>Technician</th><th>Where</th><th>Status</th><th>Last Seen</th><th>Action</th></tr>
               </thead>
               <tbody>
                 {entries
@@ -173,6 +204,14 @@ export default function LiveTracking() {
                         <td style={{ fontWeight: 600 }}>
                           {e.name}
                           <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>{e.employee_code}{e.designation ? ` · ${e.designation}` : ''}</div>
+                        </td>
+                        {/* The place name, since the basemap can't label these hamlets. */}
+                        <td style={{ fontSize: 12 }}>
+                          {e.latitude == null
+                            ? <span style={{ color: 'var(--muted)' }}>—</span>
+                            : places[e.employee_id]
+                              ? <span>📍 {places[e.employee_id]}</span>
+                              : <span style={{ color: 'var(--muted)' }}>locating…</span>}
                         </td>
                         <td>
                           <span style={{ fontSize: 11, fontWeight: 700, color: s.color }}>{s.label}</span>

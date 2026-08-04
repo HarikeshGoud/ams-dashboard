@@ -39,25 +39,33 @@ function buildLayers() {
 
   // Esri's own imagery, not OSM-derived — this is what actually reveals buildings that
   // nobody has mapped yet, which is most of them outside the towns.
+  //
+  // maxNativeZoom matters: Esri has no z19 imagery over these villages. Every z19 tile
+  // there comes back as an identical 2,521-byte "Map data not yet available" placeholder,
+  // which is what turned the whole map grey. Capping the REQUEST at 18 and letting Leaflet
+  // upscale keeps it usable past that instead.
   const imagery = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution: ESRI_ATTR, maxZoom: 19 })
+    { attribution: ESRI_ATTR, maxZoom: 19, maxNativeZoom: 18 })
 
-  // Roads and place names on a transparent background, so imagery stays readable underneath.
-  const refRoads = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
-    { attribution: ESRI_ATTR, maxZoom: 19 })
-  const refPlaces = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    { attribution: ESRI_ATTR, maxZoom: 19 })
+  // A previous version offered "Satellite + labels" using Esri's Reference/World_Transportation
+  // and World_Boundaries_and_Places overlays. Both return 872-byte near-empty tiles over these
+  // villages, so it promised labels and delivered none. Removed rather than left misleading.
+  //
+  // This is the honest replacement: real imagery with the OSM street layer faded over it. OSM
+  // is the only free source that carries village and landmark names here, and its tiles have
+  // opaque land fill, so it has to be transparent enough to see the ground through.
+  const streetsFaded = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: OSM_ATTR, maxZoom: 19, opacity: 0.45,
+  })
 
   const layers = {
-    'Satellite + labels': L.layerGroup([imagery, refRoads, refPlaces]),
     'Satellite': imagery,
+    'Satellite + street names': L.layerGroup([imagery, streetsFaded]),
     'Streets': streets,
     'Streets (Esri)': L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-      { attribution: ESRI_ATTR, maxZoom: 19 }),
+      { attribution: ESRI_ATTR, maxZoom: 19, maxNativeZoom: 18 }),
   }
 
   if (MAPBOX_TOKEN) {
@@ -75,7 +83,7 @@ function buildLayers() {
  * @param {L.Map} map
  * @param {string} fallback  layer name to use when nothing has been chosen yet
  */
-export function attachBasemaps(map, fallback = 'Satellite + labels') {
+export function attachBasemaps(map, fallback = 'Satellite + street names') {
   const layers = buildLayers()
   let chosen = null
   try { chosen = localStorage.getItem(STORE_KEY) } catch { /* private mode */ }

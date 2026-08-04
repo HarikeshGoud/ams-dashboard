@@ -26,7 +26,7 @@ export default function MapPicker({ onConfirm, onClose, initialLabel = '' }) {
     const map = L.map(mapRef.current, { center: [17.385, 78.486], zoom: 12, maxZoom: 19 })
     // Satellite by default here: you're pinning a plant on a specific rooftop, and imagery
     // shows the building whether or not anyone has traced it into OpenStreetMap.
-    attachBasemaps(map, 'Satellite + labels')
+    attachBasemaps(map, 'Satellite + street names')
 
     map.on('click', async (e) => {
       const { lat, lng } = e.latlng
