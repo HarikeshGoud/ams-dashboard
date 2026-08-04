@@ -11,6 +11,8 @@ export default function MyTasks() {
   const [rotation, setRotation] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('today')
+  // Which date the first tab lists. Today by default.
+  const [taskDate, setTaskDate] = useState(todayIST())
   const [selectedTask, setSelectedTask] = useState(null)
   const [toast, setToast] = useState('')
 
@@ -39,21 +41,28 @@ export default function MyTasks() {
       .filter(Boolean)
   )
 
+  // todayTasks stays pinned to the REAL today — the progress card below is explicitly
+  // "Today's Progress" and its 5 dots must not move when a different date is picked.
   const todayTasks  = tasks.filter(t => t.due_date === todayIso)
-  const active      = tasks.filter(t => !['completed','submitted'].includes(t.status) && t.due_date !== todayIso)
+  // What the date tab lists. Defaults to today, hence taskDate's initial value.
+  const dateTasks   = tasks.filter(t => t.due_date === taskDate)
+  // Every task still to do. This used to exclude today's, which meant no tab anywhere showed
+  // all outstanding work at once.
+  const incomplete  = tasks.filter(t => !['completed','submitted'].includes(t.status))
   const completed   = tasks.filter(t => t.status === 'completed')
   const underReview = tasks.filter(t => t.status === 'submitted')
   const rejected    = tasks.filter(t => rejectedTaskIds.has(t.id))
 
   const TABS = [
-    { key: 'today',     label: "📅 Today's Visits",  count: todayTasks.length },
+    { key: 'today',     label: taskDate === todayIso ? "📅 Today's Visits" : `📅 ${taskDate}`,
+      count: dateTasks.length },
     { key: 'review',    label: '🔍 Under Review',     count: underReview.length },
-    { key: 'active',    label: '⏳ Other Active',     count: active.length },
+    { key: 'active',    label: '⏳ All Incomplete',   count: incomplete.length },
     { key: 'rejected',  label: '❌ Rejected',          count: rejected.length },
     { key: 'completed', label: '✅ Verified',          count: completed.length },
   ]
 
-  const displayed = tab === 'today' ? todayTasks : tab === 'review' ? underReview : tab === 'active' ? active : tab === 'rejected' ? rejected : completed
+  const displayed = tab === 'today' ? dateTasks : tab === 'review' ? underReview : tab === 'active' ? incomplete : tab === 'rejected' ? rejected : completed
 
   // Today: submitted + completed both count as "done" for progress dots
   const todayDone  = todayTasks.filter(t => ['completed','submitted'].includes(t.status)).length
@@ -136,6 +145,26 @@ export default function MyTasks() {
         ))}
       </div>
 
+      {/* Date picker for the first tab only — the other four are status piles, where a date
+          would just be another way to end up with an empty screen. */}
+      {tab === 'today' && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          <input type="date" value={taskDate} onChange={e => setTaskDate(e.target.value || todayIso)}
+            style={{ padding: '6px 9px', borderRadius: 8, border: '1px solid var(--border)',
+                     background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5 }} />
+          {taskDate !== todayIso && (
+            <button onClick={() => setTaskDate(todayIso)} style={{
+              padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--muted)',
+            }}>Today</button>
+          )}
+          <button onClick={() => setTab('active')} style={{
+            padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--muted)',
+          }}>All incomplete ({incomplete.length})</button>
+        </div>
+      )}
+
       {tab === 'rejected' && rejected.length > 0 && (
         <div className="alert alert-red" style={{ marginBottom: 12 }}>
           <span>⚠️</span>
@@ -145,8 +174,15 @@ export default function MyTasks() {
 
       {loading ? <div className="spinner" /> : displayed.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
-          {tab === 'today' ? '⏳ No tasks assigned for today yet. Check back soon.' :
-           tab === 'active' ? '🎉 No other active tasks.' :
+          {/* Same care as the dashboard: an empty date with a backlog still open is not
+              "nothing to do", so it points at All Incomplete instead of implying you're free. */}
+          {tab === 'today'
+             ? (incomplete.length > 0
+                 ? `📋 Nothing due ${taskDate === todayIso ? 'today' : `on ${taskDate}`} — but ${incomplete.length} task${incomplete.length > 1 ? 's' : ''} still open under All Incomplete.`
+                 : taskDate === todayIso
+                   ? '⏳ No tasks assigned for today yet. Check back soon.'
+                   : `📅 Nothing assigned for ${taskDate}.`) :
+           tab === 'active' ? '🎉 Nothing left to do — everything is submitted or verified.' :
            tab === 'rejected' ? '✅ No rejected tasks.' : '📋 No completed tasks yet.'}
         </div>
       ) : (

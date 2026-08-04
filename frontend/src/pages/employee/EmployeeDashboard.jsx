@@ -11,6 +11,10 @@ export default function EmployeeDashboard() {
   const [submittedToday, setSubmittedToday] = useState([])
   const [todayAttendance, setTodayAttendance] = useState(null)
   const [toast, setToast] = useState('')
+  // The list used to show every pending task at once — 107 for one technician, 102 of them
+  // overdue — which made the five that are actually due today impossible to pick out.
+  // Holds an ISO date, or the string 'all' for every incomplete task.
+  const [taskFilter, setTaskFilter] = useState(todayIST())
 
   const { user } = useAuthStore()
   const myId = user?.id
@@ -56,6 +60,14 @@ export default function EmployeeDashboard() {
   // accepted = verified by school/admin; submitted = proof uploaded but not yet verified
   const acceptedTaskIds = new Set(submittedToday.filter(r => r.verification_status === 'verified').map(r => r.task_id))
   const submittedTaskIds = new Set(submittedToday.map(r => r.task_id))
+
+  const showingAll = taskFilter === 'all'
+  const visibleTasks = showingAll ? activeTasks : activeTasks.filter(t => t.due_date === taskFilter)
+  // Overdue work the current filter is hiding. Narrowing to today is the point, but silently
+  // burying 102 overdue visits would be worse than the long list was — so it says so and
+  // offers the way to them.
+  const hiddenOverdue = showingAll ? 0
+    : activeTasks.filter(t => t.due_date && t.due_date < todayIso && t.due_date !== taskFilter).length
 
   if (loading) return <div className="spinner" />
 
@@ -114,19 +126,70 @@ export default function EmployeeDashboard() {
       ) : null}
 
       {/* Task list */}
-      <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-        My Tasks
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          My Tasks
+          <span style={{ marginLeft: 8, textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>
+            {showingAll ? `— all ${visibleTasks.length} incomplete`
+                        : taskFilter === todayIso ? `— today (${visibleTasks.length})`
+                        : `— ${taskFilter} (${visibleTasks.length})`}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="date" value={showingAll ? '' : taskFilter}
+            onChange={e => setTaskFilter(e.target.value || todayIso)}
+            style={{ padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border)',
+                     background: 'var(--surface)', color: 'var(--text)', fontSize: 12 }} />
+          {!showingAll && taskFilter !== todayIso && (
+            <button onClick={() => setTaskFilter(todayIso)} style={{
+              padding: '5px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--muted)',
+            }}>Today</button>
+          )}
+          <button onClick={() => setTaskFilter(showingAll ? todayIso : 'all')} style={{
+            padding: '5px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            border: `1px solid ${showingAll ? 'var(--accent)' : 'var(--border)'}`,
+            background: showingAll ? 'rgba(34,211,238,.15)' : 'var(--surface2)',
+            color: showingAll ? 'var(--accent)' : 'var(--muted)',
+          }}>{showingAll ? '📅 Back to today' : `All incomplete (${activeTasks.length})`}</button>
+        </div>
       </div>
 
-      {activeTasks.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>All tasks done for today!</div>
-          <div style={{ color: 'var(--muted)', fontSize: 13 }}>Check back tomorrow for new assignments.</div>
+      {/* Overdue work the filter is hiding — reachable in one tap, never silently buried. */}
+      {hiddenOverdue > 0 && (
+        <div onClick={() => setTaskFilter('all')} style={{
+          background: 'rgba(248,113,113,.1)', border: '1px solid var(--red)', borderRadius: 10,
+          padding: '8px 12px', marginBottom: 10, fontSize: 12.5, color: 'var(--red)',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span>⚠️</span>
+          <span>{hiddenOverdue} overdue task{hiddenOverdue > 1 ? 's' : ''} from earlier dates
+            — <b style={{ textDecoration: 'underline' }}>tap to show all incomplete</b></span>
         </div>
       )}
 
-      {activeTasks.map(task => {
+      {visibleTasks.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+          {/* Don't celebrate over a backlog. An empty list for today with overdue work still
+              outstanding is not "all done" — several technicians are in exactly that state. */}
+          <div style={{ fontSize: 40, marginBottom: 12 }}>{hiddenOverdue > 0 ? '📋' : '🎉'}</div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+            {showingAll ? 'No incomplete tasks left!'
+              : hiddenOverdue > 0 ? `Nothing new due ${taskFilter === todayIso ? 'today' : `on ${taskFilter}`}.`
+              : taskFilter === todayIso ? 'All tasks done for today!'
+              : `Nothing due on ${taskFilter}.`}
+          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 13 }}>
+            {showingAll ? 'Everything assigned to you is submitted or verified.'
+              : hiddenOverdue > 0 ? 'Your remaining work is overdue from earlier dates — see above.'
+              : taskFilter === todayIso ? 'Check back tomorrow for new assignments.'
+              : 'Pick another date, or see everything still open.'}
+          </div>
+        </div>
+      )}
+
+      {visibleTasks.map(task => {
         const accepted  = acceptedTaskIds.has(task.id)
         const submitted = !accepted && submittedTaskIds.has(task.id)
         const overdue   = !accepted && task.due_date && task.due_date < todayIST()
