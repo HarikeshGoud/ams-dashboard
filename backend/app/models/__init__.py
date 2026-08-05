@@ -11,6 +11,7 @@ from .salary import SalaryRecord
 from .attendance import Attendance
 from .task import Task
 from .travel import TravelTrip, FuelSettings
+from .day_start import DayStart
 from .field_report import FieldReport, WorkProof
 from .notification import Notification
 from .allowance import AllowanceRequest

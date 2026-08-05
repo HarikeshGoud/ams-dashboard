@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import ProofUploadModal from './ProofUploadModal'
+import DayStartCard from './DayStartCard'
 import { useAuthStore } from '../../store/authStore'
 import { todayIST } from '../../utils/istTime'
 
@@ -108,6 +109,10 @@ export default function EmployeeDashboard() {
           )}
         </div>
       </div>
+
+      {/* First action of the day, so it sits above the task list. Reloads the dashboard after
+          recording so the travel figure reflects the new first leg immediately. */}
+      <DayStartCard onRecorded={load} />
 
       {/* Attendance note */}
       {/* Attendance status — shows real DB record, including admin overrides */}

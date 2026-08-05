@@ -1,5 +1,5 @@
-import json, logging, httpx
-from fastapi import APIRouter, Depends, HTTPException
+import json, logging, os, httpx, aiofiles
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -8,6 +8,8 @@ from ..database import get_db
 from ..models.travel import TravelTrip, FuelSettings
 from ..models.employee import Employee
 from ..models.mandal import Mandal
+from ..models.day_start import DayStart
+from ..storage import UPLOADS_DIR
 from ..dependencies import get_current_user, require_admin_or_deskwork
 
 router = APIRouter(prefix="/api/travel", tags=["travel"])
@@ -247,6 +249,111 @@ async def calculate_route(data: RouteCalcRequest):
 
 # ── Auto-calculate trip from today's geotagged field reports ─────────────────
 
+def _fmt_day_start(ds: DayStart, base_url: str = ""):
+    return {
+        "id": ds.id,
+        "employee_id": ds.employee_id,
+        "start_date": ds.start_date.isoformat() if ds.start_date else None,
+        "latitude": ds.latitude,
+        "longitude": ds.longitude,
+        "label": ds.label or "Home",
+        "photo_url": f"{base_url}/uploads/{ds.photo_path}" if (ds.photo_path and base_url) else None,
+        "created_at": ds.created_at.isoformat() if ds.created_at else None,
+    }
+
+
+@router.get("/day-start")
+def get_day_start(start_date: Optional[str] = None, employee_id: Optional[int] = None,
+                  request: Request = None,
+                  db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Today's start-from-home record, or None. Used to show whether it's already been done."""
+    emp_id = employee_id or user.id
+    if user.role not in ("admin", "deskwork") and user.id != emp_id:
+        raise HTTPException(403, "Not authorized")
+    try:
+        d = date.fromisoformat(start_date) if start_date else date.today()
+    except ValueError:
+        raise HTTPException(400, f"Invalid date '{start_date}' — use YYYY-MM-DD")
+    ds = db.query(DayStart).filter(DayStart.employee_id == emp_id,
+                                   DayStart.start_date == d).first()
+    if not ds:
+        return None
+    base_url = str(request.base_url).rstrip("/") if request else ""
+    return _fmt_day_start(ds, base_url)
+
+
+@router.post("/day-start")
+async def set_day_start(request: Request, db: Session = Depends(get_db),
+                        user=Depends(get_current_user)):
+    """Record where the technician is setting off from, with a photo.
+
+    Multipart, mirroring the proof-submit endpoint: `photo` plus `latitude`/`longitude`, and
+    optionally `label` and `start_date`. GPS is required — the whole point is the coordinate,
+    and a record without one would add a waypoint the travel maths can't use.
+
+    Re-tapping replaces the row rather than adding a second: the reading that matters is from
+    when they actually left, and two "starts" would make the first leg ambiguous.
+    """
+    form = await request.form()
+    lat_raw, lng_raw = form.get("latitude"), form.get("longitude")
+    if not lat_raw or not lng_raw:
+        raise HTTPException(400, "GPS location is required — wait for the lock before saving.")
+    try:
+        latitude, longitude = float(lat_raw), float(lng_raw)
+    except ValueError:
+        raise HTTPException(400, "Latitude and longitude must be numbers")
+
+    try:
+        d = date.fromisoformat(form.get("start_date")) if form.get("start_date") else date.today()
+    except ValueError:
+        raise HTTPException(400, "start_date must be YYYY-MM-DD")
+
+    label = (form.get("label") or "Home").strip()[:120] or "Home"
+
+    ds = db.query(DayStart).filter(DayStart.employee_id == user.id,
+                                   DayStart.start_date == d).first()
+    if ds:
+        ds.latitude, ds.longitude, ds.label = latitude, longitude, label
+    else:
+        ds = DayStart(employee_id=user.id, start_date=d, latitude=latitude,
+                      longitude=longitude, label=label)
+        db.add(ds)
+    db.flush()
+
+    photo = form.get("photo")
+    if photo is not None and getattr(photo, "filename", None):
+        os.makedirs(os.path.join(UPLOADS_DIR, str(d.year), str(d.month)), exist_ok=True)
+        ext = photo.filename.rsplit(".", 1)[-1] if "." in photo.filename else "jpg"
+        fname = f"{d.year}/{d.month}/daystart_emp{user.id}_{d.isoformat()}.{ext}"
+        try:
+            contents = await photo.read()
+            if contents:
+                async with aiofiles.open(os.path.join(UPLOADS_DIR, fname), "wb") as f:
+                    await f.write(contents)
+                ds.photo_path = fname
+        except Exception as e:
+            # The coordinate is the part travel needs, so a failed image write must not lose
+            # the whole record — but say so rather than reporting a clean save.
+            logger.exception(f"day-start photo save failed for employee {user.id}: {e}")
+            db.commit()
+            raise HTTPException(500, "Start point saved, but the photo could not be stored.")
+
+    db.commit()
+    db.refresh(ds)
+
+    # Recalculate today's travel straight away so the first leg appears without waiting for
+    # the next proof submission.
+    recalc = None
+    try:
+        recalc = await auto_trip_from_reports(trip_date=str(d), employee_id=user.id,
+                                              db=db, user=user)
+    except Exception as e:
+        logger.warning(f"day-start travel recalc skipped for employee {user.id}: {e}")
+
+    base_url = str(request.base_url).rstrip("/")
+    return {"ok": True, "day_start": _fmt_day_start(ds, base_url), "travel": recalc}
+
+
 @router.post("/auto-from-reports")
 async def auto_trip_from_reports(
     trip_date: Optional[str] = None,
@@ -300,6 +407,23 @@ async def auto_trip_from_reports(
     from ..models.school import School
     waypoints = []
     seen_school_ids = set()
+
+    # If the technician recorded where they set off from, that is waypoint zero. Without it the
+    # first waypoint is the first SITE, so the ride from home to it was never paid for. Two
+    # side effects worth knowing: a day with a single visit now yields a real trip where before
+    # it fell under the two-point minimum and paid nothing, and the leg is only ever added when
+    # a record exists — nothing is inferred for days where the technician didn't mark it.
+    day_start = db.query(DayStart).filter(
+        DayStart.employee_id == emp_id, DayStart.start_date == d
+    ).first()
+    if day_start and day_start.latitude is not None and day_start.longitude is not None:
+        waypoints.append({
+            "label": day_start.label or "Home",
+            "lat": day_start.latitude,
+            "lng": day_start.longitude,
+            "school_id": None,
+        })
+
     for r in reports:
         if r.school_id in seen_school_ids:
             continue
