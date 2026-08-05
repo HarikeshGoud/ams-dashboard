@@ -41,6 +41,10 @@ class ServiceReport(Base):
     # Shown as the School Stamp on the PDF once the proof has been verified.
     stamp_photo          = Column(String(255), nullable=True)
     principal_name       = Column(String(100), nullable=True)
+    # Captured on the report rather than looked up at render time, so it stays a faithful
+    # record even if the technician's profile changes or they leave. See schema_guard.
+    technician_name      = Column(String(100), nullable=True)
+    technician_mobile    = Column(String(20),  nullable=True)
     pdf_path             = Column(String(255), nullable=True)
     created_at           = Column(DateTime, default=datetime.utcnow)
 

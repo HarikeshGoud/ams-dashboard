@@ -3,6 +3,12 @@ import api from '../../api/axios'
 import SignaturePad from '../../components/SignaturePad'
 import CameraCapture from '../../components/CameraCapture'
 import SearchableSelect from '../../components/SearchableSelect'
+import { useAuthStore } from '../../store/authStore'
+
+// The login payload carries the technician's name but not their phone, and no technician has a
+// number on their employee record, so the number is remembered here after the first report
+// rather than retyped on every visit.
+const TECH_MOBILE_KEY = 'shc_tech_mobile'
 
 function batchLabel(b) {
   return `${b.batch_no} — ${b.qty_office} left (received ${b.received_date})`
@@ -20,6 +26,17 @@ const SERVICE_SLOTS = [
   { key: 'service_tank',      label: 'Tank / outlet',           desc: 'Storage tank, taps or outlet plumbing',  icon: '🚰' },
   { key: 'service_after',     label: 'After servicing',         desc: 'Plant running, water flowing',           icon: '✅' },
 ]
+
+// A "problem at site" visit is a report OF something, not a record of work done — the plant
+// couldn't be serviced, a part is awaited, access was refused. So there is nothing to
+// photograph in sequence and the single photo is offered rather than demanded: sometimes the
+// problem isn't photographable (no power, gate locked) and blocking the report on a picture
+// would just mean no report at all. The written report is what matters here, so unlike every
+// other mode it is mandatory even at a site that is otherwise exempt.
+const PROBLEM_SLOT = {
+  key: 'problem_photo', label: 'Photo of the problem', icon: '⚠️',
+  desc: 'Optional — add one if the problem can be seen',
+}
 
 // ── Photo slot ────────────────────────────────────────────────────────────────
 function PhotoSlot({ label, desc, icon, preview, onOpen }) {
@@ -72,7 +89,17 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   // 'parts'   — something was installed/replaced, so photos are per selected part.
   // 'service' — cleaning / servicing / repair with NO parts replaced. There is no parts
   //             list to show, so this jumps straight to a fixed set of proof photos.
+  // 'problem' — a problem is being reported, not work recorded. One optional photo, then the
+  //             written report, which is mandatory here even where it normally isn't.
   const [proofMode, setProofMode] = useState('parts')
+  // Declared here rather than beside isService/isProblem below, because the Step 3 lock effect
+  // lists it in a dependency array and would hit a TDZ error on a later const.
+  //
+  // A problem report is mandatory even at a site normally exempt from reports. Temples are
+  // waived because a daily clean doesn't warrant plant readings — but a visit where nothing
+  // could be done is exactly the case that needs writing down, or it reads as an unexplained
+  // no-show.
+  const reportMandatory = reportRequired || proofMode === 'problem'
   const [gps, setGps] = useState(null)
   const [gpsError, setGpsError] = useState('')
   const [gpsLoading, setGpsLoading] = useState(true)
@@ -111,6 +138,14 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   const [currentAmps,       setCurrentAmps]       = useState('')
   const [principalName,     setPrincipalName]     = useState('')
   const [customerMobile,    setCustomerMobile]    = useState('')
+  // Who did the work, printed on the report beside the engineer signature. Pre-filled from the
+  // logged-in profile; the number is remembered locally after the first time because no
+  // technician has a phone on their employee record, so otherwise it would be retyped daily.
+  const authUser = useAuthStore(s => s.user)
+  const [techName,   setTechName]   = useState(() => authUser?.name || '')
+  const [techMobile, setTechMobile] = useState(() => {
+    try { return localStorage.getItem(TECH_MOBILE_KEY) || '' } catch { return '' }
+  })
   const [customerRemarks,   setCustomerRemarks]   = useState('')
   const [status,            setStatus]            = useState('PROBLEM RESOLVED')
   const [techSig,           setTechSig]           = useState(null)
@@ -147,7 +182,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   // Skipped where the report is optional (temples) — trapping someone in a form they are
   // not required to fill is the worst possible version of this lock.
   useEffect(() => {
-    if (step !== 3 || pdfUrl || !reportRequired) return
+    if (step !== 3 || pdfUrl || !reportMandatory) return
     // Push a dummy history state so back button hits it first
     window.history.pushState({ srLock: true }, '')
     const onPop = (e) => {
@@ -165,7 +200,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       window.removeEventListener('popstate', onPop)
       window.removeEventListener('beforeunload', onBeforeUnload)
     }
-  }, [step, pdfUrl, reportRequired])
+  }, [step, pdfUrl, reportMandatory])
 
   useEffect(() => {
     captureGPS()
@@ -252,6 +287,17 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     setStep(2)
   }
 
+  // Reporting a problem instead of recording work. Same reset as servicing — any parts picked
+  // before changing their mind must go, or they'd be reported as replaced and deducted.
+  function startProblemProof() {
+    setSelectedItems([])
+    setInstallDetails({})
+    setActiveCat(null)
+    setProofMode('problem')
+    setError('')
+    setStep(2)
+  }
+
   // Going back to pick parts must leave service mode, or the parts list would be rendered
   // while the photo checks still expect the six servicing slots.
   function backToItems() {
@@ -259,26 +305,34 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   }
 
   const isService = proofMode === 'service'
+  const isProblem = proofMode === 'problem'
   const selectedNames = selectedItems.map(i => i.name)
   // What goes in the report's "item installed" line. A servicing visit replaced nothing, and
   // leaving this blank would make the proof read as an unexplained visit in Proof Review.
   const SERVICE_LABEL = 'Servicing / cleaning — no parts replaced'
+  const PROBLEM_LABEL = 'Problem reported at site — no work completed'
 
   // parts mode: for each item i we need before_i, after_i, photo_i.
   // service mode: the six fixed slots above.
-  const allPhotosDone = isService
-    ? SERVICE_SLOTS.every(s => photos[s.key])
-    : selectedItems.length > 0 && selectedItems.every((_, i) =>
-        photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
-      )
-  const totalPhotos = isService ? SERVICE_SLOTS.length : selectedItems.length * 3
+  // problem mode: nothing is required — the one photo is optional by design.
+  const allPhotosDone = isProblem
+    ? true
+    : isService
+      ? SERVICE_SLOTS.every(s => photos[s.key])
+      : selectedItems.length > 0 && selectedItems.every((_, i) =>
+          photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
+        )
+  const totalPhotos = isProblem ? 1 : isService ? SERVICE_SLOTS.length : selectedItems.length * 3
 
   async function handleSubmit() {
     if (!gps) {
       setError('GPS location is required before submitting — wait for "GPS locked" above, or tap Retry.')
       return
     }
-    if (isService) {
+    if (isProblem) {
+      // Nothing to check — the photo is optional and the written report is where the
+      // substance lives. Deliberately no "are you sure" either; the report step follows.
+    } else if (isService) {
       const gap = SERVICE_SLOTS.filter(s => !photos[s.key])
       if (gap.length) {
         setError(`${gap.length} photo(s) still needed: ${gap.map(s => s.label).join(', ')}`)
@@ -296,10 +350,15 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
     const buildFormData = () => {
       const fd = new FormData()
       fd.append('task_id', task.id)
-      fd.append('item_installed', isService ? SERVICE_LABEL : selectedNames.join(', '))
+      fd.append('item_installed',
+        isProblem ? PROBLEM_LABEL : isService ? SERVICE_LABEL : selectedNames.join(', '))
       fd.append('remarks', remarks)
       if (gps) { fd.append('latitude', gps.lat); fd.append('longitude', gps.lng) }
-      if (isService) {
+      if (isProblem) {
+        // May legitimately send no photo at all. The submit endpoint saves whatever files
+        // arrive and imposes no minimum, so an empty set is accepted.
+        if (photos[PROBLEM_SLOT.key]) fd.append(PROBLEM_SLOT.key, photos[PROBLEM_SLOT.key])
+      } else if (isService) {
         // The submit endpoint takes the form field name as the photo_type, so these need no
         // backend change — they store as service_before, service_prefilter, and so on.
         SERVICE_SLOTS.forEach(s => {
@@ -381,24 +440,30 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
   async function handleServiceReport() {
     // Validate all required fields
     const missing = []
-    if (!reportNo.trim())        missing.push('Report No')
-    if (!complaintNo.trim())     missing.push('Complaint No')
-    if (!problemDesc.trim())     missing.push('Problem Reported')
-    if (!observation.trim())     missing.push('Observation & Action Taken')
-    // A servicing/cleaning visit consumed no spares, so demanding a value here would force
-    // the technician to invent one. It defaults to NIL on the report instead.
-    if (!isService && !sparesRequired.trim() && selectedNames.length === 0) missing.push('Spares Required / Consumed')
-    if (!plantCapacity.trim())   missing.push('Plant Capacity')
-    if (!designRwTds.trim())     missing.push('Design R/W TDS')
-    if (!freeChlorine.trim())    missing.push('Free Chlorine R/W')
-    if (!hoursRunning.trim())    missing.push('No. of Hours Running')
-    if (!tdsInput)               missing.push('Raw Water TDS')
-    if (!tdsOutput)              missing.push('Product Water TDS')
-    if (!flowRate)               missing.push('Flow Rate')
-    if (!voltage)                missing.push('Voltage')
-    if (!currentAmps.trim())     missing.push('Current (Amps)')
-    if (!principalName.trim())   missing.push('Principal / In-charge Name')
-    if (!customerMobile.trim())  missing.push('Mobile Number')
+    // Problem-at-site reports skip the data fields entirely. Half of them can't be answered
+    // when the plant couldn't be run — TDS, flow and voltage have no reading to give — and
+    // demanding them would produce invented numbers on a document the customer signs. The
+    // signatures and the stamp stay mandatory: they are what makes it evidence.
+    if (!isProblem) {
+      if (!reportNo.trim())        missing.push('Report No')
+      if (!complaintNo.trim())     missing.push('Complaint No')
+      if (!problemDesc.trim())     missing.push('Problem Reported')
+      if (!observation.trim())     missing.push('Observation & Action Taken')
+      // A servicing/cleaning visit consumed no spares, so demanding a value here would force
+      // the technician to invent one. It defaults to NIL on the report instead.
+      if (!isService && !sparesRequired.trim() && selectedNames.length === 0) missing.push('Spares Required / Consumed')
+      if (!plantCapacity.trim())   missing.push('Plant Capacity')
+      if (!designRwTds.trim())     missing.push('Design R/W TDS')
+      if (!freeChlorine.trim())    missing.push('Free Chlorine R/W')
+      if (!hoursRunning.trim())    missing.push('No. of Hours Running')
+      if (!tdsInput)               missing.push('Raw Water TDS')
+      if (!tdsOutput)              missing.push('Product Water TDS')
+      if (!flowRate)               missing.push('Flow Rate')
+      if (!voltage)                missing.push('Voltage')
+      if (!currentAmps.trim())     missing.push('Current (Amps)')
+      if (!principalName.trim())   missing.push('Principal / In-charge Name')
+      if (!customerMobile.trim())  missing.push('Mobile Number')
+    }
     if (!techSig)                missing.push('Your Signature')
     if (!principalSig)           missing.push('Customer Signature')
     if (!stampPhoto)             missing.push('School stamp photo')
@@ -435,6 +500,8 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         current_amps:             currentAmps,
         principal_name:           principalName,
         customer_mobile:          customerMobile,
+        technician_name:          techName,
+        technician_mobile:        techMobile,
         customer_remarks:         customerRemarks,
         status,
         technician_signature_b64: techSig,
@@ -442,13 +509,20 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         stamp_photo_b64:          stampPhoto,
       })
       setPdfUrl(res.data.pdf_url)
+      // Remember the number so the next report is pre-filled. Only on success, so a typo that
+      // failed validation isn't the thing that gets kept.
+      try {
+        if (techMobile.trim()) localStorage.setItem(TECH_MOBILE_KEY, techMobile.trim())
+      } catch { /* private mode */ }
     } catch (e) {
       setError(e.response?.data?.detail || 'Service report failed. Try again.')
     }
     setSrSubmitting(false)
   }
 
-  const doneCount = isService
+  const doneCount = isProblem
+    ? (photos[PROBLEM_SLOT.key] ? 1 : 0)
+    : isService
     ? SERVICE_SLOTS.filter(s => photos[s.key]).length
     : selectedItems.reduce((acc, _, i) =>
         acc + (photos[`before_${i}`] ? 1 : 0) + (photos[`after_${i}`] ? 1 : 0) + (photos[`photo_${i}`] ? 1 : 0), 0
@@ -472,7 +546,7 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
         <div className="modal-box" style={{ maxWidth: 500 }}>
           {/* Hide close on Step 3 until the PDF exists — but only where the report is
               actually mandatory, otherwise a temple visit would have no way out. */}
-          {(step !== 3 || pdfUrl || !reportRequired) && (
+          {(step !== 3 || pdfUrl || !reportMandatory) && (
             <button className="modal-close" onClick={onClose}>✕</button>
           )}
           <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>📸 Submit Work Proof</h3>
@@ -481,7 +555,9 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           {/* Step indicator */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
             {/* Step 1 is skipped in servicing mode, so don't tick it off as "Select Items" done. */}
-            {[isService ? '1. Servicing' : '1. Select Items', '2. Take Photos', '3. Service Report'].map((label, i) => {
+            {[isProblem ? '1. Problem' : isService ? '1. Servicing' : '1. Select Items',
+              isProblem ? '2. Photo (optional)' : '2. Take Photos',
+              '3. Service Report'].map((label, i) => {
               const active = step === i + 1, done = step > i + 1
               return (
                 <div key={i} style={{
@@ -549,6 +625,20 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   🧽 Servicing / Cleaning
                   <div style={{ fontSize: 10, fontWeight: 500, marginTop: 2, opacity: 0.85 }}>
                     no parts — {SERVICE_SLOTS.length} photos
+                  </div>
+                </button>
+
+                {/* Nothing could be done — record the problem instead. Straight to one optional
+                    photo, then the written report, which is what actually matters here. */}
+                <button onClick={startProblemProof} style={{
+                  flex: '1 1 auto', minWidth: 100, padding: '10px 8px', borderRadius: 10, fontSize: 12,
+                  fontWeight: 700, cursor: 'pointer', border: '2px solid var(--red)',
+                  background: 'rgba(248,113,113,.15)', color: 'var(--red)',
+                  textAlign: 'center', lineHeight: 1.4
+                }}>
+                  ⚠️ Problem at Site
+                  <div style={{ fontSize: 10, fontWeight: 500, marginTop: 2, opacity: 0.85 }}>
+                    no parts — 1 optional photo
                   </div>
                 </button>
               </div>
@@ -660,8 +750,37 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                 </div>
               )}
 
+              {/* Problem at site — one photo, offered not demanded */}
+              {isProblem && (
+                <div style={{
+                  border: '1.5px solid var(--red)', borderRadius: 12, padding: 12, marginBottom: 12,
+                  background: 'rgba(248,113,113,.05)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 16 }}>⚠️</span>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>Problem at Site</span>
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 10,
+                      background: 'rgba(248,113,113,.2)', color: 'var(--red)', border: '1px solid var(--red)'
+                    }}>PHOTO OPTIONAL</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+                    Add a photo if the problem can be seen — skip it if it can't. The
+                    <b> service report on the next step is required</b>, and that's where you
+                    describe what's wrong.
+                  </div>
+                  <PhotoSlot
+                    label={PROBLEM_SLOT.label}
+                    desc={PROBLEM_SLOT.desc}
+                    icon={PROBLEM_SLOT.icon}
+                    preview={previews[PROBLEM_SLOT.key]}
+                    onOpen={() => setActiveCamera(PROBLEM_SLOT.key)}
+                  />
+                </div>
+              )}
+
               {/* Per-item photo groups */}
-              {!isService && selectedItems.map((item, i) => {
+              {!isService && !isProblem && selectedItems.map((item, i) => {
                 const itemDone = photos[`before_${i}`] && photos[`after_${i}`] && photos[`photo_${i}`]
                 const inHandEntry = myStock.find(m => m.item_id === item.id)
                 const batches = itemBatches[item.id] || []
@@ -821,6 +940,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                   ⚠️ All {totalPhotos} photos required before submitting
                 </div>
               )}
+              {/* Say the photo is skippable, otherwise an empty slot reads as unfinished work
+                  and the technician hunts for what's blocking them. */}
+              {isProblem && !photos[PROBLEM_SLOT.key] && (
+                <div style={{ marginTop: 7, fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+                  No photo needed — you can submit without one.
+                </div>
+              )}
               {/* This used to read "Photos submitted!" while sitting directly under the
                   "all photos required" warning — telling the technician the upload was done
                   before they had taken a single photo. It's a forward-looking hint, so word
@@ -835,9 +961,13 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
           {step === 3 && (
             <>
               {/* Mandatory notice — or, for a temple, an explicit way out */}
-              {!pdfUrl && (reportRequired ? (
+              {!pdfUrl && (reportMandatory ? (
                 <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid var(--red)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>
-                  🔒 Service report is mandatory — fill all fields and get signatures to complete this task.
+                  {isProblem
+                    ? <>🔒 Service report is required for a problem visit. <span style={{ fontWeight: 400 }}>
+                        Fill in whatever you can — the fields are all optional here — but the two
+                        signatures and the stamp photo are still needed.</span></>
+                    : '🔒 Service report is mandatory — fill all fields and get signatures to complete this task.'}
                 </div>
               ) : (
                 <div style={{ background: 'rgba(52,211,153,.1)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
@@ -1018,6 +1148,25 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label style={{ fontSize: 10 }}>Mobile Number</label>
                       <input value={customerMobile} onChange={e => setCustomerMobile(e.target.value)} placeholder="10-digit mobile" style={{ fontSize: 12 }} />
+                    </div>
+                  </div>
+
+                  {/* Technician — printed on the report beside the engineer signature, so the
+                      customer has a name and a number for whoever attended. Pre-filled from the
+                      login; the number is remembered after the first report. */}
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', background: 'rgba(34,211,238,.08)', padding: '5px 10px', borderRadius: 6, marginBottom: 10 }}>
+                    🔧 Service Engineer (you)
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Technician Name</label>
+                      <input value={techName} onChange={e => setTechName(e.target.value)}
+                        placeholder="Your name" style={{ fontSize: 12 }} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 10 }}>Technician Mobile</label>
+                      <input value={techMobile} onChange={e => setTechMobile(e.target.value)}
+                        placeholder="10-digit mobile" style={{ fontSize: 12 }} />
                     </div>
                   </div>
 

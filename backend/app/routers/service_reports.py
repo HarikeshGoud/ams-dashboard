@@ -72,6 +72,8 @@ class CreateServiceReport(BaseModel):
     principal_signature_b64:  Optional[str]   = None
     stamp_photo_b64:          Optional[str]   = None   # photo of stamp + signature + date
     principal_name:           Optional[str]   = None
+    technician_name:          Optional[str]   = None
+    technician_mobile:        Optional[str]   = None
 
 
 def _save_b64_image(b64_str: str, path: str):
@@ -408,8 +410,18 @@ def _generate_pdf(report: ServiceReport, db: Session) -> str:
     story.append(eng_tbl)
 
     # ── Technician signature row ───────────────────────────────────────────────
+    # Who did the work, and a number to reach them on. Reports written before these columns
+    # existed have neither, so fall back to the employee row — that keeps the field populated
+    # on every historical report rather than only on new ones.
+    emp = getattr(report, "employee", None)
+    tech_name   = report.technician_name   or (emp.name  if emp else None)
+    tech_mobile = report.technician_mobile or (emp.phone if emp else None)
     tech_sig_row = [[
-        Paragraph("<b>SERVICE ENGINEER SIGNATURE:</b>", ps("tes",9,bold=True)),
+        Paragraph(
+            f"<b>SERVICE ENGINEER:</b> {val(tech_name)}<br/>"
+            f"<b>MOBILE:</b> {val(tech_mobile)}<br/>"
+            f"<b>SIGNATURE:</b>",
+            ps("tes",9)),
         sig_img(report.technician_signature, 60*mm, 18*mm),
     ]]
     tech_sig_tbl = Table(tech_sig_row, colWidths=[PAGE_W*0.35, PAGE_W*0.65])
@@ -481,6 +493,9 @@ def _fmt(r: ServiceReport, base_url: str = ""):
         "current_amps":       r.current_amps,
         "principal_name":     r.principal_name,
         "customer_mobile":    r.customer_mobile,
+        # Same fallback as the PDF, so a listing and the document never disagree.
+        "technician_name":    r.technician_name or (r.employee.name if r.employee else None),
+        "technician_mobile":  r.technician_mobile or (r.employee.phone if r.employee else None),
         "customer_remarks":   r.customer_remarks,
         "status":             r.status,
         "pdf_url":            f"{base_url}/uploads/{r.pdf_path}" if r.pdf_path else None,
@@ -530,6 +545,10 @@ def create_service_report(request: Request, req: CreateServiceReport, db: Sessio
             current_amps=req.current_amps,
             principal_name=req.principal_name, customer_mobile=req.customer_mobile,
             customer_remarks=req.customer_remarks, status=req.status or "PROBLEM RESOLVED",
+            # Fall back to the submitting employee's own details when the form left them
+            # blank, so the report still says who did the work.
+            technician_name=(req.technician_name or "").strip() or user.name,
+            technician_mobile=(req.technician_mobile or "").strip() or (user.phone or None),
         )
         db.add(report)
 

@@ -34,6 +34,12 @@ REQUIRED_COLUMNS = [
     # 'weekly' on a sub-location keeps it out of the daily pool until 7 days since its last
     # visit. NULL/anything else means daily.
     ("schools", "visit_frequency", "TEXT", None),
+    # Who did the work and how to reach them, printed on the report next to the engineer
+    # signature. Stored on the report rather than read from the employee row at render time,
+    # so a report stays a faithful record of what it said even if the person's details change
+    # or they leave. NULL on older reports, which fall back to the employee row.
+    ("service_reports", "technician_name", "TEXT", None),
+    ("service_reports", "technician_mobile", "TEXT", None),
 ]
 
 
