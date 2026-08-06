@@ -14,6 +14,8 @@ import AMCReports from './pages/AMCReports'
 import Stock from './pages/Stock'
 import Billing from './pages/Billing'
 import Salary from './pages/Salary'
+import ConsumptionReport from './pages/ConsumptionReport'
+import ItemRates from './pages/ItemRates'
 import Attendance from './pages/Attendance'
 import Tasks from './pages/Tasks'
 import Travel from './pages/Travel'
@@ -108,6 +110,8 @@ export default function App() {
         {/* The same component admin uses — it needs no role-specific branches, and the
             endpoints behind it now accept deskwork. */}
         <Route path="salary"     element={<Salary />} />
+        <Route path="consumption" element={<ConsumptionReport />} />
+        <Route path="item-rates"  element={<ItemRates />} />
         <Route path="stock"      element={<DeskStock />} />
         <Route path="travel"          element={<DeskTravel />} />
         <Route path="service-reports" element={<ServiceReports />} />
@@ -130,6 +134,8 @@ export default function App() {
         <Route path="stock"        element={<Stock />} />
         <Route path="billing"      element={<Billing />} />
         <Route path="salary"       element={<Salary />} />
+        <Route path="consumption"  element={<ConsumptionReport />} />
+        <Route path="item-rates"   element={<ItemRates />} />
         <Route path="attendance"   element={<Attendance />} />
         <Route path="tasks"        element={<Tasks />} />
         <Route path="travel"       element={<Travel />} />

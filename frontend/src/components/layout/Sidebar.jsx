@@ -13,6 +13,10 @@ const NAV = [
   { to: '/reports',       icon: '📊', label: 'Reports'         },
   { to: '/stock',         icon: '📦', label: 'Stock'           },
   { to: '/billing',       icon: '💰', label: 'Billing'         },
+  // Consumption is the client-facing sheet; Item Rates is the price list it prices from.
+  // Separate pages, because setting rates and issuing a summary are different jobs.
+  { to: '/consumption',   icon: '🧾', label: 'Consumption'     },
+  { to: '/item-rates',    icon: '🏷️', label: 'Item Rates'      },
   { to: '/salary',        icon: '🧾', label: 'Salary'          },
   { to: '/attendance',    icon: '🗓️', label: 'Attendance'      },
   { to: '/tasks',         icon: '✅', label: 'Tasks'           },

@@ -23,6 +23,7 @@ from .routers import reorder_requests
 from .routers import reports as reports_router
 from .routers import data_health
 from .routers import mapping
+from .routers import consumption
 
 
 # Daily tasks are NOT generated here any more. Do not put that back.
@@ -105,6 +106,7 @@ app.include_router(reorder_requests.router)
 app.include_router(reports_router.router)
 app.include_router(data_health.router)
 app.include_router(mapping.router)
+app.include_router(consumption.router)
 
 @app.get("/")
 def root():

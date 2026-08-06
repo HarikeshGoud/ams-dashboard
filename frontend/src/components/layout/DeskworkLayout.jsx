@@ -12,6 +12,8 @@ const NAV = [
   { path: '/deskwork/mapping',    icon: '🗺️', label: 'Mapping'    },
   { path: '/deskwork/attendance', icon: '📅', label: 'Attendance' },
   { path: '/deskwork/salary',     icon: '💰', label: 'Salary'     },
+  { path: '/deskwork/consumption', icon: '🧾', label: 'Consumption' },
+  { path: '/deskwork/item-rates',  icon: '🏷️', label: 'Item Rates'  },
   { path: '/deskwork/stock',      icon: '📦', label: 'Stock'      },
   { path: '/deskwork/travel',          icon: '🚗', label: 'Travel'          },
   { path: '/deskwork/service-reports', icon: '📄', label: 'Service Reports' },

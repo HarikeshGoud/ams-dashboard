@@ -13,6 +13,7 @@ const TITLES = {
   '/complaints': 'Complaints', '/stock': 'Stock & Materials',
   '/billing': 'Billing & Payments', '/salary': 'Salary',
   '/attendance': 'Attendance', '/tasks': 'Tasks', '/travel': 'Travel Allowance',
+  '/consumption': 'Consumption Summary', '/item-rates': 'Item Rates',
   '/proof-review': 'Proof Review'
 }
 

@@ -353,6 +353,17 @@ export default function ProofUploadModal({ task, onClose, onSubmitted }) {
       fd.append('item_installed',
         isProblem ? PROBLEM_LABEL : isService ? SERVICE_LABEL : selectedNames.join(', '))
       fd.append('remarks', remarks)
+      // Quantities used, sent on the proof itself. Previously the only place a quantity was
+      // written was the stock-install call below, which is skipped unless the technician holds
+      // that item with a batch selected — so in practice every number typed here was lost, and
+      // the consumption summary had nothing to add up.
+      if (selectedItems.length > 0) {
+        fd.append('items_used', JSON.stringify(selectedItems.map((it, i) => {
+          const raw = installDetails[i]?.quantity
+          const qty = (raw === undefined || raw === '') ? 1 : Number(raw)
+          return { item_id: it.id, quantity: Number.isFinite(qty) && qty > 0 ? qty : 1 }
+        })))
+      }
       if (gps) { fd.append('latitude', gps.lat); fd.append('longitude', gps.lng) }
       if (isProblem) {
         // May legitimately send no photo at all. The submit endpoint saves whatever files

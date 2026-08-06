@@ -1,4 +1,5 @@
-import os, logging, aiofiles
+import os, json, logging, aiofiles
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
@@ -10,6 +11,7 @@ def today_ist(): return now_ist().date()
 from pydantic import BaseModel
 from ..database import get_db
 from ..models.field_report import FieldReport, WorkProof
+from ..models.consumption import ProofItemUsage
 from ..models.attendance import Attendance
 from ..models.task import Task
 from ..dependencies import get_current_user, require_admin, require_admin_or_deskwork
@@ -301,6 +303,51 @@ async def submit_field_report(
         # On retry, remove old photos so we don't accumulate duplicates
         db.query(WorkProof).filter(WorkProof.field_report_id == report.id).delete()
         db.flush()
+
+        # Per-item quantities used. Sent as JSON: [{"item_id": 12, "quantity": 2}, ...].
+        #
+        # Kept separately from the stock ledger on purpose. Stock deduction only happens when the
+        # technician is holding that item with a batch selected, which is almost never — so the
+        # quantity used to be collected by the form and then discarded. This is the consumption
+        # record the summary report reads, and it exists whether or not stock is being tracked.
+        #
+        # Delete-and-replace, same as the photos above, so a retry can't double-count usage.
+        db.query(ProofItemUsage).filter(ProofItemUsage.field_report_id == report.id).delete()
+        db.flush()
+        items_raw = form.get("items_used")
+        if items_raw:
+            try:
+                parsed = json.loads(items_raw)
+            except (ValueError, TypeError):
+                raise HTTPException(400, "items_used must be JSON")
+            if not isinstance(parsed, list):
+                raise HTTPException(400, "items_used must be a JSON array")
+            # item_id is a real foreign key. SQLite doesn't enforce that, but production
+            # Postgres does — an id that doesn't exist would raise on commit and take the whole
+            # proof submission down with it, losing the photos too. So the ids are checked here
+            # and anything unknown is dropped: a stale item on the form must not cost the
+            # technician their visit.
+            from ..models.stock import StockItem
+            known_items = {i for (i,) in db.query(StockItem.id).all()}
+            for entry in parsed:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    item_id = int(entry.get("item_id"))
+                    qty = Decimal(str(entry.get("quantity", 0)))
+                except (TypeError, ValueError, ArithmeticError):
+                    continue          # one malformed line must not lose the whole proof
+                if item_id <= 0 or qty <= 0 or item_id not in known_items:
+                    continue
+                db.add(ProofItemUsage(
+                    field_report_id=report.id,
+                    school_id=task.school_id,
+                    employee_id=user.id,
+                    item_id=item_id,
+                    quantity=qty,
+                    usage_date=today,
+                ))
+            db.flush()
 
         for key, value in form.multi_items():
             if not hasattr(value, "filename") or not value.filename:
