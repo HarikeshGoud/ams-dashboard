@@ -207,7 +207,16 @@ body.light-theme .btn-outline {
   border-radius: 16px; padding: 16px;
   box-shadow: var(--shadow-sm);
   transition: border-color 0.2s, box-shadow 0.28s;
-  animation: fadeInUp .45s ease both;
+  /* No `both` here, and it matters. fadeInUp ends at `transform: none`, but a keyframe's
+     `none` computes to the IDENTITY MATRIX — and any transform other than the keyword `none`
+     creates a stacking context. With fill-mode: both that matrix is retained forever, so every
+     card became its own permanent layer and any dropdown inside it was trapped: a select's
+     z-index could never beat the next card, which simply painted over it in DOM order.
+     Measured: with `both` the settled transform is matrix(1,0,0,1,0,0) and the dropdown loses;
+     without it the transform is `none` and the dropdown wins.
+     Dropping the fill mode changes nothing visually — the `to` keyframe is already this
+     element's natural state, and there is no animation-delay for backwards fill to cover. */
+  animation: fadeInUp .45s ease;
 }
 .card:hover { border-color: var(--accent-soft-strong); box-shadow: var(--shadow-md); }
 .card-title {
