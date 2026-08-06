@@ -261,6 +261,21 @@ export default function ConsumptionReport() {
 
       {computed && data.lines.length > 0 && (
         <>
+          {/* Older stock installs recorded a destination NAME rather than a site id, so some of
+              them can't be tied to one site. Said out loud, because a total that is knowably
+              short must not be mistaken for a complete one. */}
+          {data.unattributed?.rows > 0 && (
+            <div className="alert alert-yellow" style={{ marginBottom: 12, display: 'block' }}>
+              ⚠️ <b>{data.unattributed.rows}</b> older stock install
+              {data.unattributed.rows > 1 ? 's' : ''} ({data.unattributed.quantity} units) could not
+              be matched to one site
+              {data.unattributed.names.length > 0 && <> — recorded against {data.unattributed.names.join(', ')}</>}.
+              {data.unattributed.excluded_by_filters
+                ? ' They are LEFT OUT of the figures above because you filtered by site. Clear the site filters to include them.'
+                : ' They are included in the totals but count toward no site.'}
+            </div>
+          )}
+
           {data.lines_missing_rate > 0 && (
             <div className="alert alert-yellow" style={{ marginBottom: 12, display: 'block' }}>
               ⚠️ <b>{data.lines_missing_rate}</b> item{data.lines_missing_rate > 1 ? 's have' : ' has'} no

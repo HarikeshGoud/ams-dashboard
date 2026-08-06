@@ -26,7 +26,7 @@ from datetime import date
 
 from ..database import get_db
 from ..models.consumption import ProofItemUsage, ClientItemRate
-from ..models.stock import StockItem
+from ..models.stock import StockItem, StockLedger
 from ..models.school import School
 from ..models.client import Client
 from ..dependencies import get_current_user, require_admin_or_deskwork
@@ -161,38 +161,88 @@ def consumption_summary(
     if d_to < d_from:
         raise HTTPException(400, "date_to is before date_from")
 
-    q = (db.query(ProofItemUsage.item_id,
-                  func.sum(ProofItemUsage.quantity).label("qty"),
-                  func.count(func.distinct(ProofItemUsage.school_id)).label("sites"))
-           .join(School, School.id == ProofItemUsage.school_id)
-           .filter(ProofItemUsage.usage_date >= d_from,
-                   ProofItemUsage.usage_date <= d_to))
+    site_filtered = any([segment, contract_type, school_id, unit_number, client_id])
 
-    if segment:
-        q = q.filter(School.model == segment)
-    if contract_type:
-        q = q.filter(School.amc_status == contract_type)
-    if school_id:
-        q = q.filter(School.id == school_id)
-    if unit_number:
-        q = q.filter(School.unit_number == unit_number)
-    if client_id:
-        q = q.filter(School.client_id == client_id)
+    def site_matches(s: School) -> bool:
+        if s is None:
+            return False
+        if segment and s.model != segment:                 return False
+        if contract_type and s.amc_status != contract_type: return False
+        if school_id and s.id != school_id:                 return False
+        if unit_number and s.unit_number != unit_number:    return False
+        if client_id and s.client_id != client_id:          return False
+        return True
 
-    rows = q.group_by(ProofItemUsage.item_id).all()
+    # totals[item_id] = {"qty": Decimal, "sites": set}
+    totals: dict = {}
+    sites_seen: dict = {}
 
-    # Which sites the figures actually came from — the sheet's title says "(7 Temples)", and that
-    # count has to be the real one, not the number of sites matching the filter.
-    site_q = (db.query(School.id, School.name)
-                .join(ProofItemUsage, ProofItemUsage.school_id == School.id)
-                .filter(ProofItemUsage.usage_date >= d_from,
-                        ProofItemUsage.usage_date <= d_to))
-    if segment:        site_q = site_q.filter(School.model == segment)
-    if contract_type:  site_q = site_q.filter(School.amc_status == contract_type)
-    if school_id:      site_q = site_q.filter(School.id == school_id)
-    if unit_number:    site_q = site_q.filter(School.unit_number == unit_number)
-    if client_id:      site_q = site_q.filter(School.client_id == client_id)
-    sites = sorted({(sid, nm) for sid, nm in site_q.distinct().all()}, key=lambda s: s[1] or "")
+    def add(item_id: int, qty, school: Optional[School]):
+        t = totals.setdefault(item_id, {"qty": Decimal("0"), "sites": set()})
+        t["qty"] += Decimal(str(qty or 0))
+        if school is not None:
+            t["sites"].add(school.id)
+            sites_seen[school.id] = school.name
+
+    # ── Source 1: usage recorded on the proof itself ──────────────────────────
+    pu = (db.query(ProofItemUsage)
+            .filter(ProofItemUsage.usage_date >= d_from,
+                    ProofItemUsage.usage_date <= d_to).all())
+    # (employee, item, date) already accounted for here. A proof from a technician who IS
+    # holding stock writes BOTH a usage row and a stock 'install' ledger row, so without this
+    # the same consumption would be counted twice and the bill would be double.
+    covered = set()
+    for u in pu:
+        school = u.school
+        if site_filtered and not site_matches(school):
+            continue
+        add(u.item_id, u.quantity, school)
+        covered.add((u.employee_id, u.item_id, u.usage_date))
+
+    # ── Source 2: stock 'install' ledger rows ─────────────────────────────────
+    # These predate the usage table and are the only record of everything installed before it
+    # existed — the Stock page's "Installed" figure is built from exactly these rows, so leaving
+    # them out made the summary disagree with Stock.
+    #
+    # They carry the destination as a NAME, not an id. Where that name identifies exactly one
+    # active site the filters apply normally; where it is blank, unknown, or shared by several
+    # sites (there are fourteen called "POLICE STATION") the row cannot be attributed, and that
+    # is reported rather than silently dropped or silently included.
+    by_name: dict = {}
+    for s in db.query(School).filter(School.is_active == True).all():
+        key = (s.name or "").strip().lower()
+        if key:
+            by_name.setdefault(key, []).append(s)
+
+    unattributed = {"rows": 0, "quantity": 0.0, "names": set()}
+    ledger = (db.query(StockLedger)
+                .filter(StockLedger.transaction_type == "install",
+                        func.date(StockLedger.created_at) >= d_from,
+                        func.date(StockLedger.created_at) <= d_to).all())
+    for e in ledger:
+        if (e.employee_id, e.item_id, e.created_at.date() if e.created_at else None) in covered:
+            continue                                   # already counted from the proof
+        candidates = by_name.get((e.school_dest or "").strip().lower(), [])
+        school = candidates[0] if len(candidates) == 1 else None
+        if school is None:
+            # Unresolvable. Include it only in a total that isn't scoped to particular sites,
+            # and say so either way — a bill built on a silently short figure is worse than one
+            # the operator knows is incomplete.
+            unattributed["rows"] += 1
+            unattributed["quantity"] += float(e.quantity or 0)
+            if (e.school_dest or "").strip():
+                unattributed["names"].add(e.school_dest.strip())
+            if site_filtered:
+                continue
+            add(e.item_id, e.quantity, None)
+            continue
+        if site_filtered and not site_matches(school):
+            continue
+        add(e.item_id, e.quantity, school)
+
+    rows = [type("R", (), {"item_id": k, "qty": v["qty"], "sites": len(v["sites"])})()
+            for k, v in totals.items()]
+    sites = sorted(sites_seen.items(), key=lambda s: s[1] or "")
 
     rates = {}
     client_name = None
@@ -262,8 +312,16 @@ def consumption_summary(
         },
         # So the page can say WHY it is empty rather than showing a blank sheet.
         "lines_missing_rate": sum(1 for l in lines if l["rate_missing"]),
+        # Older stock installs whose destination name matches no single site. Surfaced so a
+        # figure that is knowably incomplete never passes for a complete one.
+        "unattributed": {
+            "rows": unattributed["rows"],
+            "quantity": round(unattributed["quantity"], 2),
+            "names": sorted(unattributed["names"])[:20],
+            "excluded_by_filters": bool(site_filtered and unattributed["rows"]),
+        },
         "empty_reason": None if lines else (
-            "No item usage recorded in this period for those filters. Quantities are captured "
-            "when a technician submits a proof with items selected."
+            "No item usage recorded in this period for those filters. Consumption comes from "
+            "quantities on submitted proofs and from stock marked installed at a site."
         ),
     }
