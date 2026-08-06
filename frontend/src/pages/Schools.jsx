@@ -8,6 +8,24 @@ function techLabel(site) {
   return site.technician_2_name ? `${site.technician_name} & ${site.technician_2_name}` : site.technician_name
 }
 
+// Site types that are one CAMPUS with several plants inside, so they can carry sub-locations.
+// Nothing in the backend restricts this — sub-location rows are created for any type, and the
+// rotation treats a site with children as a container by looking at parent_school_id, never at
+// the type. The limit is only here, and it is on purpose:
+//
+// 'school' is deliberately excluded. Automatic daily generation only ever covers schools, and a
+// site with children drops OUT of that rotation — so giving a school sub-locations would quietly
+// stop it being assigned at all. Hospitals and temples are already outside the rotation, so
+// there is nothing to break.
+const SUB_LOCATION_TYPES = ['hospital', 'temple']
+
+// Examples worth reading, per type. A temple prompted with "Emergency Block" tells the operator
+// nothing about what belongs there.
+const SUB_LOCATION_HINTS = {
+  hospital: 'e.g.\nEmergency Block\nOP Building — Ground Floor\nIP Building — 1st Floor',
+  temple:   'e.g.\nMain Temple\nQueue Complex\nAnnadanam Hall\nKalyana Mandapam\nCottage Block',
+}
+
 export default function Schools() {
   const [data, setData] = useState({ items: [], total: 0 })
   const [mandals, setMandals] = useState([])
@@ -85,7 +103,12 @@ export default function Schools() {
     const payload = {
       ...form,
       client_id: form.client_id ? parseInt(form.client_id) : null,
-      sub_locations: form.sub_locations.split('\n').map(s => s.trim()).filter(Boolean),
+      // Only send sub-locations for a type that can hold them. The textarea hides when the type
+      // is switched, but the typed text stays in state — and submitting it against a school
+      // would give it children, which silently drops that school out of the daily rotation.
+      sub_locations: SUB_LOCATION_TYPES.includes(form.model)
+        ? form.sub_locations.split('\n').map(s => s.trim()).filter(Boolean)
+        : [],
     }
     let savedId = editId
     if (editId) {
@@ -194,7 +217,14 @@ export default function Schools() {
                   </select>
                 </div>
                 <div className="form-group"><label>Segment / Type</label>
-                  <select value={form.model} onChange={f('model')}>
+                  {/* Clear any typed sub-locations when switching to a type that can't hold
+                      them, so the operator sees the text go rather than wondering later where
+                      the children on their school came from. */}
+                  <select value={form.model} onChange={e => setForm(prev => ({
+                    ...prev,
+                    model: e.target.value,
+                    sub_locations: SUB_LOCATION_TYPES.includes(e.target.value) ? prev.sub_locations : '',
+                  }))}>
                     <option value="school">School</option>
                     <option value="hospital">Hospital</option>
                     <option value="hostel">Hostel</option>
@@ -218,16 +248,16 @@ export default function Schools() {
                 </div>
                 <div className="form-group"><label>Capacity</label><input value={form.capacity} onChange={f('capacity')} placeholder="e.g. 1000 LPH" /></div>
                 <div className="form-group form-full"><label>Plant Model</label><input value={form.plant_model} onChange={f('plant_model')} /></div>
-                {form.model === 'hospital' && (
+                {SUB_LOCATION_TYPES.includes(form.model) && (
                   <div className="form-group form-full">
                     <label>{existingSubCount > 0 ? 'Add More Sub-locations (optional, one per line)' : 'Sub-locations (optional, one per line)'}</label>
                     {existingSubCount > 0 && (
                       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
-                        This hospital already has {existingSubCount} sub-location{existingSubCount > 1 ? 's' : ''} on file (view them from its card on the Unit page). Names typed below are only ADDED — existing sub-locations and their visit history are untouched.
+                        This {form.model} already has {existingSubCount} sub-location{existingSubCount > 1 ? 's' : ''} on file (view them from its card on the Unit page). Names typed below are only ADDED — existing sub-locations and their visit history are untouched.
                       </div>
                     )}
                     <textarea rows={4} value={form.sub_locations} onChange={f('sub_locations')}
-                      placeholder={'e.g.\nEmergency Block\nOP Building — Ground Floor\nIP Building — 1st Floor'} />
+                      placeholder={SUB_LOCATION_HINTS[form.model] || 'One sub-location per line'} />
                   </div>
                 )}
               </div>
