@@ -16,7 +16,9 @@ const NAV = [
   { path: '/deskwork/travel',          icon: '🚗', label: 'Travel'          },
   { path: '/deskwork/service-reports', icon: '📄', label: 'Service Reports' },
   { path: '/deskwork/live-tracking',   icon: '📍', label: 'Live Tracking'   },
-  { path: '/deskwork/schools',         icon: '🏫', label: 'Schools'         },
+  // "Sites", not "Schools": the page lists every type — schools, hospitals, temples, villages,
+  // hostels, parks. The URL stays /schools so existing links keep working.
+  { path: '/deskwork/schools',         icon: '🏠', label: 'Sites'           },
   { path: '/deskwork/clients',         icon: '🏢', label: 'Clients'         },
   { path: '/deskwork/data-health',     icon: '🩺', label: 'Data Health'     },
 ]

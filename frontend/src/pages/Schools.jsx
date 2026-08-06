@@ -128,7 +128,7 @@ export default function Schools() {
   }
 
   async function del(id) {
-    if (!confirm('Remove school?')) return
+    if (!confirm('Remove site?')) return
     await api.delete(`/api/schools/${id}`)
     load(); showToast('Removed')
   }
@@ -138,11 +138,14 @@ export default function Schools() {
   return (
     <div>
       <div className="section-header">
-        <h3>🏫 Schools / Sites <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--muted)' }}>({data.total} total)</span></h3>
+        {/* "Sites", not "Schools" — this lists every type, and the Segment column is what says
+            which. Only the file name and the /schools URL still say school, so existing links
+            and the API keep working. */}
+        <h3>🏠 Sites <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--muted)' }}>({data.total} total)</span></h3>
         <button className="btn btn-primary" onClick={openAdd}>+ Add Site</button>
       </div>
       <div className="filter-bar">
-        <input placeholder="Search school..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ minWidth: 180 }} />
+        <input placeholder="Search site..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ minWidth: 180 }} />
         <SearchableSelect value={mandalFilter} onChange={val => { setMandalFilter(val); setTechFilter(''); setPage(1) }}
           placeholder="All Mandals" options={mandals.map(m => ({ value: String(m.id), label: m.name }))}
           style={{ minWidth: 180, display: 'inline-block' }} />
@@ -203,7 +206,7 @@ export default function Schools() {
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>{editId ? 'Edit Site' : '+ Add Site'}</h3>
             <form onSubmit={save}>
               <div className="form-grid">
-                <div className="form-group form-full"><label>School Name *</label><input required value={form.name} onChange={f('name')} /></div>
+                <div className="form-group form-full"><label>Site Name *</label><input required value={form.name} onChange={f('name')} /></div>
                 <div className="form-group"><label>Client</label>
                   <SearchableSelect value={form.client_id} onChange={val => setForm({ ...form, client_id: val })}
                     placeholder="Select client…" options={clients.map(c => ({ value: String(c.id), label: c.name }))} />
@@ -266,7 +269,7 @@ export default function Schools() {
               {editId && (
                 <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: `2px solid ${existingStamp || stampPreview ? 'var(--green)' : 'var(--red)'}`, background: existingStamp || stampPreview ? 'rgba(52,211,153,.05)' : 'rgba(248,113,113,.05)' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>🔏 School Stamp <span style={{ color: 'var(--red)', fontSize: 11 }}>* Required</span></span>
+                    <span>🔏 Site Stamp <span style={{ color: 'var(--red)', fontSize: 11 }}>* Required</span></span>
                     {(existingStamp || stampPreview) && <span style={{ color: 'var(--green)', fontSize: 11 }}>✅ Stamp on file</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -283,7 +286,7 @@ export default function Schools() {
                     </div>
                   </div>
                   {!existingStamp && !stampPreview && (
-                    <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 8 }}>⚠️ Upload the school's official stamp — required before saving</div>
+                    <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 8 }}>⚠️ Upload the site's official stamp — required before saving</div>
                   )}
                 </div>
               )}

@@ -572,7 +572,9 @@ export default function UnitPage() {
         <div style={{ color: 'var(--muted)', padding: 40, textAlign: 'center' }}>Loading sites...</div>
       ) : filtered.length === 0 ? (
         <div style={{ color: 'var(--muted)', padding: 50, textAlign: 'center', background: 'var(--surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
-          No sites found. Go to <b>Schools / Sites</b> page → Edit a site → set its Unit to <b>{meta.label}</b>.
+          {/* Names the nav item as it now reads — an instruction pointing at "Schools / Sites"
+              would send the operator looking for something that isn't in the menu. */}
+          No sites found. Go to <b>Sites</b> → Edit a site → set its Unit to <b>{meta.label}</b>.
         </div>
       ) : (
         <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>

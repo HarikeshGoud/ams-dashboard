@@ -7,7 +7,7 @@ const NAV = [
   { to: '/unit/1',        icon: '🔵', label: 'Unit 1 — Telangana'      },
   { to: '/unit/2',        icon: '🟣', label: 'Unit 2 — Andhra Pradesh' },
   { to: '/unit/3',        icon: '🔷', label: 'Unit 3'   },
-  { to: '/schools',       icon: '🏫', label: 'Schools / Sites' },
+  { to: '/schools',       icon: '🏠', label: 'Sites' },
   { to: '/visits',        icon: '📋', label: 'Visits'          },
   { to: '/amc-reports',   icon: '📋', label: 'AMC Reports'     },
   { to: '/reports',       icon: '📊', label: 'Reports'         },

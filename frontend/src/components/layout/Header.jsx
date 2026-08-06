@@ -9,7 +9,7 @@ import { formatISTDateTime } from '../../utils/istTime'
 
 const TITLES = {
   '/': 'Dashboard', '/employees': 'Employees', '/clients': 'Clients',
-  '/schools': 'Schools / Sites', '/visits': 'Visits & Complaints',
+  '/schools': 'Sites', '/visits': 'Visits & Complaints',
   '/complaints': 'Complaints', '/stock': 'Stock & Materials',
   '/billing': 'Billing & Payments', '/salary': 'Salary',
   '/attendance': 'Attendance', '/tasks': 'Tasks', '/travel': 'Travel Allowance',
